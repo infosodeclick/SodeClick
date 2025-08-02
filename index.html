@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SodeClick - ระบบกำลังพัฒนา</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+      padding: 40px 20px;
+
+      /* พื้นหลังชมพูเข้ม → ดำ */
+      background: linear-gradient(to bottom, #4c0519, #000);
+    }
+
+    .container {
+      text-align: center;
+      padding: 4rem 2.5rem;
+      max-width: 600px;
+      z-index: 10;
+      border-radius: 16px;
+
+      /* การ์ดสีทองหรูเดิม */
+      background: linear-gradient(145deg, #0a0a0a, #1a1a1a);
+      box-shadow: 
+        0 10px 30px rgba(0, 0, 0, 0.5),
+        0 0 20px rgba(255, 215, 0, 0.1);
+      border: 1px solid rgba(255, 215, 0, 0.2);
+      backdrop-filter: blur(10px);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .container:hover {
+      transform: translateY(-8px);
+      box-shadow: 
+        0 15px 35px rgba(0, 0, 0, 0.6),
+        0 0 30px rgba(255, 215, 0, 0.15);
+    }
+
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 2px;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(45deg, #fff, #ffd700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 2px 10px rgba(255, 215, 0, 0.2);
+    }
+
+    .tagline {
+      font-size: 1.3rem;
+      color: #b8b8b8;
+      margin-bottom: 2rem;
+      font-weight: 400;
+    }
+
+    /* Pulse Signal */
+    .signal {
+      width: 100px;
+      height: 60px;
+      margin: 0 auto 1.5rem auto;
+      position: relative;
+    }
+
+    .wave {
+      position: absolute;
+      bottom: 15px;
+      left: 0;
+      width: 100%;
+      height: 30px;
+      background: transparent;
+    }
+
+    .wave svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .wave path {
+      fill: none;
+      stroke: #ffd700;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      animation: pulseWave 2s ease-in-out infinite;
+    }
+
+    @keyframes pulseWave {
+      0% {
+        d: path("M 0 15 Q 25 5, 50 15 T 100 15");
+        stroke: #ffd700;
+      }
+      50% {
+        d: path("M 0 15 Q 25 25, 50 15 T 100 15");
+        stroke: #fff;
+      }
+      100% {
+        d: path("M 0 15 Q 25 5, 50 15 T 100 15");
+        stroke: #ffd700;
+      }
+    }
+
+    .footer {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    /* Progress Bar */
+    .progress-container {
+      width: 100%;
+      max-width: 400px;
+      margin: 2rem auto 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+      position: relative;
+      height: 10px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ffd700, #ffed4e);
+      border-radius: 6px;
+      transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    /* Email อยู่ด้านล่างสุด ใต้การ์ด */
+    .email {
+      margin-top: 2rem;
+      font-size: 0.95rem;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+
+    .email:hover {
+      color: #ffd700;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <!-- การ์ดหลัก (สีทองหรู) -->
+  <div class="container">
+    <!-- Futuristic Pulse Signal -->
+    <div class="signal">
+      <div class="wave">
+        <svg viewBox="0 0 100 30" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 0 15 Q 25 5, 50 15 T 100 15" />
+        </svg>
+      </div>
+    </div>
+
+    <h1 class="logo">SodeClick</h1>
+    <p class="tagline">กำลังพัฒนาระบบ</p>
+    <div class="footer">
+      &copy; <span id="year">2025</span> All Rights Reserved
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+  </div>
+
+  <!-- อีเมล อยู่ด้านล่างสุดของหน้า ใต้การ์ด -->
+  <a href="mailto:info.sodeclick@gmail.com" class="email">info.sodeclick@gmail.com</a>
+
+  <script>
+    // ตั้งปี
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // คำนวณ Progress Bar (1% ต่อวัน)
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const oneDay = 24 * 60 * 60 * 1000;
+    const diffDays = Math.round((today - startDate) / oneDay) + 1;
+    let progress = Math.min(100, diffDays);
+    if (progress < 1) progress = 1;
+
+    document.getElementById('progressBar').style.width = progress + '%';
+  </script>
+</body>
+</html>
