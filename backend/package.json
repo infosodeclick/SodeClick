@@ -1,0 +1,46 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Backend for Love Project",
+  "main": "server.js",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "shx cp env.production .env && node server.js",
+    "dev": "shx cp env.development .env && nodemon server.js",
+    "start:dev": "shx cp env.development .env && node server.js",
+    "seed": "shx cp env.development .env && node scripts/seedData.js",
+    "create-admin": "shx cp env.development .env && node scripts/createAdmin.js",
+    "create-chat-rooms": "shx cp env.development .env && node scripts/createDefaultChatRooms.js",
+    "assign:memberships": "node ./scripts/assignRandomMemberships.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "express",
+    "mongodb",
+    "api",
+    "backend"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.17.0",
+    "multer": "^2.0.2",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-local": "^1.0.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "cross-env": "^10.0.0",
+    "nodemon": "^3.1.10",
+    "shx": "^0.4.0"
+  }
+}
