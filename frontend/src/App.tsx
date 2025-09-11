@@ -16,7 +16,7 @@ import LoginModal from './components/LoginModal'
 // Lazy load heavy components with type assertions
 const MembershipDashboard = lazy(() => import('./components/MembershipDashboard.jsx')) as any
 const MembershipPlans = lazy(() => import('./components/MembershipPlans.jsx')) as any
-const PaymentGateway = lazy(() => import('./components/PaymentGateway.tsx'))
+const PaymentWithAnimation = lazy(() => import('./components/PaymentWithAnimation.tsx'))
 const PaymentSuccess = lazy(() => import('./components/PaymentSuccess.tsx')) as any
 const UserProfile = lazy(() => import('./components/UserProfile.jsx')) as any
 const ChatRoomList = lazy(() => import('./components/ChatRoomList.jsx')) as any
@@ -2015,7 +2015,7 @@ function App() {
   if (currentView === 'payment' && selectedPlan) {
     return (
       <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="h-32 w-32" /></div>}>
-        <PaymentGateway
+        <PaymentWithAnimation
           plan={selectedPlan}
           onBack={handleBackToMain}
           onSuccess={handlePaymentSuccess}

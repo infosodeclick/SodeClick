@@ -60,7 +60,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   const [timeRemaining, setTimeRemaining] = useState(300000) // 5 นาที
   const [currentTransaction, setCurrentTransaction] = useState<PaymentData | null>(null)
   const [paymentCheckInterval, setPaymentCheckInterval] = useState<number | null>(null)
-  const [debugMode] = useState(true)
 
 
 
@@ -145,7 +144,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
     if (savedQRData) {
       try {
         const parsedData = JSON.parse(savedQRData)
-        console.log('🔄 Loading existing QR data from localStorage')
         setQrData(parsedData)
         setPaymentStatus(parsedData.status || 'pending')
         setTimeRemaining(parsedData.timeRemaining || 300000)
@@ -157,14 +155,12 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
     
     // สร้าง QR ใหม่เฉพาะเมื่อไม่มีข้อมูลเก่า
     if (!savedQRData && !qrData && !processing) {
-      console.log('🚀 Component mounted - Creating new QR Code')
       createRabbitPayment()
     }
   }, []) // ไม่มี dependency เพื่อให้รันแค่ครั้งเดียว
 
   // สร้าง Rabbit Payment
   const createRabbitPayment = async () => {
-    console.log('=== Starting Rabbit QR Code Generation ===')
     setProcessing(true)
     
     try {
@@ -177,26 +173,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
         amount: pricing.amount
       })
       
-      console.log('🐇 Rabbit Gateway Response:', result)
-      console.log('🖼️ QR Image Data:', {
-        qr_image: result.qr_image,
-        qr_image_url: result.qr_image_url,
-        qr_code_url: result.qr_code_url,
-        vendor_qr_code: result.vendor_qr_code ? result.vendor_qr_code.substring(0, 50) + '...' : null,
-        url: result.url,
-        short_url: result.short_url,
-        transaction_url: result.transaction_url
-      })
-      
-      // Debug: Check what QR data we actually have
-      console.log('🔍 QR Data Analysis:', {
-        has_qr_image: !!result.qr_image,
-        has_qr_image_url: !!result.qr_image_url,
-        has_qr_code_url: !!result.qr_code_url,
-        has_vendor_qr_code: !!result.vendor_qr_code,
-        qr_image_type: typeof result.qr_image,
-        qr_image_length: result.qr_image ? result.qr_image.length : 0
-      })
       
       const transaction = {
         id: result.payment_id,
@@ -240,19 +216,12 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
       const qrKey = `qr-${plan.id}-${user?._id || user?.id}`
       localStorage.setItem(qrKey, JSON.stringify(qrDataToSave))
       
-      console.log('=== Rabbit QR Code Generation Completed Successfully ===')
     } catch (error: unknown) {
       console.error('Rabbit QR Code generation failed:', error)
       setPaymentStatus('error')
       
       // แสดงข้อความ error ที่เป็นประโยชน์
       if (error instanceof Error && error.message.includes('ไม่สามารถเชื่อมต่อ Rabbit Gateway ได้')) {
-        console.log('🔧 Rabbit Gateway Setup Required:')
-        console.log('1. ไปที่ Rabbit Gateway Dashboard')
-        console.log('2. สร้าง Application และรับ Application ID')
-        console.log('3. รับ Public Key และ Secret Key')
-        console.log('4. ตั้งค่าในไฟล์ backend/env.development')
-        console.log('5. รีสตาร์ท server')
       }
     } finally {
       setProcessing(false)
@@ -276,21 +245,19 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
     setQrData(null)
     setPaymentStatus('pending')
     setTimeRemaining(300000)
+    setProcessing(true) // ตั้งค่า processing เป็น true เพื่อให้ปุ่มหมุน
     createRabbitPayment()
   }
 
   // ฟังก์ชันตรวจสอบสถานะการชำระเงินแบบ manual
   const checkPaymentStatus = async () => {
     if (!qrData || !qrData.payment_id) {
-      console.log('❌ No payment ID available')
       return
     }
 
     try {
-      console.log('🔍 Checking payment status manually...')
       const data = await rabbitAPI.checkPaymentStatus(qrData.payment_id)
       
-      console.log('🔍 Payment status check result:', data)
       
       if (data.status === 'completed') {
         setPaymentStatus('completed')
@@ -307,14 +274,12 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
           tier: plan.tier // เพิ่ม tier สำหรับการอัพเกรดสมาชิก
         }
         
-        console.log('🎉 Payment completed! Sending success data:', successData)
         onSuccess && onSuccess(successData)
       } else if (data.status === 'failed') {
         setPaymentStatus('failed')
       } else if (data.status === 'expired') {
         setPaymentStatus('expired')
       } else {
-        console.log('⏳ Payment still pending...')
       }
     } catch (error) {
       console.error('❌ Error checking payment status:', error)
@@ -374,7 +339,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'pending':
-        return <Loader2 className="h-4 w-4" />
+        return <Loader2 className="h-4 w-4 animate-spin" />
       case 'completed':
         return <CheckCircle className="h-4 w-4" />
       case 'failed':
@@ -541,7 +506,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                 ) : (
                   <div className="flex items-center justify-center p-4">
                     <div className="text-center">
-                      <Loader2 className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                      <Loader2 className="h-6 w-6 text-blue-500 mx-auto mb-2 animate-spin" />
                       <p className="text-sm text-slate-600">กำลังสร้าง QR Code...</p>
                     </div>
                   </div>
@@ -577,7 +542,10 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       variant="outline"
                       className="flex-1 border-blue-300 text-blue-600 hover:bg-blue-50"
                     >
-                      <RefreshCw className="h-4 w-4 mr-2" />
+                      <RefreshCw 
+                        className="h-4 w-4 mr-2" 
+                        style={processing ? { animation: 'spin 1s linear infinite' } : {}}
+                      />
                       สร้าง QR ใหม่
                     </Button>
                   </div>
@@ -602,7 +570,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
             <CardContent className="space-y-4">
               {processing ? (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 text-blue-500 mb-3" />
+                  <Loader2 className="h-8 w-8 text-blue-500 mb-3 animate-spin" />
                   <h3 className="text-base font-semibold text-slate-800 mb-2">
                     กำลังสร้าง QR Code...
                         </h3>
@@ -612,7 +580,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       </div>
               ) : !qrData ? (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="h-12 w-12 text-blue-500 mb-3" />
+                  <Loader2 className="h-12 w-12 text-blue-500 mb-3 animate-spin" />
                   <h3 className="text-base font-semibold text-slate-800 mb-2">
                     กำลังสร้าง QR Code...
                         </h3>
@@ -622,38 +590,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       </div>
               ) : qrData ? (
                 <div className="space-y-4">
-                  {/* Debug Info */}
-                  {debugMode && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs">
-                      <p><strong>🔍 Debug QR Data:</strong></p>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div>
-                          <p><strong>QR Image:</strong> {qrData.qr_image ? `✅ Yes (${qrData.qr_image.length} chars)` : '❌ No'}</p>
-                          <p><strong>QR Image URL:</strong> {qrData.qr_image_url ? `✅ Yes` : '❌ No'}</p>
-                          <p><strong>QR Code URL:</strong> {qrData.qr_code_url ? `✅ Yes` : '❌ No'}</p>
-                        </div>
-                        <div>
-                          <p><strong>Vendor QR Code:</strong> {qrData.vendor_qr_code ? `✅ Yes (${qrData.vendor_qr_code.length} chars)` : '❌ No'}</p>
-                          <p><strong>Payment ID:</strong> {qrData.payment_id || 'N/A'}</p>
-                          <p><strong>Status:</strong> {qrData.status || 'N/A'}</p>
-                        </div>
-                      </div>
-                      {qrData.debug && (
-                        <div className="mt-2 p-2 bg-blue-50 rounded border">
-                          <p><strong>Backend Debug:</strong></p>
-                          <p>Has QR Image: {qrData.debug.hasQrImage ? '✅' : '❌'}</p>
-                          <p>Has QR Code URL: {qrData.debug.hasQrCodeUrl ? '✅' : '❌'}</p>
-                          <p>Has Vendor QR Code: {qrData.debug.hasVendorQrCode ? '✅' : '❌'}</p>
-                        </div>
-                      )}
-                      {qrData.qr_image && (
-                        <div className="mt-2">
-                          <p><strong>QR Image Preview:</strong></p>
-                          <p className="font-mono text-xs break-all">{qrData.qr_image.substring(0, 100)}...</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                   
                   {/* QR Code Image */}
                   <div className="flex justify-center">
@@ -665,7 +601,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                           alt="QR Code for Payment"
                           className="w-48 h-48 border-2 border-white rounded-xl shadow-lg"
                           onError={(e) => {
-                            console.log('QR Image failed to load, showing fallback');
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
                             // แสดง fallback div
@@ -790,9 +725,13 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                   
                   <Button
                     onClick={createRabbitPayment}
+                    disabled={processing}
                     className="modern-button bg-blue-500 hover:bg-blue-600"
                   >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw 
+                      className="h-4 w-4 mr-2" 
+                      style={processing ? { animation: 'spin 1s linear infinite' } : {}}
+                    />
                     ลองใหม่
                   </Button>
                 </div>
