@@ -254,7 +254,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
 
     // ตรวจสอบจำนวนรูปภาพตามระดับสมาชิก
     if (membershipData) {
-      const currentImageCount = profile.profileImages ? profile.profileImages.filter(img => !img.startsWith('data:image/svg+xml;base64')).length : 0;
+      const currentImageCount = profile.profileImages ? profile.profileImages.filter(img => !img.startsWith('data:image/svg+xml')).length : 0;
       const maxImages = membershipData.limits.dailyImages === -1 ? 10 : membershipData.limits.dailyImages;
       
       if (currentImageCount >= maxImages) {
@@ -289,10 +289,21 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
   // ตั้งรูปโปรไฟล์หลัก
   const setMainProfileImage = async (imageIndex) => {
     try {
-      await profileAPI.setMainProfileImage(userId, imageIndex);
-      await fetchProfile();
+      console.log('Setting main profile image with index:', imageIndex);
+      const response = await profileAPI.setMainProfileImage(userId, imageIndex);
+      console.log('API response:', response);
+      
+      await fetchProfile(); // รีเฟรชข้อมูลโปรไฟล์
+      
+      // รีเฟรช avatar ใน header โดยไม่ต้องรีเฟรชหน้าเว็บ
+      const event = new CustomEvent('profileImageUpdated', { 
+        detail: { userId, profileImages: response.data.profileImages } 
+      });
+      window.dispatchEvent(event);
+      
       success('ตั้งรูปโปรไฟล์หลักสำเร็จ');
     } catch (err) {
+      console.error('Error setting main profile image:', err);
       showError(err.response?.data?.message || 'ไม่สามารถตั้งรูปโปรไฟล์หลักได้');
     }
   };
@@ -521,7 +532,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           <div className="flex items-center space-x-3 sm:space-x-4 w-full sm:w-auto">
             <div className="relative">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold">
-                {profile.profileImages && profile.profileImages.length > 0 ? (
+                {profile.profileImages && profile.profileImages.length > 0 && !profile.profileImages[0].startsWith('data:image/svg+xml') ? (
                   <img 
                     src={profile.profileImages[0]}
                     alt="Profile"
@@ -611,7 +622,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
               รูปภาพ
               {membershipData && (
                 <span className="ml-2 text-xs sm:text-sm text-gray-500">
-                  ({profile.profileImages ? profile.profileImages.filter(img => !img.startsWith('data:image/svg+xml;base64')).length : 0}/{membershipData.limits.dailyImages === -1 ? 'ไม่จำกัด' : membershipData.limits.dailyImages})
+                  ({profile.profileImages ? profile.profileImages.filter(img => !img.startsWith('data:image/svg+xml')).length : 0}/{membershipData.limits.dailyImages === -1 ? 'ไม่จำกัด' : membershipData.limits.dailyImages})
                 </span>
               )}
             </h3>
@@ -644,13 +655,17 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           
           {/* Image Gallery with Proper Aspect Ratio */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            {profile.profileImages && profile.profileImages.length > 0 && !profile.profileImages.every(img => img.startsWith('data:image/svg+xml;base64')) ? (
-              profile.profileImages.filter(img => !img.startsWith('data:image/svg+xml;base64')).map((image, index) => (
-                <div key={index} className="relative group">
+            {profile.profileImages && profile.profileImages.length > 0 && !profile.profileImages.every(img => img.startsWith('data:image/svg+xml')) ? (
+              profile.profileImages.map((image, originalIndex) => {
+                // ข้ามรูป default
+                if (image.startsWith('data:image/svg+xml')) return null;
+                
+                return (
+                <div key={originalIndex} className="relative group">
                   <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
                     <img
                       src={image}
-                      alt={`Profile ${index + 1}`}
+                      alt={`Profile ${originalIndex + 1}`}
                       className="w-full h-full object-cover object-center"
                       style={{ objectFit: 'cover' }}
                       onError={(e) => {
@@ -662,7 +677,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                     <div className="absolute top-1 right-1 sm:top-2 sm:right-2 flex space-x-1">
                       {/* ปุ่มตั้งรูปโปรไฟล์หลัก */}
                       <button
-                        onClick={() => setMainProfileImage(index)}
+                        onClick={() => setMainProfileImage(originalIndex)}
                         className="bg-blue-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="ตั้งเป็นรูปโปรไฟล์หลัก"
                       >
@@ -670,7 +685,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                       </button>
                       {/* ปุ่มลบรูป */}
                       <button
-                        onClick={() => deleteImage(index)}
+                        onClick={() => deleteImage(originalIndex)}
                         className="bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="ลบรูปภาพ"
                       >
@@ -679,14 +694,15 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                     </div>
                   )}
                   {/* แสดงเครื่องหมายรูปโปรไฟล์หลัก */}
-                  {index === 0 && (
+                  {originalIndex === 0 && (
                     <div className="absolute top-1 left-1 sm:top-2 sm:left-2 bg-green-500 text-white rounded-full px-1 py-0.5 sm:px-2 sm:py-1 text-xs flex items-center">
                       <Star className="h-2 w-2 mr-1" />
                       หลัก
                     </div>
                   )}
                 </div>
-              ))
+                );
+              }).filter(Boolean)
             ) : (
               // Empty state when no images
               <div className="col-span-2 md:col-span-4">

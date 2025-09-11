@@ -6,7 +6,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
+    "start": "shx cp env.production .env && node server.js",
     "dev": "shx cp env.development .env && nodemon server.js",
     "start:dev": "shx cp env.development .env && node server.js",
     "seed": "shx cp env.development .env && node scripts/seedData.js",

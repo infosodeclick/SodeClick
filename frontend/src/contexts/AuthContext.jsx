@@ -80,14 +80,22 @@ export const AuthProvider = ({ children }) => {
               })
             }).then(() => {
               console.log('✅ Login: Location updated to server');
+              // รีเฟรชหน้าเว็บหลังจากอัปเดตตำแหน่ง
+              window.location.reload();
             }).catch((error) => {
               console.error('❌ Login: Failed to update location:', error);
+              // รีเฟรชหน้าเว็บแม้ว่าจะอัปเดตตำแหน่งไม่สำเร็จ
+              window.location.reload();
             });
+          } else {
+            // รีเฟรชหน้าเว็บถ้าไม่มี token
+            window.location.reload();
           }
         },
         (error) => {
           console.error('❌ Login: GPS location failed:', error);
-          // ไม่ต้องทำอะไรเพิ่มเติม ถ้า GPS ไม่ทำงานก็ไม่เป็นไร
+          // รีเฟรชหน้าเว็บแม้ว่า GPS จะไม่ทำงาน
+          window.location.reload();
         },
         {
           enableHighAccuracy: false, // ลดความเข้มงวด
@@ -95,6 +103,9 @@ export const AuthProvider = ({ children }) => {
           maximumAge: 60000 // เพิ่มเวลา cache เป็น 1 นาที
         }
       );
+    } else {
+      // รีเฟรชหน้าเว็บถ้า GPS ไม่รองรับ
+      window.location.reload();
     }
   };
 
@@ -122,13 +133,27 @@ export const AuthProvider = ({ children }) => {
             })
           }).then(() => {
             console.log('✅ Logout: Final location updated to server');
+            // ล้างข้อมูลและรีเฟรชหน้าเว็บหลังจากอัปเดตตำแหน่ง
+            setUser(null);
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+            window.location.reload();
           }).catch((error) => {
             console.error('❌ Logout: Failed to update final location:', error);
+            // ล้างข้อมูลและรีเฟรชหน้าเว็บแม้ว่าจะอัปเดตตำแหน่งไม่สำเร็จ
+            setUser(null);
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('user');
+            window.location.reload();
           });
         },
         (error) => {
           console.error('❌ Logout: GPS location failed:', error);
-          // ไม่ต้องทำอะไรเพิ่มเติม ถ้า GPS ไม่ทำงานก็ไม่เป็นไร
+          // ล้างข้อมูลและรีเฟรชหน้าเว็บแม้ว่า GPS จะไม่ทำงาน
+          setUser(null);
+          sessionStorage.removeItem('token');
+          sessionStorage.removeItem('user');
+          window.location.reload();
         },
         {
           enableHighAccuracy: false, // ลดความเข้มงวด
@@ -136,11 +161,13 @@ export const AuthProvider = ({ children }) => {
           maximumAge: 60000 // เพิ่มเวลา cache เป็น 1 นาที
         }
       );
+    } else {
+      // ล้างข้อมูลและรีเฟรชหน้าเว็บถ้าไม่มี token หรือ GPS ไม่รองรับ
+      setUser(null);
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      window.location.reload();
     }
-    
-    setUser(null);
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
   };
 
   // Function to validate current user and force logout if invalid

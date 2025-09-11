@@ -5,6 +5,7 @@ const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
 const axios = require('axios');
+const QRCode = require('qrcode');
 // Load environment variables based on NODE_ENV
 const NODE_ENV = process.env.NODE_ENV || 'development';
 require('dotenv').config({
@@ -120,6 +121,7 @@ const shopRoutes = require('./routes/shop');
 const adminRoutes = require('./routes/admin');
 const paymentRoutes = require('./routes/payment');
 const matchingRoutes = require('./routes/matching');
+const notificationsRoutes = require('./routes/notifications');
 // const privateMessagesRoutes = require('./routes/privateMessages'); // File not exists
 
 // Preflight OPTIONS handling
@@ -370,35 +372,67 @@ app.post("/create-qr", async (req, res) => {
     let qrCodeUrl = null;
     let qrImage = null;
     
+    console.log('🔍 Rabbit Data Analysis:', {
+      hasQrCode: !!rabbitData.qrCode,
+      hasVendorQrCode: !!rabbitData.vendorQrCode,
+      qrCodeUrl: rabbitData.qrCode?.url,
+      vendorQrCodeLength: rabbitData.vendorQrCode?.length,
+      vendorQrCodePreview: rabbitData.vendorQrCode ? rabbitData.vendorQrCode.substring(0, 50) + '...' : 'N/A'
+    });
+    
     // ตรวจสอบ qrCode.url จาก response (ตามตัวอย่างในรูป)
-// ตรวจสอบ qrCode.url จาก response (ตามตัวอย่างในรูป)
-if (rabbitData.qrCode && rabbitData.qrCode.url) {
-  qrCodeUrl = rabbitData.qrCode.url;
-  
-  // แปลง UAT URL เป็น Production URL
-  if (qrCodeUrl.includes('qr.uat.pgw.rabbit.co.th')) {
-    qrCodeUrl = qrCodeUrl.replace('qr.uat.pgw.rabbit.co.th', 'qr.pgw.rabbit.co.th');
-    console.log('🔄 Converted UAT URL to Production URL:', qrCodeUrl);
-  }
-  
-  console.log('✅ QR Code URL found:', qrCodeUrl);
-} 
+    if (rabbitData.qrCode && rabbitData.qrCode.url) {
+      qrCodeUrl = rabbitData.qrCode.url;
+      
+      // แปลง UAT URL เป็น Production URL
+      if (qrCodeUrl.includes('qr.uat.pgw.rabbit.co.th')) {
+        qrCodeUrl = qrCodeUrl.replace('qr.uat.pgw.rabbit.co.th', 'qr.pgw.rabbit.co.th');
+        console.log('🔄 Converted UAT URL to Production URL:', qrCodeUrl);
+      }
+      
+      console.log('✅ QR Code URL found:', qrCodeUrl);
+    } 
+    
     // หาก response มี vendorQrCode ให้สร้าง QR Code เอง
-    else if (rabbitData.vendorQrCode) {
+    if (rabbitData.vendorQrCode) {
       try {
-        qrImage = await QRCode.toDataURL(rabbitData.vendorQrCode, {
-          errorCorrectionLevel: 'M',
-          type: 'image/png',
-          quality: 0.92,
-          margin: 1,
-          width: 256
-        });
-        console.log('✅ QR Code image generated from vendorQrCode');
+        console.log('🎨 Generating QR Code from vendorQrCode...');
+        console.log('📝 Vendor QR Code content:', rabbitData.vendorQrCode.substring(0, 50) + '...');
+        console.log('📏 Vendor QR Code length:', rabbitData.vendorQrCode.length);
+        console.log('🔍 Vendor QR Code type:', typeof rabbitData.vendorQrCode);
+        console.log('🔍 Vendor QR Code is string:', typeof rabbitData.vendorQrCode === 'string');
+        
+        // ตรวจสอบว่า vendorQrCode เป็น string และไม่ว่าง
+        if (typeof rabbitData.vendorQrCode === 'string' && rabbitData.vendorQrCode.trim().length > 0) {
+          qrImage = await QRCode.toDataURL(rabbitData.vendorQrCode, {
+            errorCorrectionLevel: 'M',
+            type: 'image/png',
+            quality: 0.92,
+            margin: 1,
+            width: 256,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          console.log('✅ QR Code image generated successfully, length:', qrImage.length);
+          console.log('🖼️ QR Image preview:', qrImage.substring(0, 50) + '...');
+          console.log('🎯 QR Image starts with:', qrImage.substring(0, 20));
+        } else {
+          console.log('⚠️ vendorQrCode is not a valid string or is empty');
+          qrImage = null;
+        }
       } catch (qrError) {
         console.error('❌ Error generating QR code:', qrError);
+        console.error('❌ QR Error details:', qrError.message);
+        console.error('❌ QR Error stack:', qrError.stack);
         qrImage = null;
       }
     } else {
+      console.log('⚠️ No vendorQrCode found in response');
+    }
+    
+    if (!qrCodeUrl && !qrImage) {
       console.log('⚠️ No QR Code data found in response');
     }
 
@@ -406,10 +440,10 @@ if (rabbitData.qrCode && rabbitData.qrCode.url) {
     const responseData = {
       payment_id: rabbitData.id,
       transaction_id: rabbitData.id,
-      qr_image: qrImage || qrCodeUrl,
-      qr_image_url: qrCodeUrl,
-      qr_code_url: qrCodeUrl,
-      vendor_qr_code: rabbitData.vendorQrCode,
+      qr_image: qrImage, // QR Code image ที่สร้างจาก vendorQrCode
+      qr_image_url: qrCodeUrl, // QR Code URL จาก Rabbit Gateway
+      qr_code_url: qrCodeUrl, // Alias สำหรับ qr_image_url
+      vendor_qr_code: rabbitData.vendorQrCode, // QR Code string
       expire_at: rabbitData.expires || new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       order_id: orderId,
       amount: amount,
@@ -424,7 +458,16 @@ if (rabbitData.qrCode && rabbitData.qrCode.url) {
       security_word: rabbitData.securityWord,
       amount_formatted: rabbitData.amountFormatted,
       // เพิ่มข้อมูล QR Code ที่ถูกต้อง
-      qr_code: rabbitData.vendorQrCode
+      qr_code: rabbitData.vendorQrCode,
+      // Debug information
+      debug: {
+        hasQrImage: !!qrImage,
+        hasQrCodeUrl: !!qrCodeUrl,
+        hasVendorQrCode: !!rabbitData.vendorQrCode,
+        qrImageLength: qrImage ? qrImage.length : 0,
+        qrCodeUrlLength: qrCodeUrl ? qrCodeUrl.length : 0,
+        vendorQrCodeLength: rabbitData.vendorQrCode ? rabbitData.vendorQrCode.length : 0
+      }
     };
 
     console.log('✅ Sending response to frontend:', responseData);
@@ -651,6 +694,7 @@ app.use('/api/shop', shopRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/matching', matchingRoutes);
+app.use('/api/notifications', notificationsRoutes);
 // app.use('/api/private-messages', privateMessagesRoutes); // File not exists
 
 // Static file serving

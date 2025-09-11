@@ -16,8 +16,8 @@ import LoginModal from './components/LoginModal'
 // Lazy load heavy components with type assertions
 const MembershipDashboard = lazy(() => import('./components/MembershipDashboard.jsx')) as any
 const MembershipPlans = lazy(() => import('./components/MembershipPlans.jsx')) as any
-const PaymentGateway = lazy(() => import('./components/PaymentGateway.jsx'))
-const PaymentSuccess = lazy(() => import('./components/PaymentSuccess.jsx')) as any
+const PaymentGateway = lazy(() => import('./components/PaymentGateway.tsx'))
+const PaymentSuccess = lazy(() => import('./components/PaymentSuccess.tsx')) as any
 const UserProfile = lazy(() => import('./components/UserProfile.jsx')) as any
 const ChatRoomList = lazy(() => import('./components/ChatRoomList.jsx')) as any
 const RealTimeChat = lazy(() => import('./components/RealTimeChat.jsx')) as any
@@ -36,7 +36,8 @@ import {
   faHeart, 
   faComments, 
   faUser, 
-  faGem
+  faGem,
+  faBell
 } from '@fortawesome/free-solid-svg-icons'
 
 import { 
@@ -391,6 +392,108 @@ function App() {
   const [privateChats, setPrivateChats] = useState<any[]>([])
   const [chatType, setChatType] = useState<'public' | 'private'>('public') // 'public', 'private'
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
+  
+  // Notification states
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
+  
+  // Fetch notifications from backend
+  const fetchNotifications = async () => {
+    if (!user?._id) return
+    
+    try {
+      setIsLoadingNotifications(true)
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${user._id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setNotifications(data.data.notifications || [])
+          setUnreadCount(data.data.unreadCount || 0)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+    } finally {
+      setIsLoadingNotifications(false)
+    }
+  }
+  
+  // Polling for new notifications
+  useEffect(() => {
+    if (!user?._id) return
+    
+    // Fetch initial notifications
+    fetchNotifications()
+    
+    // Set up polling every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000)
+    
+    return () => clearInterval(interval)
+  }, [user?._id])
+  
+  // Format time ago
+  const formatTimeAgo = (timestamp: string | Date) => {
+    const now = new Date()
+    const time = new Date(timestamp)
+    const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000)
+    
+    if (diffInSeconds < 60) return 'เมื่อสักครู่'
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} นาทีที่แล้ว`
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ชั่วโมงที่แล้ว`
+    return `${Math.floor(diffInSeconds / 86400)} วันที่แล้ว`
+  }
+  
+  // Render notification item
+  const renderNotificationItem = (notification: any) => {
+    const { type, data, createdAt, isRead } = notification
+    
+    if (type === 'private_message') {
+      return (
+        <div key={notification._id} className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-blue-50' : ''}`}>
+          <div className="flex items-start space-x-3">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+              <MessageCircle className="h-4 w-4 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">ข้อความใหม่</p>
+              <p className="text-xs text-gray-500">{data.senderName} ส่งข้อความมา</p>
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+    
+    if (type === 'profile_like') {
+      return (
+        <div key={notification._id} className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-pink-50' : ''}`}>
+          <div className="flex items-start space-x-3">
+            <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
+              <Heart className="h-4 w-4 text-pink-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">มีคนชอบคุณ!</p>
+              <p className="text-xs text-gray-500">มีคนกดหัวใจให้คุณ</p>
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-pink-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+    
+    return null
+  }
   
   // Chat countdown states
   const [chatCountdown, setChatCountdown] = useState<number | null>(null)
@@ -677,13 +780,20 @@ function App() {
           setShowProfileDropdown(false)
         }
       }
+      
+      if (showNotificationDropdown) {
+        const target = event.target as HTMLElement
+        if (!target.closest('.notification-dropdown-container')) {
+          setShowNotificationDropdown(false)
+        }
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showProfileDropdown])
+  }, [showProfileDropdown, showNotificationDropdown])
 
   // Load Premium Members for Discover tab (from backend only)
   useEffect(() => {
@@ -843,8 +953,13 @@ function App() {
           if (res.ok) {
             const data = await res.json()
             const img = (data?.data?.profile?.profileImages?.[0] as string | undefined) || ''
-            setAvatarUrl(img || null)
-            if (img) return
+            // ตรวจสอบว่าไม่ใช่รูป default
+            if (img && !img.startsWith('data:image/svg+xml')) {
+              setAvatarUrl(img)
+            } else {
+              setAvatarUrl(null)
+            }
+            return
           }
         }
       } catch (_) {
@@ -858,6 +973,26 @@ function App() {
       setAvatarUrl(null)
     }
   }, [isAuthenticated, user])
+  
+  // ฟัง event เมื่อมีการอัปเดตรูปโปรไฟล์
+  useEffect(() => {
+    const handleProfileImageUpdate = (event: CustomEvent) => {
+      const { userId, profileImages } = event.detail;
+      if (user?._id === userId || user?.id === userId) {
+        const img = profileImages?.[0];
+        if (img && !img.startsWith('data:image/svg+xml')) {
+          setAvatarUrl(img);
+        } else {
+          setAvatarUrl(null);
+        }
+      }
+    };
+
+    window.addEventListener('profileImageUpdated', handleProfileImageUpdate as EventListener);
+    return () => {
+      window.removeEventListener('profileImageUpdated', handleProfileImageUpdate as EventListener);
+    };
+  }, [user]);
   
   // ฟังก์ชันจัดการการกดหัวใจใน profile modal
   const handleProfileLike = async (profileId: string) => {
@@ -1903,7 +2038,7 @@ function App() {
   }
   
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-screen relative overflow-hidden pt-12 sm:pt-16 pb-16 sm:pb-20">
       {/* Mobile-Optimized Background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-10 left-4 w-48 h-48 sm:top-20 sm:left-10 sm:w-96 sm:h-96 bg-gradient-to-br from-pink-300/20 to-violet-300/20 rounded-full blur-3xl animate-pulse"></div>
@@ -1922,7 +2057,7 @@ function App() {
       </div>
       
       {/* Mobile-First Header */}
-      <header className="glass-effect sticky top-0 z-50 border-b border-white/30 shadow-lg">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200/50 shadow-lg">
         <div className="px-3 sm:px-4 lg:px-8">
           <div className="flex justify-between items-center h-12 sm:h-16">
             {/* Logo - Mobile Optimized */}
@@ -1991,7 +2126,7 @@ function App() {
                         <AvatarImage src={avatarUrl || undefined} alt="profile" />
                         <AvatarFallback className="text-xs">{user?.firstName?.[0] || user?.username?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium text-gray-900">{user?.firstName} {user?.lastName}</span>
+                      <span className="text-sm font-medium text-gray-900">{user?.firstName}</span>
                     </Button>
                     
                     {/* Dropdown Menu */}
@@ -2030,7 +2165,65 @@ function App() {
                   </div>
                   
                   {/* Desktop: Show admin and logout buttons */}
-                  <div className="hidden sm:flex items-center space-x-2">
+                  <div className="flex items-center space-x-2">
+                    {/* Desktop Notification Bell Button */}
+                    <div className="relative notification-dropdown-container">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                        className="relative p-2 hover:bg-gray-50 transition-colors"
+                      >
+                        <FontAwesomeIcon 
+                          icon={faBell} 
+                          className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 hover:text-pink-600 transition-colors" 
+                        />
+                        {/* Notification Badge - Show only when there are unread notifications */}
+                        {unreadCount > 0 && (
+                          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </Button>
+                      
+                      {/* Desktop Notification Dropdown */}
+                      {showNotificationDropdown && (
+                        <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-2 min-w-[280px] sm:min-w-[320px] z-50 max-h-96 overflow-y-auto">
+                          <div className="px-4 py-2 border-b border-gray-100">
+                            <h3 className="text-sm font-semibold text-gray-900">การแจ้งเตือน</h3>
+                          </div>
+                          
+                          {/* Real-time Notifications */}
+                          {isLoadingNotifications ? (
+                            <div className="px-4 py-8 text-center">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pink-600 mx-auto"></div>
+                              <p className="text-xs text-gray-500 mt-2">กำลังโหลด...</p>
+                            </div>
+                          ) : notifications.length > 0 ? (
+                            notifications.map(renderNotificationItem)
+                          ) : (
+                            <div className="px-4 py-8 text-center">
+                              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                <FontAwesomeIcon icon={faBell} className="h-6 w-6 text-gray-400" />
+                              </div>
+                              <p className="text-sm text-gray-500">ยังไม่มีการแจ้งเตือน</p>
+                            </div>
+                          )}
+                          
+                          {notifications.length > 0 && (
+                            <div className="px-4 py-2 border-t border-gray-100">
+                              <button 
+                                onClick={fetchNotifications}
+                                className="w-full text-center text-sm text-pink-600 hover:text-pink-700 font-medium"
+                              >
+                                รีเฟรช
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
                     {(user?.role === 'admin' || user?.role === 'superadmin') && (
                       <Button 
                         variant="outline" 
@@ -2046,7 +2239,7 @@ function App() {
                       variant="outline" 
                       size="sm" 
                       onClick={handleLogout} 
-                      className="border-pink-200 text-pink-600 hover:bg-pink-50 hover:border-pink-300 transition-colors"
+                      className="hidden sm:flex border-pink-200 text-pink-600 hover:bg-pink-50 hover:border-pink-300 transition-colors"
                     >
                       ออกจากระบบ
                     </Button>
@@ -2844,7 +3037,7 @@ function App() {
                     const profileImage = user.profileImages && user.profileImages.length > 0 
                       ? (user.profileImages[0].startsWith('http') 
                           ? user.profileImages[0] 
-                          : user.profileImages[0].startsWith('data:image/svg+xml;base64')
+                          : user.profileImages[0].startsWith('data:image/svg+xml')
                           ? user.profileImages[0]
                           : `${baseUrl}/uploads/profiles/${user.profileImages[0]}`)
                       : ''
@@ -2879,25 +3072,25 @@ function App() {
                         })
                       }}>
                         <div className="h-48 sm:h-60 md:h-72 overflow-hidden relative">
-                          {profileImage ? (
+                          {profileImage && !profileImage.startsWith('data:image/svg+xml') ? (
                             <img 
                               src={profileImage} 
                               alt={displayName} 
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                               }}
                             />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                              <div className="text-center text-gray-500">
-                                <div className="w-16 h-16 mx-auto mb-2 bg-gray-400 rounded-full flex items-center justify-center">
-                                  <span className="text-2xl">👤</span>
-                                </div>
-                                <p className="text-sm font-medium">{displayName}</p>
+                          ) : null}
+                          <div className={`w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center ${profileImage && !profileImage.startsWith('data:image/svg+xml') ? 'hidden' : ''}`}>
+                            <div className="text-center text-gray-500">
+                              <div className="w-16 h-16 mx-auto mb-2 bg-gray-400 rounded-full flex items-center justify-center">
+                                <span className="text-2xl">👤</span>
                               </div>
+                              <p className="text-sm font-medium">{displayName}</p>
                             </div>
-                          )}
+                          </div>
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
                           
                           {/* Membership Tier Badge */}

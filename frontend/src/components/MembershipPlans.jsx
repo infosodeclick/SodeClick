@@ -54,8 +54,8 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <div className="relative">
-          <RefreshCw className="h-12 w-12 animate-spin text-pink-500 mr-4" />
-          <div className="absolute inset-0 w-12 h-12 border-4 border-pink-200 rounded-full animate-pulse"></div>
+          <RefreshCw className="h-12 w-12 text-pink-500 mr-4" />
+          <div className="absolute inset-0 w-12 h-12 border-4 border-pink-200 rounded-full"></div>
         </div>
         <div className="mt-6 text-center">
           <span className="text-xl font-semibold gradient-text">Loading Premium Plans...</span>
@@ -105,7 +105,7 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
         
         <div className="relative z-10 text-white">
           <div className="flex items-center justify-center mb-2">
-            <Sparkles className="h-5 w-5 mr-2 animate-pulse" />
+            <Sparkles className="h-5 w-5 mr-2" />
             <span className="text-lg font-bold">Most Popular Plans 🔥</span>
           </div>
           <p className="text-pink-100 mb-3 text-sm">

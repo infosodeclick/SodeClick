@@ -184,19 +184,12 @@ const MembershipCard = ({ plan, isCurrentTier = false, onUpgrade, isLoading = fa
           <Button
             onClick={() => onUpgrade?.(plan)}
             disabled={isLoading}
-            className={`w-full bg-gradient-to-r ${membershipHelpers.getTierGradient(plan.tier)} hover:shadow-lg hover:scale-105 transition-all duration-300 text-white font-semibold py-2 rounded-lg text-sm`}
+            className={`w-full bg-gradient-to-r ${membershipHelpers.getTierGradient(plan.tier)} text-white font-semibold py-2 rounded-lg text-sm`}
           >
-            {isLoading ? (
-              <>
-                <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full mr-1.5" />
-                Upgrading...
-              </>
-            ) : (
-              <>
-                <Zap className="h-3 w-3 mr-1.5" />
-                Upgrade Now
-              </>
-            )}
+            <>
+              <Zap className="h-3 w-3 mr-1.5" />
+              Upgrade Now
+            </>
           </Button>
         )}
       </div>
@@ -298,7 +291,7 @@ const MembershipCard = ({ plan, isCurrentTier = false, onUpgrade, isLoading = fa
                         <Sparkles className="h-5 w-5 mr-3 text-amber-500" />
                         <span className="font-medium">🎁 Instant Bonus</span>
                       </div>
-                      <span className="font-bold text-amber-600 animate-pulse">{membershipHelpers.formatCoins(plan.features.bonusCoins)} coins</span>
+                      <span className="font-bold text-amber-600">{membershipHelpers.formatCoins(plan.features.bonusCoins)} coins</span>
           </div>
         )}
       </div>
@@ -341,17 +334,10 @@ const MembershipCard = ({ plan, isCurrentTier = false, onUpgrade, isLoading = fa
                   disabled={isLoading}
                   className={`flex-1 bg-gradient-to-r ${membershipHelpers.getTierGradient(plan.tier)} text-white font-semibold`}
                 >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                      Upgrading...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-4 w-4 mr-2" />
-                      Upgrade Now
-                    </>
-                  )}
+                  <>
+                    <Zap className="h-4 w-4 mr-2" />
+                    Upgrade Now
+                  </>
                 </Button>
               )}
             </div>

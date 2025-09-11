@@ -1014,6 +1014,7 @@ router.post('/:userId/upload-image', authenticateToken, upload.single('profileIm
 router.delete('/:userId/image/:imageIndex', authenticateToken, async (req, res) => {
   try {
     const { userId, imageIndex } = req.params;
+    const { DEFAULT_AVATAR_BASE64 } = require('../config/defaultAvatar');
     
     // ตรวจสอบสิทธิ์
     if (req.user.id !== userId && !['admin', 'superadmin'].includes(req.user.role)) {
@@ -1041,6 +1042,12 @@ router.delete('/:userId/image/:imageIndex', authenticateToken, async (req, res) 
 
     // ลบรูปภาพออกจาก array
     user.profileImages.splice(index, 1);
+    
+    // ถ้าไม่มีรูปภาพเหลือแล้ว ให้ใส่รูป default
+    if (user.profileImages.length === 0) {
+      user.profileImages = [DEFAULT_AVATAR_BASE64];
+    }
+    
     await user.save();
 
     res.json({

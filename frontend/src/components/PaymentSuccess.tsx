@@ -1,29 +1,45 @@
-import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
-// import { membershipHelpers } from '../services/membershipAPI'
 import { 
   CheckCircle, 
   Crown, 
   Star, 
   Gift, 
-  Sparkles, 
   ArrowRight,
   Download,
   Share2
 } from 'lucide-react'
 
-const PaymentSuccess = ({ transactionData, plan, onContinue }) => {
-  const [showConfetti, setShowConfetti] = useState(true)
+interface TransactionData {
+  transactionId: string
+  amount: number
+  currency: string
+  paymentMethod?: string
+  timestamp: string | Date
+}
 
-  useEffect(() => {
-    // ซ่อน confetti หลัง 3 วินาที
-    const timer = setTimeout(() => {
-      setShowConfetti(false)
-    }, 3000)
+interface PlanFeatures {
+  dailyChats: number
+  dailyBonus: number
+  specialFeatures: Array<{ description: string }>
+  bonusCoins: number
+}
 
-    return () => clearTimeout(timer)
-  }, [])
+interface Plan {
+  name: string
+  duration: {
+    description: string
+  }
+  features: PlanFeatures
+}
+
+interface PaymentSuccessProps {
+  transactionData: TransactionData
+  plan: Plan
+  onContinue: () => void
+}
+
+const PaymentSuccess = ({ transactionData, plan, onContinue }: PaymentSuccessProps) => {
 
   const benefits = [
     {
@@ -45,25 +61,6 @@ const PaymentSuccess = ({ transactionData, plan, onContinue }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 relative overflow-hidden">
-      {/* Confetti Animation */}
-      {showConfetti && (
-        <div className="absolute inset-0 pointer-events-none">
-          {Array.from({ length: 50 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute animate-ping"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 2}s`,
-                animationDuration: `${2 + Math.random() * 2}s`
-              }}
-            >
-              <Sparkles className="h-4 w-4 text-pink-400" />
-            </div>
-          ))}
-        </div>
-      )}
 
       <div className="container mx-auto px-4 py-12 max-w-4xl relative z-10">
         {/* Success Header */}
@@ -110,7 +107,7 @@ const PaymentSuccess = ({ transactionData, plan, onContinue }) => {
                 <div className="flex justify-between py-2 border-b border-slate-100">
                   <span className="text-slate-600">จำนวนเงิน</span>
                   <span className="text-xl font-bold text-slate-800">
-                    {transactionData.amount} {transactionData.currency}
+                    ฿{transactionData.amount.toLocaleString()} {transactionData.currency}
                   </span>
                 </div>
                 
@@ -211,7 +208,7 @@ const PaymentSuccess = ({ transactionData, plan, onContinue }) => {
           <Button
             onClick={onContinue}
             size="lg"
-            className="bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 px-8 py-3"
+            className="bg-gradient-to-r from-pink-500 to-violet-500 px-8 py-3"
           >
             เริ่มใช้งานสิทธิพิเศษ
             <ArrowRight className="h-5 w-5 ml-2" />

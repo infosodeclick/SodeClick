@@ -145,7 +145,7 @@ const MembershipDashboard = ({ userId }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <RefreshCw className="h-8 w-8 animate-spin text-pink-500 mr-3" />
+        <RefreshCw className="h-8 w-8 text-pink-500 mr-3" />
         <span className="text-lg text-slate-600">กำลังโหลดข้อมูลสมาชิก...</span>
       </div>
     )
@@ -283,7 +283,7 @@ const MembershipDashboard = ({ userId }) => {
             className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white text-xs px-2 py-1.5"
           >
             {actionLoading.dailyBonus ? (
-              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              <RefreshCw className="h-3 w-3 mr-1" />
             ) : (
               <Gift className="h-3 w-3 mr-1" />
             )}
@@ -298,7 +298,7 @@ const MembershipDashboard = ({ userId }) => {
             className="border-pink-200 text-pink-700 hover:bg-pink-50 text-xs px-2 py-1.5"
           >
             {actionLoading.spinWheel ? (
-              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              <RefreshCw className="h-3 w-3 mr-1" />
             ) : (
               <Zap className="h-3 w-3 mr-1" />
             )}

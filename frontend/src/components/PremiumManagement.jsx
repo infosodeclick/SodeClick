@@ -433,7 +433,7 @@ const PremiumManagement = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <div className="rounded-full h-16 w-16 border-b-2 border-pink-500 mx-auto mb-4"></div>
           <h1 className="text-xl font-bold text-slate-800">กำลังโหลดข้อมูลสมาชิก Premium...</h1>
         </div>
       </div>

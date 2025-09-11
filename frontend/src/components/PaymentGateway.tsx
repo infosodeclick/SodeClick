@@ -42,6 +42,14 @@ interface PaymentData {
   short_url?: string;
   transaction_url?: string;
   timeRemaining?: number;
+  debug?: {
+    hasQrImage?: boolean;
+    hasQrCodeUrl?: boolean;
+    hasVendorQrCode?: boolean;
+    qrImageLength?: number;
+    qrCodeUrlLength?: number;
+    vendorQrCodeLength?: number;
+  };
 }
 
 const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
@@ -52,16 +60,8 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   const [timeRemaining, setTimeRemaining] = useState(300000) // 5 นาที
   const [currentTransaction, setCurrentTransaction] = useState<PaymentData | null>(null)
   const [paymentCheckInterval, setPaymentCheckInterval] = useState<number | null>(null)
-  const [debugMode] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [progress, setProgress] = useState(0)
-  const [isTransitioning, setIsTransitioning] = useState(false)
+  const [debugMode] = useState(true)
 
-  // Reset loading state when component mounts
-  useEffect(() => {
-    setIsLoading(true)
-    setProgress(0)
-  }, [])
 
 
   // ระดับชั้นและราคาที่ตรงกัน
@@ -136,50 +136,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   //   }
   // }, [paymentStatus, onSuccess]) // ลบ qrData ออกเพื่อไม่ให้ re-run เมื่อ qrData เปลี่ยน
 
-  // Loading animation timer with progress bar
-  useEffect(() => {
-    console.log('🚀 Starting loading animation timer')
-    // Reset progress to 0 when starting
-    setProgress(0)
-    
-    const duration = 1200 // 1.2 วินาที
-    const startTime = performance.now() // Use performance.now() for more accurate timing
-    
-    const updateProgress = () => {
-      const elapsed = performance.now() - startTime
-      const progressPercent = Math.min((elapsed / duration) * 100, 100)
-      setProgress(progressPercent)
-      
-      // Log progress every 10% to verify timing
-      if (Math.round(progressPercent) % 10 === 0 && Math.round(progressPercent) > 0) {
-        console.log(`📊 Progress: ${Math.round(progressPercent)}% at ${elapsed.toFixed(2)}ms`)
-      }
-      
-      if (elapsed < duration) {
-        requestAnimationFrame(updateProgress)
-      } else {
-        console.log('✅ Loading animation complete after exactly', elapsed.toFixed(2), 'ms (should be 1200ms)')
-        // Set progress to exactly 100% and start transition
-        setProgress(100)
-        setIsTransitioning(true)
-        // Small delay for smooth transition effect
-        setTimeout(() => {
-          setIsLoading(false)
-          setIsTransitioning(false)
-          // Scroll to bottom when QR code appears
-          setTimeout(() => {
-            window.scrollTo({
-              top: document.documentElement.scrollHeight,
-              behavior: 'smooth'
-            })
-          }, 200)
-        }, 100)
-      }
-    }
-    
-    // Start the progress animation immediately
-    requestAnimationFrame(updateProgress)
-  }, [])
 
   // ตรวจสอบและโหลด QR data จาก localStorage เมื่อ component mount
   useEffect(() => {
@@ -193,7 +149,6 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
         setQrData(parsedData)
         setPaymentStatus(parsedData.status || 'pending')
         setTimeRemaining(parsedData.timeRemaining || 300000)
-        // Always show loading animation for 1.5 seconds, even with existing data
       } catch (error) {
         console.error('Error parsing saved QR data:', error)
         localStorage.removeItem(qrKey)
@@ -419,7 +374,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'pending':
-        return <Loader2 className="h-4 w-4 animate-spin" />
+        return <Loader2 className="h-4 w-4" />
       case 'completed':
         return <CheckCircle className="h-4 w-4" />
       case 'failed':
@@ -433,115 +388,9 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
     }
   }
 
-  // Loading Animation Component
-  console.log('🔍 PaymentGateway render - isLoading:', isLoading, 'progress:', progress, 'isTransitioning:', isTransitioning)
-  if (isLoading) {
-    console.log('🎬 Rendering loading animation')
-    return (
-      <div className={`min-h-screen bg-gradient-to-br from-pink-100 via-rose-50 to-red-50 flex items-center justify-center relative overflow-hidden transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
-        {/* Floating Hearts Background */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-16 left-16 w-8 h-8 animate-bounce delay-100">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f472b6'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-          <div className="absolute top-32 right-20 w-6 h-6 animate-bounce delay-300">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ef4444'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-          <div className="absolute bottom-24 left-1/4 w-7 h-7 animate-bounce delay-500">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f43f5e'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-          <div className="absolute bottom-40 right-1/3 w-5 h-5 animate-bounce delay-700">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ec4899'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-          <div className="absolute top-1/2 left-8 w-6 h-6 animate-bounce delay-900">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fca5a5'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-          <div className="absolute top-1/3 right-8 w-5 h-5 animate-bounce delay-1100">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fda4af'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-          </div>
-        </div>
-        
-        {/* Floating Love Bubbles */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-20 left-1/3 w-16 h-16 bg-gradient-to-br from-pink-200/30 to-red-200/30 rounded-full blur-sm animate-pulse"></div>
-          <div className="absolute top-40 right-1/4 w-12 h-12 bg-gradient-to-br from-rose-200/30 to-pink-200/30 rounded-full blur-sm animate-pulse delay-500"></div>
-          <div className="absolute bottom-32 left-1/2 w-14 h-14 bg-gradient-to-br from-red-200/30 to-rose-200/30 rounded-full blur-sm animate-pulse delay-1000"></div>
-        </div>
-        
-        <div className="text-center relative z-10">
-          {/* Animated Heart */}
-          <div className="relative mb-8">
-            {/* Main Heart Container */}
-            <div className="w-28 h-28 mx-auto bg-gradient-to-br from-pink-500 to-red-500 rounded-full flex items-center justify-center shadow-2xl animate-pulse relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-pink-400 to-red-400 rounded-full animate-ping opacity-75"></div>
-              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="h-10 w-10 animate-bounce relative z-10" />
-            </div>
-            
-            {/* Rotating Love Ring */}
-            <div className="absolute inset-0 w-28 h-28 mx-auto border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin"></div>
-            
-            {/* Floating Hearts Around */}
-            <div className="absolute -top-3 -right-3 w-6 h-6 animate-bounce delay-200">
-              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ec4899'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-            </div>
-            <div className="absolute -bottom-3 -left-3 w-5 h-5 animate-bounce delay-400">
-              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ef4444'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-            </div>
-            <div className="absolute top-1/2 -right-6 w-4 h-4 animate-bounce delay-600">
-              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f43f5e'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-            </div>
-            <div className="absolute top-1/2 -left-6 w-4 h-4 animate-bounce delay-800">
-              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f472b6'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E" alt="heart" className="w-full h-full" />
-            </div>
-          </div>
-          
-          {/* Loading Text with Love Theme */}
-          <div className="space-y-4">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-red-600 bg-clip-text text-transparent animate-pulse">
-              💕 Love Payment Gateway 💕
-            </h2>
-            <div className="flex items-center justify-center space-x-3">
-              <div className="w-3 h-3 bg-pink-500 rounded-full animate-bounce"></div>
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-bounce delay-100"></div>
-              <div className="w-3 h-3 bg-rose-500 rounded-full animate-bounce delay-200"></div>
-            </div>
-            <p className="text-slate-700 text-base animate-pulse font-medium">
-              กำลังเตรียม QR Code สำหรับการชำระเงิน... 💖
-            </p>
-          </div>
-          
-          {/* Love-themed Progress Bar */}
-          <div className="mt-8 w-72 mx-auto">
-            <div className="h-4 bg-pink-100 rounded-full overflow-hidden shadow-inner">
-              <div 
-                className="h-full bg-gradient-to-r from-pink-500 to-red-500 rounded-full relative"
-                style={{ 
-                  width: `${progress}%`,
-                  transition: 'none' // Remove transition for smoother animation
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-pink-400 to-red-400 rounded-full animate-ping opacity-50"></div>
-                <div className="absolute inset-0 bg-white/20 rounded-full animate-pulse"></div>
-              </div>
-            </div>
-            <p className="text-sm text-pink-600 mt-3 font-medium">
-              กำลังโหลด... {Math.round(progress)}% 💕
-            </p>
-          </div>
-          
-          {/* Bottom Love Message */}
-          <div className="mt-6">
-            <p className="text-xs text-pink-500 animate-pulse">
-              💖 สำหรับคนที่คุณรัก 💖
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-violet-50 to-blue-50 p-2 animate-fade-in transition-opacity duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-violet-50 to-blue-50 p-2">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-4">
@@ -692,7 +541,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                 ) : (
                   <div className="flex items-center justify-center p-4">
                     <div className="text-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-500 mx-auto mb-2" />
+                      <Loader2 className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                       <p className="text-sm text-slate-600">กำลังสร้าง QR Code...</p>
                     </div>
                   </div>
@@ -728,7 +577,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       variant="outline"
                       className="flex-1 border-blue-300 text-blue-600 hover:bg-blue-50"
                     >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
+                      <RefreshCw className="h-4 w-4 mr-2" />
                       สร้าง QR ใหม่
                     </Button>
                   </div>
@@ -740,7 +589,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
           </Card>
 
           {/* QR Code Display */}
-          <Card className="modern-card shadow-xl border border-white/30 overflow-hidden backdrop-blur-lg animate-fade-in">
+          <Card className="modern-card shadow-xl border border-white/30 overflow-hidden backdrop-blur-lg">
             <CardHeader className="bg-gradient-to-br from-blue-50/90 via-indigo-50/90 to-purple-50/90 backdrop-blur-xl border-b border-white/30 py-3">
               <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <QrCode className="h-5 w-5 text-blue-500" />
@@ -753,7 +602,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
             <CardContent className="space-y-4">
               {processing ? (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-3" />
+                  <Loader2 className="h-8 w-8 text-blue-500 mb-3" />
                   <h3 className="text-base font-semibold text-slate-800 mb-2">
                     กำลังสร้าง QR Code...
                         </h3>
@@ -763,7 +612,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       </div>
               ) : !qrData ? (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="h-12 w-12 animate-spin text-blue-500 mb-3" />
+                  <Loader2 className="h-12 w-12 text-blue-500 mb-3" />
                   <h3 className="text-base font-semibold text-slate-800 mb-2">
                     กำลังสร้าง QR Code...
                         </h3>
@@ -776,35 +625,64 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                   {/* Debug Info */}
                   {debugMode && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs">
-                      <p><strong>Debug QR Data:</strong></p>
-                      <p>qr_image: {qrData.qr_image ? 'Yes (length: ' + qrData.qr_image.length + ')' : 'No'}</p>
-                      <p>qr_image_url: {qrData.qr_image_url ? 'Yes' : 'No'}</p>
-                      <p>qr_code_url: {qrData.qr_code_url ? 'Yes' : 'No'}</p>
-                      <p>vendor_qr_code: {qrData.vendor_qr_code ? 'Yes (length: ' + qrData.vendor_qr_code.length + ')' : 'No'}</p>
-                      <p>qr_image preview: {qrData.qr_image ? qrData.qr_image.substring(0, 50) + '...' : 'N/A'}</p>
+                      <p><strong>🔍 Debug QR Data:</strong></p>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                          <p><strong>QR Image:</strong> {qrData.qr_image ? `✅ Yes (${qrData.qr_image.length} chars)` : '❌ No'}</p>
+                          <p><strong>QR Image URL:</strong> {qrData.qr_image_url ? `✅ Yes` : '❌ No'}</p>
+                          <p><strong>QR Code URL:</strong> {qrData.qr_code_url ? `✅ Yes` : '❌ No'}</p>
+                        </div>
+                        <div>
+                          <p><strong>Vendor QR Code:</strong> {qrData.vendor_qr_code ? `✅ Yes (${qrData.vendor_qr_code.length} chars)` : '❌ No'}</p>
+                          <p><strong>Payment ID:</strong> {qrData.payment_id || 'N/A'}</p>
+                          <p><strong>Status:</strong> {qrData.status || 'N/A'}</p>
+                        </div>
+                      </div>
+                      {qrData.debug && (
+                        <div className="mt-2 p-2 bg-blue-50 rounded border">
+                          <p><strong>Backend Debug:</strong></p>
+                          <p>Has QR Image: {qrData.debug.hasQrImage ? '✅' : '❌'}</p>
+                          <p>Has QR Code URL: {qrData.debug.hasQrCodeUrl ? '✅' : '❌'}</p>
+                          <p>Has Vendor QR Code: {qrData.debug.hasVendorQrCode ? '✅' : '❌'}</p>
+                        </div>
+                      )}
+                      {qrData.qr_image && (
+                        <div className="mt-2">
+                          <p><strong>QR Image Preview:</strong></p>
+                          <p className="font-mono text-xs break-all">{qrData.qr_image.substring(0, 100)}...</p>
+                        </div>
+                      )}
                     </div>
                   )}
                   
                   {/* QR Code Image */}
                   <div className="flex justify-center">
-                        <div className="relative">
-                      {qrData.qr_image || qrData.qr_image_url || qrData.qr_code_url ? (
+                    <div className="relative">
+                      {/* แสดง QR Image ถ้ามี */}
+                      {(qrData.qr_image || qrData.qr_image_url || qrData.qr_code_url) && (
                         <img
                           src={qrData.qr_image || qrData.qr_image_url || qrData.qr_code_url}
                           alt="QR Code for Payment"
                           className="w-48 h-48 border-2 border-white rounded-xl shadow-lg"
                           onError={(e) => {
-                            console.log('QR Image failed to load, trying vendor QR code');
+                            console.log('QR Image failed to load, showing fallback');
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
-                            const nextSibling = target.nextSibling as HTMLElement;
-                            if (nextSibling) nextSibling.style.display = 'flex';
+                            // แสดง fallback div
+                            const fallbackDiv = target.parentElement?.querySelector('.qr-fallback') as HTMLElement;
+                            if (fallbackDiv) {
+                              fallbackDiv.style.display = 'flex';
+                            }
                           }}
                         />
-                      ) : null}
+                      )}
                       
-                      {qrData.vendor_qr_code && !qrData.qr_image && !qrData.qr_image_url && !qrData.qr_code_url ? (
-                        <div className="w-48 h-48 border-2 border-white rounded-xl shadow-lg bg-white flex items-center justify-center">
+                      {/* Fallback: แสดง vendor QR code หรือข้อความ */}
+                      <div 
+                        className="qr-fallback w-48 h-48 border-2 border-white rounded-xl shadow-lg bg-white flex items-center justify-center"
+                        style={{ display: (qrData.qr_image || qrData.qr_image_url || qrData.qr_code_url) ? 'none' : 'flex' }}
+                      >
+                        {qrData.vendor_qr_code ? (
                           <div className="text-center p-3">
                             <QrCode className="h-12 w-12 text-gray-400 mx-auto mb-2" />
                             <p className="text-xs text-gray-600 mb-1">QR Code String:</p>
@@ -814,26 +692,38 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                             <p className="text-xs text-blue-600 mt-1">
                               ใช้แอปธนาคารสแกน QR Code นี้
                             </p>
+                            <div className="mt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => copyToClipboard(qrData.vendor_qr_code)}
+                                className="text-xs"
+                              >
+                                <Copy className="h-3 w-3 mr-1" />
+                                Copy QR String
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ) : !qrData.qr_image && !qrData.qr_image_url && !qrData.qr_code_url && !qrData.vendor_qr_code ? (
-                        <div className="w-48 h-48 border-2 border-white rounded-xl shadow-lg bg-white flex items-center justify-center">
+                        ) : (
                           <div className="text-center">
                             <QrCode className="h-12 w-12 text-gray-400 mx-auto mb-2" />
                             <p className="text-xs text-gray-600">ไม่มี QR Code</p>
+                            <p className="text-xs text-gray-500 mt-1">กรุณาลองใหม่อีกครั้ง</p>
                           </div>
-                        </div>
-                      ) : null}
+                        )}
+                      </div>
+                      
+                      {/* Overlay สำหรับ QR Code หมดอายุ */}
                       {paymentStatus === 'expired' && (
                         <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
                           <div className="text-white text-center">
                             <Timer className="h-6 w-6 mx-auto mb-1" />
                             <p className="font-semibold text-sm">QR Code หมดอายุ</p>
-                              </div>
-                            </div>
-                          )}
+                          </div>
                         </div>
-                      </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Power By Text */}
                   <div className="text-center mt-4">
