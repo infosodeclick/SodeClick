@@ -1,9 +1,4 @@
-import { useState, useEffect } from "react";
-
-useEffect(() => {
-  console.log("PaymentWithAnimation mounted");
-}, []);
-
+import { useState, useEffect } from "react"
 import { Button } from "./ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { rabbitAPI, rabbitHelpers } from "../services/rabbitAPI"

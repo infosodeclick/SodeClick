@@ -10,8 +10,6 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Environment (sensitive)
-.env
-.env.* 
 !env.example
 backend/.env
 frontend/.env

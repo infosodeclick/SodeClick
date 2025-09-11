@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import LovePaymentAnimation from './LovePaymentAnimation'
 import PaymentGateway from './PaymentGateway'
 
