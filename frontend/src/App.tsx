@@ -3078,8 +3078,12 @@ function App() {
                               alt={displayName} 
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                               onError={(e) => {
+                                console.error('❌ Homepage image failed to load:', profileImage);
                                 (e.target as HTMLImageElement).style.display = 'none';
                                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                              onLoad={() => {
+                                console.log('✅ Homepage image loaded successfully:', profileImage);
                               }}
                             />
                           ) : null}

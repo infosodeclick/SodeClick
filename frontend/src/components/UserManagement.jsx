@@ -177,9 +177,15 @@ const UserManagement = () => {
       return;
     }
 
+    // Validate username length
+    if (createForm.username.length < 3) {
+      error('Username ต้องมีอย่างน้อย 3 ตัวอักษร', 5000);
+      return;
+    }
+
     // Validate password length
     if (createForm.password.length < 6) {
-              error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 5000);
+      error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 5000);
       return;
     }
 
@@ -226,13 +232,34 @@ const UserManagement = () => {
   const createUser = async () => {
     try {
       const token = sessionStorage.getItem('token');
+      
+      // สร้างข้อมูลที่ส่งไปยัง backend
+      const userData = {
+        username: createForm.username,
+        email: createForm.email,
+        password: createForm.password,
+        firstName: createForm.firstName,
+        lastName: createForm.lastName,
+        dateOfBirth: createForm.dateOfBirth,
+        gender: createForm.gender,
+        lookingFor: createForm.lookingFor,
+        location: createForm.location,
+        role: createForm.role,
+        membership: {
+          tier: createForm.membership.tier
+        }
+      };
+      
+      console.log('📤 Sending userData:', userData);
+      console.log('📤 JSON stringified:', JSON.stringify(userData));
+      
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(createForm)
+        body: JSON.stringify(userData)
       });
 
       if (res.ok) {
@@ -261,6 +288,8 @@ const UserManagement = () => {
       } else {
         const errorData = await res.json();
         console.error('Error response:', errorData);
+        console.error('Error details:', errorData.errors);
+        console.error('Full error object:', JSON.stringify(errorData, null, 2));
         
         // Handle specific error messages
         if (errorData.message === 'User with this email or username already exists') {
@@ -271,6 +300,16 @@ const UserManagement = () => {
           error('❌ ไม่สามารถสร้างผู้ใช้ได้\n\nรูปแบบอีเมลไม่ถูกต้อง', 5000);
         } else if (errorData.message === 'Invalid date format for dateOfBirth') {
           error('❌ ไม่สามารถสร้างผู้ใช้ได้\n\nรูปแบบวันที่เกิดไม่ถูกต้อง', 5000);
+        } else if (errorData.message === 'Username must be at least 3 characters long') {
+          error('❌ ไม่สามารถสร้างผู้ใช้ได้\n\nUsername ต้องมีอย่างน้อย 3 ตัวอักษร', 5000);
+        } else if (errorData.message === 'Validation failed' && errorData.errors) {
+          const errorMessages = errorData.errors.map(err => {
+            if (err.field === 'username' && err.message.includes('shorter than the minimum allowed length')) {
+              return 'Username ต้องมีอย่างน้อย 3 ตัวอักษร';
+            }
+            return `${err.field}: ${err.message}`;
+          }).join('\n');
+          error(`❌ ไม่สามารถสร้างผู้ใช้ได้\n\n${errorMessages}`, 8000);
         } else {
           error(`❌ ไม่สามารถสร้างผู้ใช้ได้\n\n${errorData.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'}`, 5000);
         }
@@ -393,12 +432,12 @@ const UserManagement = () => {
 
   const getStatusBadge = (user) => {
     if (user.isBanned) {
-      return <Badge variant="destructive">ถูกแบน</Badge>;
+      return <Badge variant="destructive" className="text-center">ถูกแบน</Badge>;
     }
     if (!user.isActive) {
-      return <Badge variant="secondary">ไม่ใช้งาน</Badge>;
+      return <Badge variant="secondary" className="text-center">ไม่ใช้งาน</Badge>;
     }
-    return <Badge variant="default">ใช้งาน</Badge>;
+    return <Badge variant="default" className="text-center">ใช้งาน</Badge>;
   };
 
   const getRoleBadge = (role) => {
@@ -407,7 +446,7 @@ const UserManagement = () => {
       admin: 'bg-purple-100 text-purple-800',
       // superadmin: 'bg-red-100 text-red-800' // ซ่อน SuperAdmin
     };
-    return <Badge className={colors[role] || 'bg-gray-100 text-gray-800'}>{role}</Badge>;
+    return <Badge className={`${colors[role] || 'bg-gray-100 text-gray-800'} hover:bg-opacity-100`}>{role}</Badge>;
   };
 
   const getMembershipBadge = (tier) => {
@@ -419,7 +458,7 @@ const UserManagement = () => {
       diamond: 'bg-blue-100 text-blue-800',
       platinum: 'bg-green-100 text-green-800'
     };
-    return <Badge className={colors[tier] || 'bg-gray-100 text-gray-800'}>{tier}</Badge>;
+    return <Badge className={`${colors[tier] || 'bg-gray-100 text-gray-800'} text-center hover:bg-opacity-100`}>{tier}</Badge>;
   };
 
   const formatDate = (date) => {
@@ -507,7 +546,7 @@ const UserManagement = () => {
                   <tr className="border-b border-slate-200">
                     <th className="text-left p-4 font-medium text-slate-700">ผู้ใช้</th>
                     <th className="text-left p-4 font-medium text-slate-700">อีเมล</th>
-                    <th className="text-left p-4 font-medium text-slate-700">สถานะ</th>
+                    <th className="text-center p-4 font-medium text-slate-700">สถานะ</th>
                     <th className="text-left p-4 font-medium text-slate-700">ระดับ</th>
                     <th className="text-left p-4 font-medium text-slate-700">สมาชิก</th>
                     <th className="text-left p-4 font-medium text-slate-700">วันที่สมัคร</th>
@@ -536,7 +575,7 @@ const UserManagement = () => {
                           <span className="text-sm">{user.email}</span>
                         </div>
                       </td>
-                      <td className="p-4">
+                      <td className="p-4 text-center">
                         {getStatusBadge(user)}
                       </td>
                       <td className="p-4">

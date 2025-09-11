@@ -533,15 +533,19 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
             <div className="relative">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold">
                 {profile.profileImages && profile.profileImages.length > 0 && !profile.profileImages[0].startsWith('data:image/svg+xml') ? (
-                  <img 
-                    src={profile.profileImages[0]}
-                    alt="Profile"
-                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'flex';
-                    }}
-                  />
+                    <img 
+                      src={profile.profileImages[0]}
+                      alt="Profile"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
+                      onError={(e) => {
+                        console.error('❌ Profile image failed to load:', profile.profileImages[0]);
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                      onLoad={() => {
+                        console.log('✅ Profile image loaded successfully:', profile.profileImages[0]);
+                      }}
+                    />
                 ) : (
                   <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold">
                     <User className="h-8 w-8 sm:h-10 sm:w-10" />
@@ -669,7 +673,11 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                       className="w-full h-full object-cover object-center"
                       style={{ objectFit: 'cover' }}
                       onError={(e) => {
+                        console.error('❌ Gallery image failed to load:', image);
                         e.target.style.display = 'none';
+                      }}
+                      onLoad={() => {
+                        console.log('✅ Gallery image loaded successfully:', image);
                       }}
                     />
                   </div>

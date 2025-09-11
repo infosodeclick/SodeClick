@@ -18,6 +18,10 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Add hash to filenames for cache busting
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
         manualChunks: {
           // Vendor chunks
           'react-vendor': ['react', 'react-dom'],
@@ -46,6 +50,24 @@ export default defineConfig({
         }
       }
     },
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
+    // Force cache busting
+    assetsInlineLimit: 0,
+    // เพิ่มการบีบอัดและ optimize
+    minify: 'terser',
+    sourcemap: false, // ปิดใน production เพื่อลดขนาดไฟล์
+    target: 'es2015',
+    cssCodeSplit: true
+  },
+  // เพิ่มการ optimize dependencies
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      'axios',
+      'socket.io-client',
+      'lucide-react'
+    ]
   }
 })

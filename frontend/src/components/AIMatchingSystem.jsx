@@ -966,7 +966,11 @@ const AIMatchingSystem = ({ currentUser }) => {
                 alt={match.name} 
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 onError={(e) => {
+                  console.error('❌ AI Matching image failed to load:', match.profileImages?.[0]);
                   e.target.src = 'https://via.placeholder.com/300x400?text=No+Image';
+                }}
+                onLoad={() => {
+                  console.log('✅ AI Matching image loaded successfully:', match.profileImages?.[0]);
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>

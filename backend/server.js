@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -51,6 +52,7 @@ const corsOptions = {
 };
 
 // Middleware
+app.use(compression()); // เพิ่มการบีบอัด response
 app.use(cors(corsOptions));
 
 // Error handling for CORS
@@ -69,11 +71,27 @@ app.use((err, req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static file serving for uploads with cache headers and CORS
+app.use('/uploads', (req, res, next) => {
+  // Set CORS headers for static files
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Set cache headers
+  res.header('Cache-Control', 'public, max-age=86400'); // 1 day
+  res.header('ETag', true);
+  res.header('Last-Modified', true);
+  
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
-// Static file serving for public assets (default avatars, etc.)
-app.use('/public', express.static(path.join(__dirname, 'public')));
+// Static file serving for public assets with cache headers
+app.use('/public', express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d', // Cache for 7 days
+  etag: true,
+  lastModified: true
+}));
 
 // Admin privileges middleware
 const { bypassMembershipRestrictions } = require('./middleware/adminPrivileges');
@@ -697,8 +715,7 @@ app.use('/api/matching', matchingRoutes);
 app.use('/api/notifications', notificationsRoutes);
 // app.use('/api/private-messages', privateMessagesRoutes); // File not exists
 
-// Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static file serving - removed duplicate (already configured above with cache headers)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -814,6 +831,7 @@ io.on('connection', (socket) => {
         socket.currentRoom = roomId;
         
         console.log(`🔗 Socket ${socket.id} joined private chat ${roomId} for user ${userId}`);
+        console.log(`📊 Room ${roomId} now has ${io.sockets.adapter.rooms.get(roomId)?.size || 0} connected sockets`);
         
         // เพิ่มผู้ใช้ในรายการออนไลน์
         if (!roomUsers.has(roomId)) {
@@ -1016,16 +1034,11 @@ io.on('connection', (socket) => {
         ]);
 
         console.log('📤 Broadcasting message to room:', chatRoomId);
-        console.log('📤 Message to broadcast:', {
-          id: message._id,
-          content: message.content,
-          sender: message.sender,
-          chatRoom: message.chatRoom
-        });
+        console.log('📤 Connected sockets in room:', io.sockets.adapter.rooms.get(chatRoomId)?.size || 0);
         
         // ส่งข้อความไปยังทุกคนที่อยู่ใน private chat room
         io.to(chatRoomId).emit('new-message', message);
-        console.log('✅ Message broadcasted successfully');
+        console.log('✅ Message broadcasted successfully to', io.sockets.adapter.rooms.get(chatRoomId)?.size || 0, 'clients');
         return;
       }
 

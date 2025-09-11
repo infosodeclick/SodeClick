@@ -389,6 +389,13 @@ router.post('/users', requireAdmin, async (req, res) => {
       });
     }
 
+    // Validate username length
+    if (username.length < 3) {
+      return res.status(400).json({ 
+        message: 'Username must be at least 3 characters long' 
+      });
+    }
+
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -431,10 +438,11 @@ router.post('/users', requireAdmin, async (req, res) => {
       location: location.trim(),
       role,
       membership: {
-        tier: membership.tier || 'member',
+        tier: membership?.tier || 'member',
         startDate: new Date(),
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-        isActive: true
+        endDate: membership?.tier === 'member' ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now for paid tiers
+        autoRenew: false,
+        planId: null
       },
       isActive: true,
       isBanned: false,
@@ -446,12 +454,33 @@ router.post('/users', requireAdmin, async (req, res) => {
         type: 'Point',
         coordinates: [100.5018, 13.7563]
       },
+      dailyUsage: {
+        chatCount: 0,
+        imageUploadCount: 0,
+        videoUploadCount: 0,
+        lastReset: new Date(),
+        lastDailyBonusClaim: null,
+        lastSpinWheelTime: null
+      },
       lastActive: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      // เพิ่มข้อมูลเริ่มต้นสำหรับ fields ที่อาจจำเป็น
+      profileImages: [],
+      likes: [],
+      blurredPhotosViewed: [],
+      pinnedPosts: [],
+      blurredPrivatePhotos: [],
+      createdChatRooms: [],
+      loginHistory: []
     });
 
-    console.log('Saving user:', newUser);
+    console.log('Saving user with data:', {
+      username: newUser.username,
+      email: newUser.email,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      membership: newUser.membership
+    });
+    
     await newUser.save();
 
     const userResponse = await User.findById(newUser._id)
@@ -473,10 +502,18 @@ router.post('/users', requireAdmin, async (req, res) => {
     }
     // Mongoose validation error details
     if (error && error.name === 'ValidationError') {
+      console.log('❌ Validation Error Details:', error.errors);
+      console.log('❌ Validation Error Name:', error.name);
+      console.log('❌ Validation Error Message:', error.message);
+      
       const details = Object.keys(error.errors || {}).map(k => ({
         field: k,
-        message: error.errors[k]?.message
+        message: error.errors[k]?.message,
+        value: error.errors[k]?.value,
+        kind: error.errors[k]?.kind,
+        path: error.errors[k]?.path
       }))
+      console.log('❌ Validation Error Details Formatted:', details);
       return res.status(400).json({
         message: 'Validation failed',
         errors: details

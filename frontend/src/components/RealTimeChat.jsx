@@ -51,8 +51,10 @@ const RealTimeChat = ({ roomId, currentUser, onBack }) => {
       withCredentials: true,
       timeout: 20000,
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      forceNew: true,
+      transports: ['websocket', 'polling']
     });
 
     newSocket.on('connect', () => {

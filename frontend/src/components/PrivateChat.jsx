@@ -46,8 +46,10 @@ const PrivateChat = ({
       withCredentials: true,
       timeout: 20000,
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      forceNew: true,
+      transports: ['websocket', 'polling']
     });
 
     newSocket.on('connect', () => {
@@ -78,13 +80,6 @@ const PrivateChat = ({
     // รับข้อความใหม่จาก Socket.IO
     newSocket.on('new-message', (message) => {
       console.log('📨 Received new message via socket:', message);
-      console.log('📨 Message details:', {
-        id: message._id,
-        content: message.content,
-        sender: message.sender,
-        chatRoom: message.chatRoom,
-        createdAt: message.createdAt
-      });
       
       // สร้างข้อความในรูปแบบที่ parent component คาดหวัง
       const formattedMessage = {
@@ -94,7 +89,9 @@ const PrivateChat = ({
         timestamp: message.createdAt || new Date(),
         isDelivered: true,
         isRead: false,
-        sender: message.sender
+        sender: message.sender,
+        fileUrl: message.fileUrl,
+        messageType: message.messageType
       };
       
       console.log('📨 Formatted message:', formattedMessage);
@@ -102,8 +99,8 @@ const PrivateChat = ({
       // ส่งข้อความใหม่ไปยัง parent component เพื่ออัปเดต state
       if (onSendMessage && typeof onSendMessage === 'function') {
         console.log('📨 Calling onSendMessage with formatted message');
-        // ใช้ callback เพื่ออัปเดตข้อความใน parent component
-        onSendMessage(formattedMessage.content, null, formattedMessage);
+        // ใช้ callback แบบใหม่ที่ไม่ conflict
+        onSendMessage(null, null, formattedMessage, 'socket-message');
       } else {
         console.log('⚠️ onSendMessage not available or not a function');
       }

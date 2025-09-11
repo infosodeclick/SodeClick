@@ -65,6 +65,43 @@ const upload = multer({
   }
 });
 
+// Multer error handling middleware
+const handleMulterError = (err, req, res, next) => {
+  console.error('❌ Multer Error:', err);
+  
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 5MB)'
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        success: false,
+        message: 'ไฟล์ไม่ถูกต้อง กรุณาเลือกไฟล์รูปภาพ'
+      });
+    }
+  }
+  
+  if (err.message === 'รองรับเฉพาะไฟล์รูปภาพ (JPEG, JPG, PNG, GIF)') {
+    return res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+  
+  next(err);
+};
+
+// Ensure upload directory exists
+const fs = require('fs');
+const uploadPath = path.join(__dirname, '..', 'uploads', 'profiles');
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
+  console.log('📁 Created upload directory:', uploadPath);
+}
+
 // GET /api/profile/me/coins - ดึงข้อมูลเหรียญของผู้ใช้ที่ login อยู่
 router.get('/me/coins', auth, async (req, res) => {
   try {
@@ -947,12 +984,20 @@ router.put('/:userId', authenticateToken, async (req, res) => {
 });
 
 // POST /api/profile/:userId/upload-image - อัปโหลดรูปโปรไฟล์
-router.post('/:userId/upload-image', authenticateToken, upload.single('profileImage'), async (req, res) => {
+router.post('/:userId/upload-image', authenticateToken, (req, res, next) => {
+  console.log('📤 Upload request received for user:', req.params.userId);
+  console.log('📤 Auth user:', req.user?.id);
+  console.log('📤 Content-Type:', req.headers['content-type']);
+  next();
+}, upload.single('profileImage'), handleMulterError, async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('📤 Processing upload for user:', userId);
+    console.log('📤 File received:', req.file ? 'Yes' : 'No');
     
     // ตรวจสอบสิทธิ์
     if (req.user.id !== userId && !['admin', 'superadmin'].includes(req.user.role)) {
+      console.log('❌ Permission denied for user:', req.user.id, 'trying to upload for:', userId);
       return res.status(403).json({
         success: false,
         message: 'ไม่มีสิทธิ์อัปโหลดรูปภาพสำหรับโปรไฟล์นี้'
@@ -960,11 +1005,19 @@ router.post('/:userId/upload-image', authenticateToken, upload.single('profileIm
     }
 
     if (!req.file) {
+      console.log('❌ No file received in request');
       return res.status(400).json({
         success: false,
         message: 'กรุณาเลือกไฟล์รูปภาพ'
       });
     }
+
+    console.log('📤 File details:', {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
 
     const user = await User.findById(userId);
     if (!user) {
@@ -977,8 +1030,17 @@ router.post('/:userId/upload-image', authenticateToken, upload.single('profileIm
     // เพิ่มรูปภาพใหม่เข้าไปใน profileImages array
     const imagePath = req.file.filename;
     // สร้าง URL สำหรับรูปภาพที่อัปโหลดจริง
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    // ใช้ environment variable สำหรับ production
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
+      : `${req.protocol}://${req.get('host')}`;
     const imageUrl = `${baseUrl}/uploads/profiles/${imagePath}`;
+    
+    console.log('📤 Generated image URL:', imageUrl);
+    console.log('📤 Base URL:', baseUrl);
+    console.log('📤 Image path:', imagePath);
+    console.log('📤 Environment:', process.env.NODE_ENV);
+    
     user.profileImages.push(imageUrl);
 
     // จำกัดจำนวนรูปภาพตามระดับสมาชิก
@@ -991,11 +1053,19 @@ router.post('/:userId/upload-image', authenticateToken, upload.single('profileIm
 
     await user.save();
 
+    console.log('✅ Image uploaded successfully:', {
+      userId,
+      imagePath,
+      imageUrl,
+      totalImages: user.profileImages.length
+    });
+
     res.json({
       success: true,
       message: 'อัปโหลดรูปภาพสำเร็จ',
       data: {
         imagePath: imagePath,
+        imageUrl: imageUrl,
         profileImages: user.profileImages
       }
     });

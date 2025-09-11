@@ -40,7 +40,14 @@ class ProfileAPI {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('📤 Profile data received:', {
+        userId,
+        profileImages: result.data?.profileImages?.length || 0,
+        images: result.data?.profileImages
+      });
+      
+      return result;
     } catch (error) {
       console.error('Error fetching user profile:', error);
       throw error;
@@ -108,10 +115,19 @@ class ProfileAPI {
   // อัปโหลดรูปภาพโปรไฟล์
   async uploadProfileImage(userId, imageFile) {
     try {
+      console.log('📤 Starting image upload for user:', userId);
+      console.log('📤 File details:', {
+        name: imageFile.name,
+        size: imageFile.size,
+        type: imageFile.type
+      });
+
       const formData = new FormData();
       formData.append('profileImage', imageFile);
 
       const token = sessionStorage.getItem('token');
+      console.log('📤 Token exists:', !!token);
+
       const response = await fetch(`${this.baseURL}/${userId}/upload-image`, {
         method: 'POST',
         headers: {
@@ -120,13 +136,19 @@ class ProfileAPI {
         body: formData
       });
 
+      console.log('📤 Response status:', response.status);
+      console.log('📤 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      const result = await response.json();
+      console.log('📤 Response data:', result);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(result.message || `HTTP error! status: ${response.status}`);
       }
 
-      return await response.json();
+      return result;
     } catch (error) {
-      console.error('Error uploading profile image:', error);
+      console.error('❌ Upload error:', error);
       throw error;
     }
   }
