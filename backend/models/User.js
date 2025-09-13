@@ -161,22 +161,22 @@ const userSchema = new mongoose.Schema({
     smoking: {
       type: String,
       enum: ['never', 'occasionally', 'regularly', 'trying_to_quit'],
-      default: 'never'
+      default: null
     },
     drinking: {
       type: String,
       enum: ['never', 'occasionally', 'socially', 'regularly'],
-      default: 'never'
+      default: null
     },
     exercise: {
       type: String,
       enum: ['never', 'rarely', 'sometimes', 'regularly', 'daily'],
-      default: 'sometimes'
+      default: null
     },
     diet: {
       type: String,
       enum: ['omnivore', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'other'],
-      default: 'omnivore'
+      default: null
     },
     sleepSchedule: {
       type: String,

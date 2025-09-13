@@ -62,6 +62,7 @@ const PrivateChatList = ({
   };
 
   const getUnreadCount = (chat) => {
+    // ใช้ unreadCount ที่ตั้งค่าไว้ใน chat object
     return chat.unreadCount || 0;
   };
 

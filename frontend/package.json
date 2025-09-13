@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "shx cp env.production .env && vite",
     "dev": "shx cp env.development .env && vite",
+    "dev:clean": "shx rm -f .env && shx cp env.development .env && vite",
     "build": "shx cp env.production .env && tsc -b && vite build",
     "build:dev": "shx cp env.development .env && tsc -b && vite build",
     "preview": "vite preview",

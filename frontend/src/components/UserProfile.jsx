@@ -532,25 +532,47 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           <div className="flex items-center space-x-3 sm:space-x-4 w-full sm:w-auto">
             <div className="relative">
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold">
-                {profile.profileImages && profile.profileImages.length > 0 && !profile.profileImages[0].startsWith('data:image/svg+xml') ? (
+                {(() => {
+                  // สร้าง profile image URL ที่ถูกต้อง
+                  let profileImageUrl = ''
+                  if (profile.profileImages && profile.profileImages.length > 0) {
+                    const firstImage = profile.profileImages[0]
+                    if (firstImage.startsWith('http')) {
+                      profileImageUrl = firstImage
+                    } else if (firstImage.startsWith('data:image/svg+xml')) {
+                      profileImageUrl = firstImage
+                    } else {
+                      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                      profileImageUrl = `${baseUrl}/uploads/profiles/${firstImage}`
+                    }
+                  }
+                  
+                  return profileImageUrl && !profileImageUrl.startsWith('data:image/svg+xml') ? (
                     <img 
-                      src={profile.profileImages[0]}
+                      src={profileImageUrl}
                       alt="Profile"
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
                       onError={(e) => {
-                        console.error('❌ Profile image failed to load:', profile.profileImages[0]);
+                        console.error('❌ Profile image failed to load:', {
+                          imageUrl: profileImageUrl,
+                          originalImage: profile.profileImages[0],
+                          userId: profile._id || profile.id
+                        });
                         e.target.style.display = 'none';
                         e.target.nextSibling.style.display = 'flex';
                       }}
                       onLoad={() => {
-                        console.log('✅ Profile image loaded successfully:', profile.profileImages[0]);
+                        console.log('✅ Profile image loaded successfully:', {
+                          imageUrl: profileImageUrl,
+                          originalImage: profile.profileImages[0],
+                          userId: profile._id || profile.id
+                        });
                       }}
                     />
-                ) : (
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold">
+                  ) : (
                     <User className="h-8 w-8 sm:h-10 sm:w-10" />
-                  </div>
-                )}
+                  )
+                })()}
                 <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold hidden`}>
                   <User className="h-8 w-8 sm:h-10 sm:w-10" />
                 </div>
@@ -664,20 +686,35 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                 // ข้ามรูป default
                 if (image.startsWith('data:image/svg+xml')) return null;
                 
+                // สร้าง image URL ที่ถูกต้อง
+                let imageUrl = image
+                if (!image.startsWith('http') && !image.startsWith('data:')) {
+                  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                  imageUrl = `${baseUrl}/uploads/profiles/${image}`
+                }
+                
                 return (
                 <div key={originalIndex} className="relative group">
                   <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
                     <img
-                      src={image}
+                      src={imageUrl}
                       alt={`Profile ${originalIndex + 1}`}
                       className="w-full h-full object-cover object-center"
                       style={{ objectFit: 'cover' }}
                       onError={(e) => {
-                        console.error('❌ Gallery image failed to load:', image);
+                        console.error('❌ Gallery image failed to load:', {
+                          imageUrl: imageUrl,
+                          originalImage: image,
+                          userId: profile._id || profile.id
+                        });
                         e.target.style.display = 'none';
                       }}
                       onLoad={() => {
-                        console.log('✅ Gallery image loaded successfully:', image);
+                        console.log('✅ Gallery image loaded successfully:', {
+                          imageUrl: imageUrl,
+                          originalImage: image,
+                          userId: profile._id || profile.id
+                        });
                       }}
                     />
                   </div>
@@ -729,7 +766,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
       {/* New Simple Tabs Design */}
       <div className="mt-8 mb-6">
         <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 bg-white border rounded-lg p-1 h-auto">
+          <TabsList className="grid w-full grid-cols-3 bg-white border rounded-lg p-1 h-auto">
             <TabsTrigger 
               value="basic"
               className="text-xs sm:text-sm py-2 px-1 sm:px-3 rounded-md data-[state=active]:bg-pink-500 data-[state=active]:text-white"
@@ -747,12 +784,6 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
               className="text-xs sm:text-sm py-2 px-1 sm:px-3 rounded-md data-[state=active]:bg-pink-500 data-[state=active]:text-white"
             >
               ความสนใจ
-            </TabsTrigger>
-            <TabsTrigger 
-              value="prompts"
-              className="text-xs sm:text-sm py-2 px-1 sm:px-3 rounded-md data-[state=active]:bg-pink-500 data-[state=active]:text-white"
-            >
-              คำถามพิเศษ
             </TabsTrigger>
           </TabsList>
 
@@ -973,69 +1004,6 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           </Card>
         </TabsContent>
 
-          <TabsContent value="prompts" className="mt-6">
-            <Card className="p-4 sm:p-6 bg-white border rounded-lg shadow-sm">
-            <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center text-gray-800">
-              <div className="w-8 h-8 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center mr-3">
-                <MessageCircle className="h-4 w-4 text-white" />
-              </div>
-              คำถามพิเศษ
-            </h3>
-            
-            <div className="space-y-4 sm:space-y-6">
-              {[
-                'my_special_talent',
-                'way_to_win_my_heart',
-                'dream_destination',
-                'last_laugh_until_tears',
-                'perfect_first_date',
-                'life_motto',
-                'favorite_memory',
-                'biggest_fear',
-                'dream_job',
-                'guilty_pleasure'
-              ].map((qKey, index) => {
-                const labels = {
-                  'my_special_talent': 'ความสามารถพิเศษของฉันคือ...',
-                  'way_to_win_my_heart': 'วิธีชนะใจฉันคือ...',
-                  'dream_destination': 'สถานที่ในฝันที่อยากไปคือ...',
-                  'last_laugh_until_tears': 'ครั้งล่าสุดที่หัวเราะจนน้ำตาไหลคือ...',
-                  'perfect_first_date': 'เดทแรกในฝันของฉันคือ...',
-                  'life_motto': 'คติประจำใจของฉันคือ...',
-                  'favorite_memory': 'ความทรงจำที่ชื่นชอบที่สุดคือ...',
-                  'biggest_fear': 'สิ่งที่กลัวที่สุดคือ...',
-                  'dream_job': 'งานในฝันของฉันคือ...',
-                  'guilty_pleasure': 'ความผิดที่ชอบทำคือ...'
-                };
-                const matched = (profile.promptAnswers || []).find(p => p.question === qKey);
-                const colors = [
-                  'from-pink-50 to-rose-50 border-pink-200',
-                  'from-blue-50 to-cyan-50 border-blue-200',
-                  'from-green-50 to-emerald-50 border-green-200',
-                  'from-purple-50 to-violet-50 border-purple-200',
-                  'from-orange-50 to-amber-50 border-orange-200',
-                  'from-indigo-50 to-blue-50 border-indigo-200',
-                  'from-red-50 to-pink-50 border-red-200',
-                  'from-yellow-50 to-orange-50 border-yellow-200',
-                  'from-teal-50 to-cyan-50 border-teal-200',
-                  'from-gray-50 to-slate-50 border-gray-200'
-                ];
-                const colorClass = colors[index % colors.length];
-                
-                return (
-                  <div key={qKey} className={`bg-gradient-to-r ${colorClass} border rounded-xl p-4 sm:p-5 shadow-sm`}>
-                    <h4 className="font-semibold text-gray-800 mb-3 text-sm sm:text-base">{labels[qKey]}</h4>
-                    <div className="bg-white/60 p-3 rounded-lg">
-                      <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
-                        {matched?.answer || 'ยังไม่ได้ตอบ'}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-          </TabsContent>
         </Tabs>
       </div>
 
@@ -1210,7 +1178,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                         pets: normalizePetsInputToTypes(value)
                       });
                     }}
-                    placeholder="แมว 1 ตัว, สนุก 1 ตัว"
+                    placeholder="แมว 1 ตัว, สุนัข 1 ตัว"
                   />
                 </div>
               </div>
@@ -1380,52 +1348,6 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
               </div>
             </div>
 
-            {/* Special Questions */}
-            <div className="space-y-4 mt-6">
-              <h4 className="font-bold text-xl text-purple-600 flex items-center">
-                ✨ คำถามพิเศษ ⭐
-              </h4>
-              <div className="grid grid-cols-1 gap-4">
-                {[
-                  'my_special_talent',
-                  'way_to_win_my_heart',
-                  'dream_destination',
-                  'last_laugh_until_tears',
-                  'perfect_first_date',
-                  'life_motto',
-                  'favorite_memory',
-                  'biggest_fear',
-                  'dream_job',
-                  'guilty_pleasure'
-                ].map((qKey) => {
-                  const currentList = Array.isArray(editData.promptAnswers) ? editData.promptAnswers : [];
-                  const existing = currentList.find(p => p.question === qKey);
-                  const value = existing?.answer || '';
-                  return (
-                    <div key={qKey}>
-                      <Label htmlFor={`prompt-${qKey}`}>{profileHelpers.getPromptQuestionLabel(qKey)}</Label>
-                      <Input
-                        id={`prompt-${qKey}`}
-                        value={value}
-                        onChange={(e) => {
-                          const answer = e.target.value;
-                          const updated = [...currentList];
-                          const idx = updated.findIndex(p => p.question === qKey);
-                          if (answer.trim() === '') {
-                            if (idx !== -1) updated.splice(idx, 1);
-                          } else {
-                            if (idx === -1) updated.push({ question: qKey, answer: answer });
-                            else updated[idx] = { ...updated[idx], answer: answer };
-                          }
-                          setEditData({ ...editData, promptAnswers: updated });
-                        }}
-                        placeholder={`ตอบคำถาม: ${profileHelpers.getPromptQuestionLabel(qKey)}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Action Buttons */}
             <div className="flex justify-end space-x-3 pt-4 border-t">

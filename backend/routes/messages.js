@@ -726,10 +726,18 @@ router.post('/create-private-chat', async (req, res) => {
     }
 
     // สำหรับ private chat เราไม่ต้องตรวจสอบใน ChatRoom เพราะเราไม่สร้าง ChatRoom
-    // แต่เราจะสร้าง private chat ID ใหม่ทุกครั้ง
+    // แต่เราจะสร้าง private chat ID ที่สม่ำเสมอสำหรับผู้ใช้สองคนเดียวกัน
 
-    // สร้าง private chat ID แบบง่าย (ไม่สร้าง ChatRoom)
-    const privateChatId = `private_${userId1}_${userId2}_${Date.now()}`;
+    // สร้าง private chat ID ที่สม่ำเสมอ (เรียงลำดับ user ID เพื่อให้ได้ ID เดียวกันเสมอ)
+    const sortedUserIds = [userId1, userId2].sort();
+    const privateChatId = `private_${sortedUserIds[0]}_${sortedUserIds[1]}`;
+
+    // ตรวจสอบว่ามีข้อความใน private chat นี้อยู่แล้วหรือไม่
+    const existingMessages = await Message.find({
+      chatRoom: privateChatId
+    }).limit(1);
+
+    const isNew = existingMessages.length === 0;
 
     res.status(201).json({
       success: true,

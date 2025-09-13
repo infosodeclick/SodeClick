@@ -379,22 +379,6 @@ export const profileHelpers = {
     return labels[category] || category;
   },
 
-  // แปลงข้อมูลคำถามพิเศษ
-  getPromptQuestionLabel(question) {
-    const labels = {
-      'my_special_talent': 'ความสามารถพิเศษของฉันคือ...',
-      'way_to_win_my_heart': 'วิธีชนะใจฉันคือ...',
-      'dream_destination': 'สถานที่ในฝันที่อยากไปคือ...',
-      'last_laugh_until_tears': 'ครั้งล่าสุดที่หัวเราะจนน้ำตาไหลคือ...',
-      'perfect_first_date': 'เดทแรกในฝันของฉันคือ...',
-      'life_motto': 'คติประจำใจของฉันคือ...',
-      'favorite_memory': 'ความทรงจำที่ชื่นชอบที่สุดคือ...',
-      'biggest_fear': 'สิ่งที่กลัวที่สุดคือ...',
-      'dream_job': 'งานในฝันของฉันคือ...',
-      'guilty_pleasure': 'ความผิดที่ชอบทำคือ...'
-    };
-    return labels[question] || question;
-  },
 
   // ตรวจสอบความสมบูรณ์ของโปรไฟล์
   getProfileCompleteness(profile) {

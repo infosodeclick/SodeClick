@@ -48,7 +48,7 @@ const PrivateChat = ({
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
-      forceNew: true,
+      forceNew: false, // เปลี่ยนเป็น false เพื่อใช้ connection เดียวกัน
       transports: ['websocket', 'polling']
     });
 
@@ -67,19 +67,87 @@ const PrivateChat = ({
       newSocket.emit('join-room', joinData);
     });
 
+    newSocket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+      setIsConnected(true);
+      
+      // เข้าร่วมห้องแชทส่วนตัวอีกครั้งหลัง reconnect
+      const joinData = {
+        roomId: chatRoomId,
+        userId: currentUser._id
+      };
+      console.log('🚪 Rejoining room after reconnect:', joinData);
+      newSocket.emit('join-room', joinData);
+    });
+
     newSocket.on('connect_error', (error) => {
       console.error('❌ Socket connection error:', error);
+      console.error('❌ Connection error details:', {
+        message: error.message,
+        type: error.type,
+        description: error.description,
+        context: error.context
+      });
       setIsConnected(false);
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('🔌 Disconnected from private chat socket');
+    newSocket.on('reconnecting', (attemptNumber) => {
+      console.log('🔄 Socket reconnecting, attempt:', attemptNumber);
+      setIsConnected(false);
+    });
+
+    newSocket.on('reconnect_error', (error) => {
+      console.error('❌ Socket reconnection error:', error);
+      setIsConnected(false);
+    });
+
+    newSocket.on('reconnect_failed', () => {
+      console.error('❌ Socket reconnection failed');
+      setIsConnected(false);
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('🔌 Disconnected from private chat socket, reason:', reason);
       setIsConnected(false);
     });
 
     // รับข้อความใหม่จาก Socket.IO
     newSocket.on('new-message', (message) => {
       console.log('📨 Received new message via socket:', message);
+      console.log('📨 Message sender:', message.sender?.displayName || message.sender?.username);
+      console.log('📨 Message content:', message.content);
+      console.log('📨 Current user:', currentUser?.displayName || currentUser?.username);
+      
+      // ตรวจสอบว่าเป็นข้อความของตัวเองหรือไม่
+      const isOwnMessage = message.sender?._id === currentUser._id || message.sender === currentUser._id;
+      
+      if (isOwnMessage) {
+        console.log('📨 This is own message, replacing temporary message');
+        
+        // สร้างข้อความในรูปแบบที่ parent component คาดหวัง
+        const formattedMessage = {
+          _id: message._id,
+          content: message.content,
+          senderId: message.sender?._id || message.sender,
+          timestamp: message.createdAt || new Date(),
+          isDelivered: true,
+          isRead: false,
+          sender: message.sender,
+          fileUrl: message.fileUrl,
+          messageType: message.messageType,
+          isTemporary: false // ข้อความจริงจาก server
+        };
+        
+        console.log('📨 Formatted own message:', formattedMessage);
+        
+        // ส่งข้อความจริงไปยัง parent component เพื่อแทนที่ข้อความชั่วคราว
+        if (onSendMessage && typeof onSendMessage === 'function') {
+          console.log('📨 Calling onSendMessage with own message');
+          onSendMessage(null, null, formattedMessage, 'own-message');
+        }
+        
+        return;
+      }
       
       // สร้างข้อความในรูปแบบที่ parent component คาดหวัง
       const formattedMessage = {
@@ -150,6 +218,10 @@ const PrivateChat = ({
     setSocket(newSocket);
 
     return () => {
+      console.log('🧹 Cleaning up socket connection...');
+      if (newSocket.connected) {
+        newSocket.disconnect();
+      }
       newSocket.close();
     };
   }, [chatRoomId, currentUser, onSendMessage, onMessageRead, onSimulateTyping]);
@@ -209,16 +281,16 @@ const PrivateChat = ({
     }
   }, [chatRoomId]); // ใช้ chatRoomId แทน messages เพื่อให้เลื่อนครั้งเดียวเมื่อเข้าหน้าแชท
 
-  // Auto scroll to bottom when user sends a message
+  // Auto scroll to bottom when there are new messages (from any sender)
   useEffect(() => {
     if (messagesContainerRef.current && messages.length > 0) {
       const container = messagesContainerRef.current;
-      const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
       
-      // Auto scroll only if user is already at bottom (for new messages)
-      if (isAtBottom) {
+      // Always scroll to bottom for new messages in private chat
+      // This ensures the latest message is always visible regardless of sender
+      setTimeout(() => {
         container.scrollTop = container.scrollHeight;
-      }
+      }, 100); // Small delay to ensure DOM is updated
     }
   }, [messages]);
 
@@ -244,10 +316,39 @@ const PrivateChat = ({
         console.log('📤 Emitting send-message:', messageData);
         socket.emit('send-message', messageData);
         
+        // สร้างข้อความชั่วคราวเพื่อแสดงใน UI ทันที
+        const tempMessage = {
+          _id: `temp_${Date.now()}`,
+          content: newMessage.trim(),
+          senderId: currentUser._id,
+          timestamp: new Date(),
+          isDelivered: false,
+          isRead: false,
+          sender: currentUser,
+          messageType: 'text',
+          isTemporary: true // ระบุว่าเป็นข้อความชั่วคราว
+        };
+        
+        // ส่งข้อความชั่วคราวไปยัง parent component เพื่อแสดงใน UI ทันที
+        onSendMessage(null, null, tempMessage, 'temp-message');
+        
         // อัปเดต UI ทันที
         setNewMessage('');
+        
+        // Debug: ตรวจสอบว่า socket ยังเชื่อมต่ออยู่หรือไม่
+        setTimeout(() => {
+          console.log('🔍 Socket status after send:', {
+            connected: socket.connected,
+            id: socket.id
+          });
+        }, 100);
       } else {
         console.log('⚠️ Socket not connected, using fallback');
+        console.log('⚠️ Socket status:', {
+          socket: !!socket,
+          isConnected,
+          socketConnected: socket?.connected
+        });
         // ถ้า Socket.IO ไม่พร้อมใช้งาน ให้ส่งผ่าน parent component
         onSendMessage(newMessage.trim());
         setNewMessage('');

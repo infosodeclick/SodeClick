@@ -405,6 +405,32 @@ const AIMatchingSystem = ({ currentUser }) => {
             likeCount: result.data?.likeCount || 0
           }
         }));
+        
+        // สร้างการแจ้งเตือนเมื่อมีคนกดหัวใจให้ (เฉพาะเมื่อกดไลค์ ไม่ใช่ยกเลิกไลค์)
+        if (!isCurrentlyLiked) {
+          const notification = {
+            _id: `notif_like_${Date.now()}`,
+            type: 'profile_like',
+            data: {
+              likerId: currentUser._id,
+              likerName: currentUser.displayName || currentUser.firstName || 'ผู้ใช้',
+              likerProfileImage: currentUser.profileImages?.[0],
+              likedUserId: userId
+            },
+            createdAt: new Date(),
+            isRead: false
+          };
+          
+          // ส่งการแจ้งเตือนไปยัง parent component
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+              type: 'notification',
+              data: notification
+            }, '*');
+          }
+          
+          console.log('🔔 Created like notification:', notification);
+        }
       } else {
         const error = await response.json();
         // showError(error.message || 'เกิดข้อผิดพลาดในการส่งไลค์'); // ลบการแจ้งเตือน
@@ -942,7 +968,16 @@ const AIMatchingSystem = ({ currentUser }) => {
                   location: match.location || 'ไม่ระบุ',
                   bio: match.bio || 'ไม่มีข้อมูล',
                   interests: match.interests?.map(i => typeof i === 'string' ? i : i.category || i.items || 'Interest') || [],
-                  images: match.profileImages || ['https://via.placeholder.com/300x400?text=No+Image'],
+                  images: match.profileImages && match.profileImages.length > 0
+                    ? match.profileImages.filter(img => !img.startsWith('data:image/svg+xml')).map(img => {
+                        if (img.startsWith('http')) {
+                          return img
+                        } else {
+                          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                          return `${baseUrl}/uploads/profiles/${img}`
+                        }
+                      })
+                    : [],
                   verified: match.isVerified || false,
                   online: match.isActive || false,
                   lastActive: match.lastActive,
@@ -961,18 +996,44 @@ const AIMatchingSystem = ({ currentUser }) => {
                 }
               }}
             >
-              <img 
-                src={match.profileImages?.[0] || 'https://via.placeholder.com/300x400?text=No+Image'} 
-                alt={match.name} 
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                onError={(e) => {
-                  console.error('❌ AI Matching image failed to load:', match.profileImages?.[0]);
-                  e.target.src = 'https://via.placeholder.com/300x400?text=No+Image';
-                }}
-                onLoad={() => {
-                  console.log('✅ AI Matching image loaded successfully:', match.profileImages?.[0]);
-                }}
-              />
+              {(() => {
+                // สร้าง image URL ที่ถูกต้อง
+                let imageUrl = null
+                if (match.profileImages && match.profileImages.length > 0) {
+                  const firstImage = match.profileImages[0]
+                  if (firstImage.startsWith('http')) {
+                    imageUrl = firstImage
+                  } else if (firstImage.startsWith('data:image/svg+xml')) {
+                    imageUrl = firstImage
+                  } else {
+                    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                    imageUrl = `${baseUrl}/uploads/profiles/${firstImage}`
+                  }
+                }
+                
+                return imageUrl ? (
+                  <img 
+                    src={imageUrl} 
+                    alt={match.name} 
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    onError={(e) => {
+                      console.error('❌ AI Matching image failed to load:', {
+                        imageUrl: imageUrl,
+                        originalImage: match.profileImages?.[0],
+                        matchId: match.id || match._id
+                      });
+                      e.target.style.display = 'none';
+                    }}
+                    onLoad={() => {
+                      console.log('✅ AI Matching image loaded successfully:', {
+                        imageUrl: imageUrl,
+                        originalImage: match.profileImages?.[0],
+                        matchId: match.id || match._id
+                      });
+                    }}
+                  />
+                ) : null
+              })()}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
               
               {/* Distance */}
@@ -1036,7 +1097,16 @@ const AIMatchingSystem = ({ currentUser }) => {
                   location: match.location || 'ไม่ระบุ',
                   bio: match.bio || 'ไม่มีข้อมูล',
                   interests: match.interests?.map(i => typeof i === 'string' ? i : i.category || i.items || 'Interest') || [],
-                  images: match.profileImages || ['https://via.placeholder.com/300x400?text=No+Image'],
+                  images: match.profileImages && match.profileImages.length > 0
+                    ? match.profileImages.filter(img => !img.startsWith('data:image/svg+xml')).map(img => {
+                        if (img.startsWith('http')) {
+                          return img
+                        } else {
+                          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                          return `${baseUrl}/uploads/profiles/${img}`
+                        }
+                      })
+                    : [],
                   verified: match.isVerified || false,
                   online: match.isActive || false,
                   lastActive: match.lastActive,

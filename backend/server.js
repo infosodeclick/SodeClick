@@ -809,6 +809,8 @@ const onlineUsers = new Map(); // userId -> { socketId, roomId, lastSeen }
 
 io.on('connection', (socket) => {
   console.log('👤 User connected:', socket.id);
+  console.log('🔌 Socket transport:', socket.conn.transport.name);
+  console.log('🔌 Socket ready state:', socket.conn.readyState);
 
   // เข้าร่วมห้องแชท
   socket.on('join-room', async (data) => {
@@ -833,6 +835,12 @@ io.on('connection', (socket) => {
         console.log(`🔗 Socket ${socket.id} joined private chat ${roomId} for user ${userId}`);
         console.log(`📊 Room ${roomId} now has ${io.sockets.adapter.rooms.get(roomId)?.size || 0} connected sockets`);
         
+        // Debug: แสดงรายการ socket IDs ที่อยู่ใน room
+        const roomSockets = io.sockets.adapter.rooms.get(roomId);
+        if (roomSockets) {
+          console.log(`🔍 Room ${roomId} socket IDs:`, Array.from(roomSockets));
+        }
+        
         // เพิ่มผู้ใช้ในรายการออนไลน์
         if (!roomUsers.has(roomId)) {
           roomUsers.set(roomId, new Set());
@@ -843,6 +851,10 @@ io.on('connection', (socket) => {
           userSockets.set(userId, new Set());
         }
         userSockets.get(userId).add(socket.id);
+        
+        console.log(`👥 User ${userId} added to room ${roomId}`);
+        console.log(`📊 Room ${roomId} now has ${roomUsers.get(roomId).size} users`);
+        console.log(`🔌 User ${userId} now has ${userSockets.get(userId).size} sockets`);
         
         // อัปเดตสถานะออนไลน์
         onlineUsers.set(userId, {
@@ -1036,9 +1048,41 @@ io.on('connection', (socket) => {
         console.log('📤 Broadcasting message to room:', chatRoomId);
         console.log('📤 Connected sockets in room:', io.sockets.adapter.rooms.get(chatRoomId)?.size || 0);
         
+        // Debug: แสดงรายการ socket IDs ที่อยู่ใน room
+        const roomSockets = io.sockets.adapter.rooms.get(chatRoomId);
+        if (roomSockets) {
+          console.log('📤 Room socket IDs:', Array.from(roomSockets));
+        }
+        
         // ส่งข้อความไปยังทุกคนที่อยู่ใน private chat room
         io.to(chatRoomId).emit('new-message', message);
         console.log('✅ Message broadcasted successfully to', io.sockets.adapter.rooms.get(chatRoomId)?.size || 0, 'clients');
+        
+        // Debug: ตรวจสอบว่าข้อความถูกส่งไปยังทุก socket หรือไม่
+        setTimeout(() => {
+          const currentRoomSockets = io.sockets.adapter.rooms.get(chatRoomId);
+          console.log('🔍 Post-broadcast room sockets:', currentRoomSockets ? Array.from(currentRoomSockets) : 'No sockets');
+          
+          // ส่งข้อความไปยังผู้ใช้ที่อาจจะไม่ได้อยู่ใน room แต่ควรได้รับข้อความ
+          const roomUserIds = roomUsers.get(chatRoomId);
+          if (roomUserIds) {
+            console.log('👥 Users in room:', Array.from(roomUserIds));
+            roomUserIds.forEach(userId => {
+              const userSocketsSet = userSockets.get(userId);
+              if (userSocketsSet && userSocketsSet.size > 0) {
+                console.log(`📤 Sending message to user ${userId} sockets:`, Array.from(userSocketsSet));
+                userSocketsSet.forEach(socketId => {
+                  const userSocket = io.sockets.sockets.get(socketId);
+                  if (userSocket) {
+                    userSocket.emit('new-message', message);
+                    console.log(`✅ Message sent to socket ${socketId} for user ${userId}`);
+                  }
+                });
+              }
+            });
+          }
+        }, 100);
+        
         return;
       }
 
@@ -1230,8 +1274,8 @@ io.on('connection', (socket) => {
   });
 
   // Disconnect
-  socket.on('disconnect', async () => {
-    console.log('👤 User disconnected:', socket.id);
+  socket.on('disconnect', async (reason) => {
+    console.log('👤 User disconnected:', socket.id, 'Reason:', reason);
     
     if (socket.currentRoom && socket.userId) {
       const roomId = socket.currentRoom;

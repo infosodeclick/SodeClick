@@ -406,12 +406,23 @@ function App() {
     try {
       setIsLoadingNotifications(true)
       const token = localStorage.getItem('token')
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/${user._id}`, {
+      
+      // ใช้ VITE_API_BASE_URL แทน VITE_API_URL
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+      const response = await fetch(`${apiUrl}/api/notifications/${user._id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
+      
+      // เพิ่มการตรวจสอบ response type
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('❌ Expected JSON but got:', contentType, text.substring(0, 200))
+        throw new Error(`Expected JSON response but got ${contentType}`)
+      }
       
       if (response.ok) {
         const data = await response.json()
@@ -419,6 +430,8 @@ function App() {
           setNotifications(data.data.notifications || [])
           setUnreadCount(data.data.unreadCount || 0)
         }
+      } else {
+        console.error('❌ Notifications API error:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error fetching notifications:', error)
@@ -440,6 +453,62 @@ function App() {
     return () => clearInterval(interval)
   }, [user?._id])
   
+  // Notification sound functions
+  const playNotificationSound = (type: 'message' | 'like') => {
+    try {
+      // สร้างเสียงแจ้งเตือนแบบ programmatic
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      if (type === 'message') {
+        // เสียงแจ้งเตือนข้อความใหม่ (เสียงสูง-ต่ำ-สูง)
+        const frequencies = [800, 600, 1000];
+        frequencies.forEach((freq, index) => {
+          setTimeout(() => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+          }, index * 150);
+        });
+      } else if (type === 'like') {
+        // เสียงแจ้งเตือนหัวใจ (เสียงนุ่มนวล)
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.3);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      }
+    } catch (error) {
+      console.log('🔇 Could not play notification sound:', error);
+    }
+  };
+  
+  // Check if user has enabled notification sounds
+  const isNotificationSoundEnabled = () => {
+    const setting = localStorage.getItem('notificationSoundEnabled');
+    return setting !== 'false'; // Default to true if not set
+  };
+  
   // Format time ago
   const formatTimeAgo = (timestamp: string | Date) => {
     const now = new Date()
@@ -452,13 +521,147 @@ function App() {
     return `${Math.floor(diffInSeconds / 86400)} วันที่แล้ว`
   }
   
+  // Handle notification click
+  const handleNotificationClick = async (notification: any) => {
+    if (notification.type === 'private_message') {
+      // ปิดการแจ้งเตือน
+      setShowNotificationDropdown(false)
+      
+      // หาแชทที่มีอยู่แล้วกับผู้ส่งข้อความ
+      const existingChat = privateChats.find(chat => 
+        chat.otherUser._id === notification.data.senderId
+      )
+      
+      if (existingChat) {
+        // ถ้ามีแชทอยู่แล้ว ให้เปิดแชทนั้น
+        console.log('📱 Opening existing chat:', existingChat.id)
+        await handleSelectPrivateChat(existingChat)
+        setActiveTab('messages')
+        setChatType('private')
+        setPrivateChatView('chat')
+      } else {
+        // ถ้าไม่มีแชท ให้สร้างแชทใหม่
+        console.log('🆕 Creating new chat for:', notification.data.senderName)
+        const otherUser = {
+          _id: notification.data.senderId,
+          displayName: notification.data.senderName,
+          firstName: notification.data.senderName,
+          profileImages: notification.data.senderProfileImage ? [notification.data.senderProfileImage] : []
+        }
+        
+        await handleStartPrivateChat(otherUser)
+        setActiveTab('messages')
+        setChatType('private')
+        setPrivateChatView('chat')
+      }
+      
+      // ทำเครื่องหมายว่าการแจ้งเตือนถูกอ่านแล้ว
+      await markNotificationAsRead(notification._id)
+    }
+    // สำหรับ profile_like ไม่ต้องทำอะไร เพราะแสดงได้อย่างเดียว
+  }
+  
+  // Mark notification as read
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+      
+      await fetch(`${apiUrl}/api/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      // อัปเดตสถานะการอ่านใน state
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif._id === notificationId 
+            ? { ...notif, isRead: true }
+            : notif
+        )
+      )
+      
+      // ลดจำนวนการแจ้งเตือนที่ยังไม่อ่าน
+      setUnreadCount(prev => Math.max(0, prev - 1))
+      
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
+  
+  // Mark all messages in a chat as read
+  const markAllMessagesAsRead = async (chatRoomId: string) => {
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+      
+      console.log('📖 Marking all messages as read for chat:', chatRoomId)
+      
+      // ใช้ API endpoint ที่มีอยู่แล้วสำหรับ mark message as read
+      // ส่งข้อมูลการอ่านข้อความทีละข้อความ
+      const chat = privateChats.find(c => c.id === chatRoomId)
+      if (chat && chat.messages) {
+        const unreadMessages = chat.messages.filter(msg => 
+          msg.senderId !== user._id && !msg.isRead
+        )
+        
+        console.log('📊 Found unread messages:', unreadMessages.length)
+        console.log('🔍 Unread messages details:', unreadMessages.map(msg => ({
+          id: msg._id,
+          content: msg.content?.substring(0, 20) + '...',
+          senderId: msg.senderId,
+          isRead: msg.isRead
+        })))
+        
+        // ส่งการอ่านข้อความทีละข้อความ
+        for (const message of unreadMessages) {
+          try {
+            const response = await fetch(`${apiUrl}/api/messages/${message._id}/read`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                userId: user._id,
+                chatRoomId: chatRoomId
+              })
+            })
+            
+            if (response.ok) {
+              console.log('✅ Marked message as read:', message._id)
+            } else {
+              console.error('❌ Failed to mark message as read:', message._id, response.status)
+            }
+          } catch (error) {
+            console.error('❌ Error marking message as read:', message._id, error)
+          }
+        }
+      } else {
+        console.log('⚠️ No chat or messages found for chatRoomId:', chatRoomId)
+      }
+      
+      console.log('✅ All messages marked as read successfully')
+      
+    } catch (error) {
+      console.error('Error marking all messages as read:', error)
+    }
+  }
+  
   // Render notification item
   const renderNotificationItem = (notification: any) => {
     const { type, data, createdAt, isRead } = notification
     
     if (type === 'private_message') {
       return (
-        <div key={notification._id} className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-blue-50' : ''}`}>
+        <div 
+          key={notification._id} 
+          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-blue-50' : ''}`}
+          onClick={() => handleNotificationClick(notification)}
+        >
           <div className="flex items-start space-x-3">
             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
               <MessageCircle className="h-4 w-4 text-blue-600" />
@@ -476,7 +679,7 @@ function App() {
     
     if (type === 'profile_like') {
       return (
-        <div key={notification._id} className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-pink-50' : ''}`}>
+        <div key={notification._id} className={`px-4 py-3 border-b border-gray-100 ${!isRead ? 'bg-pink-50' : ''}`}>
           <div className="flex items-start space-x-3">
             <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
               <Heart className="h-4 w-4 text-pink-600" />
@@ -606,7 +809,8 @@ function App() {
         return null;
       }
 
-      const response = await fetch('/api/messages/create-private-chat', {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/messages/create-private-chat`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -627,7 +831,15 @@ function App() {
       
       if (result.success && result.data) {
         const chatId = result.data.chatId;
-        console.log('🔑 Created chat ID:', chatId);
+        const isNew = result.data.isNew;
+        console.log('🔑 Created chat ID:', chatId, 'isNew:', isNew);
+        
+        // ตรวจสอบว่ามีแชทนี้อยู่แล้วหรือไม่
+        const existingChat = privateChats.find(chat => chat.id === chatId);
+        if (existingChat) {
+          console.log('📝 Chat already exists, returning existing chat');
+          return existingChat;
+        }
         
         const newChat = {
           id: chatId,
@@ -636,7 +848,8 @@ function App() {
           messages: [],
           createdAt: new Date(),
           lastMessage: null,
-          unreadCount: 0
+          unreadCount: 0,
+          isNew: isNew
         };
         
         console.log('📝 New chat object:', newChat);
@@ -664,7 +877,8 @@ function App() {
         return [];
       }
 
-      const response = await fetch(`/api/messages/${chatRoomId}`, {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/messages/${chatRoomId}?userId=${user._id}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -680,6 +894,15 @@ function App() {
       console.log('✅ Messages fetched successfully:', result);
       
       if (result.success && result.data && result.data.messages) {
+        // Debug: ตรวจสอบข้อมูล isRead จาก backend
+        console.log('🔍 Raw messages from backend:', result.data.messages.map((msg: any) => ({
+          id: msg._id,
+          content: msg.content?.substring(0, 20) + '...',
+          senderId: msg.sender?._id || msg.senderId,
+          isRead: msg.isRead,
+          readBy: msg.readBy
+        })));
+        
         // แปลงข้อมูลข้อความให้มี senderId และข้อมูลที่จำเป็นสำหรับการแสดงผล
         const processedMessages = result.data.messages.map((message: any) => ({
           ...message,
@@ -688,10 +911,32 @@ function App() {
           timestamp: message.timestamp || message.createdAt || new Date(),
           // ตั้งค่า isDelivered เป็น true ถ้าไม่มีข้อมูล
           isDelivered: message.isDelivered !== null ? message.isDelivered : true,
-          // ตั้งค่า isRead เป็น false ถ้าไม่มีข้อมูล
-          isRead: message.isRead !== null ? message.isRead : false
+          // ใช้ข้อมูล isRead จาก backend โดยตรง
+          isRead: message.isRead !== undefined ? message.isRead : false
         }));
+        
+        // คำนวณ unread count สำหรับแชทนี้
+        const unreadCount = processedMessages.filter(msg => 
+          msg.senderId !== user._id && !msg.isRead
+        ).length;
+        
         console.log('🔄 Processed messages with metadata:', processedMessages.length);
+        console.log('📊 Unread count for chat:', unreadCount);
+        console.log('🔍 Unread messages:', processedMessages.filter(msg => 
+          msg.senderId !== user._id && !msg.isRead
+        ).map(msg => ({ id: msg._id, content: msg.content?.substring(0, 20) })));
+        
+        // อัปเดต unread count ในรายการแชท
+        setPrivateChats(prev => {
+          const updatedChats = prev.map(chat => 
+            chat.id === chatRoomId 
+              ? { ...chat, unreadCount: unreadCount }
+              : chat
+          );
+          saveChatsToStorage(updatedChats);
+          return updatedChats;
+        });
+        
         return processedMessages;
       } else {
         console.error('❌ Invalid response format:', result);
@@ -1205,7 +1450,8 @@ function App() {
         return null
       }
 
-      const response = await fetch(`/api/profile/${userId}`, {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/profile/${userId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1545,11 +1791,19 @@ function App() {
         
         // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
         setPrivateChats(prev => {
-          const updatedChats = prev.map(c => 
-            c.id === chat.id 
-              ? { ...c, messages: messages }
-              : c
-          );
+          const updatedChats = prev.map(c => {
+            if (c.id === chat.id) {
+              // หาข้อความล่าสุดจากข้อความที่ดึงมา
+              const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+              
+              return { 
+                ...c, 
+                messages: messages,
+                lastMessage: lastMessage
+              };
+            }
+            return c;
+          });
           saveChatsToStorage(updatedChats);
           return updatedChats;
         });
@@ -1557,6 +1811,42 @@ function App() {
         console.log('📭 No messages found for this chat');
       }
     }
+    
+    // รีเซ็ต unread count เมื่อเข้าดูแชทแล้ว
+    // โดยอัปเดตข้อความทั้งหมดจากอีกฝ่ายให้เป็น isRead = true
+    setPrivateChats(prev => {
+      const updatedChats = prev.map(c => {
+        if (c.id === chat.id) {
+          // อัปเดตข้อความทั้งหมดจากอีกฝ่ายให้เป็น isRead = true
+          const updatedMessages = c.messages.map((message: any) => {
+            if (message.senderId !== user._id && !message.isRead) {
+              return { ...message, isRead: true };
+            }
+            return message;
+          });
+          
+          // คำนวณ unread count ใหม่ (ควรเป็น 0 เพราะเราตั้ง isRead = true แล้ว)
+          const unreadMessagesFromOther = updatedMessages.filter((message: any) => 
+            message.senderId !== user._id && !message.isRead
+          );
+          
+          return {
+            ...c,
+            messages: updatedMessages,
+            unreadCount: unreadMessagesFromOther.length // ควรเป็น 0
+          };
+        }
+        return c;
+      });
+      
+      console.log('🔄 Reset unread count for chat:', chat.id);
+      saveChatsToStorage(updatedChats);
+      
+      // ส่งข้อมูลการอ่านข้อความไปยัง backend
+      markAllMessagesAsRead(chat.id);
+      
+      return updatedChats;
+    });
   };
 
   const handleBackToPrivateChatList = () => {
@@ -1637,10 +1927,26 @@ function App() {
             }
           : chat
       );
-      console.log('📝 Updated chats with read status:', updatedChats.length);
+      
+      // คำนวณ unread count ใหม่สำหรับแชทที่อัปเดต
+      const updatedChatsWithUnreadCount = updatedChats.map(chat => {
+        if (chat.id === selectedPrivateChat.id) {
+          const unreadMessagesFromOther = chat.messages.filter((message: any) => 
+            message.senderId !== user._id && !message.isRead
+          );
+          
+          return {
+            ...chat,
+            unreadCount: unreadMessagesFromOther.length
+          };
+        }
+        return chat;
+      });
+      
+      console.log('📝 Updated chats with read status:', updatedChatsWithUnreadCount.length);
       console.log('🔍 Message read:', messageId);
       // บันทึกข้อมูลที่อัปเดตแล้วลง localStorage
-      saveChatsToStorage(updatedChats);
+      saveChatsToStorage(updatedChatsWithUnreadCount);
       
       // ตรวจสอบว่าข้อมูลถูกบันทึกจริงหรือไม่
       setTimeout(() => {
@@ -1653,7 +1959,7 @@ function App() {
         }
       }, 100);
       
-      return updatedChats;
+      return updatedChatsWithUnreadCount;
     });
     
     console.log('✅ Message read status updated');
@@ -1662,20 +1968,108 @@ function App() {
   };
 
 
-  const handleSendPrivateMessage = async (content: string, file?: File, socketMessage?: any) => {
+  const handleSendPrivateMessage = async (content: string, file?: File, socketMessage?: any, messageType?: string) => {
     if (!selectedPrivateChat || !user) return;
     
     console.log('📤 handleSendPrivateMessage called:', {
       content,
       hasFile: !!file,
       hasSocketMessage: !!socketMessage,
+      messageType,
       selectedPrivateChat: selectedPrivateChat,
       chatId: selectedPrivateChat.id
     });
     
+    // ถ้าเป็นข้อความชั่วคราว (temp-message) ให้แสดงใน UI ทันที
+    if (messageType === 'temp-message' && socketMessage) {
+      console.log('📨 Received temporary message:', socketMessage);
+      
+      // อัปเดตแชทที่เลือกด้วยข้อความชั่วคราว
+      setSelectedPrivateChat((prev: any) => ({
+        ...prev,
+        messages: [...(prev.messages || []), socketMessage],
+        lastMessage: socketMessage
+      }));
+      
+      // อัปเดตรายการแชทด้วยข้อความชั่วคราว
+      setPrivateChats(prev => {
+        const updatedChats = prev.map(chat => 
+          chat.id === selectedPrivateChat.id 
+            ? { ...chat, messages: [...(chat.messages || []), socketMessage], lastMessage: socketMessage }
+            : chat
+        );
+        saveChatsToStorage(updatedChats);
+        return updatedChats;
+      });
+      
+      return; // ไม่ต้องส่งไปยัง API เพราะเป็นข้อความชั่วคราว
+    }
+    
+    // ถ้าเป็นข้อความของตัวเองจาก Socket.IO ให้แทนที่ข้อความชั่วคราว
+    if (socketMessage && messageType === 'own-message') {
+      console.log('📨 Received own message from Socket.IO:', socketMessage);
+      
+      // อัปเดตแชทที่เลือกด้วยข้อความจริงแทนที่ข้อความชั่วคราว
+      setSelectedPrivateChat((prev: any) => {
+        const updatedMessages = prev.messages?.map((msg: any) => {
+          // หาข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+          if (msg.isTemporary && 
+              msg.content === socketMessage.content && 
+              msg.senderId === socketMessage.senderId) {
+            console.log('📨 Replacing temporary message with real message');
+            return socketMessage; // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
+          }
+          return msg;
+        }) || [];
+        
+        return {
+          ...prev,
+          messages: updatedMessages,
+          lastMessage: socketMessage
+        };
+      });
+      
+      // อัปเดตรายการแชทด้วยข้อความจริง
+      setPrivateChats(prev => {
+        const updatedChats = prev.map(chat => {
+          if (chat.id === selectedPrivateChat.id) {
+            const updatedMessages = chat.messages?.map((msg: any) => {
+              // หาข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+              if (msg.isTemporary && 
+                  msg.content === socketMessage.content && 
+                  msg.senderId === socketMessage.senderId) {
+                return socketMessage; // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
+              }
+              return msg;
+            }) || [];
+            
+            return { ...chat, messages: updatedMessages, lastMessage: socketMessage };
+          }
+          return chat;
+        });
+        saveChatsToStorage(updatedChats);
+        return updatedChats;
+      });
+      
+      return; // ไม่ต้องส่งไปยัง API เพราะส่งผ่าน Socket.IO แล้ว
+    }
+    
     // ถ้าเป็นข้อความจาก Socket.IO ให้ใช้ข้อมูลจาก Socket.IO
-    if (socketMessage) {
+    if (socketMessage && messageType === 'socket-message') {
       console.log('📨 Received message from Socket.IO:', socketMessage);
+      
+      // ตรวจสอบว่าข้อความนี้มีอยู่แล้วหรือไม่ (เพื่อป้องกัน duplicate)
+      const messageExists = selectedPrivateChat.messages?.some((msg: any) => 
+        msg._id === socketMessage._id || 
+        (msg.content === socketMessage.content && 
+         msg.senderId === socketMessage.senderId && 
+         Math.abs(new Date(msg.timestamp).getTime() - new Date(socketMessage.timestamp).getTime()) < 1000)
+      );
+      
+      if (messageExists) {
+        console.log('📨 Message already exists, skipping duplicate');
+        return;
+      }
       
       // อัปเดตแชทที่เลือกด้วยข้อความจาก Socket.IO
       setSelectedPrivateChat((prev: any) => ({
@@ -1686,14 +2080,64 @@ function App() {
       
       // อัปเดตรายการแชทด้วยข้อความจาก Socket.IO
       setPrivateChats(prev => {
-        const updatedChats = prev.map(chat => 
-          chat.id === selectedPrivateChat.id 
-            ? { ...chat, messages: [...(chat.messages || []), socketMessage], lastMessage: socketMessage }
-            : chat
-        );
+        const updatedChats = prev.map(chat => {
+          if (chat.id === selectedPrivateChat.id) {
+            const updatedMessages = [...(chat.messages || []), socketMessage];
+            
+            // คำนวณ unread count ใหม่สำหรับข้อความจากอีกฝ่าย
+            const unreadMessagesFromOther = updatedMessages.filter((message: any) => 
+              message.senderId !== user._id && !message.isRead
+            );
+            
+            return { 
+              ...chat, 
+              messages: updatedMessages, 
+              lastMessage: socketMessage,
+              unreadCount: unreadMessagesFromOther.length
+            };
+          } else {
+            // สำหรับแชทอื่นๆ ให้คำนวณ unread count ใหม่ด้วย
+            const unreadMessagesFromOther = chat.messages?.filter((message: any) => 
+              message.senderId !== user._id && !message.isRead
+            ) || [];
+            
+            return {
+              ...chat,
+              unreadCount: unreadMessagesFromOther.length
+            };
+          }
+        });
         saveChatsToStorage(updatedChats);
         return updatedChats;
       });
+      
+      // สร้างการแจ้งเตือนสำหรับข้อความใหม่ (เฉพาะข้อความจากอีกฝ่าย)
+      if (socketMessage.senderId !== user._id) {
+        const notification = {
+          _id: `notif_${Date.now()}`,
+          type: 'private_message',
+          data: {
+            senderId: socketMessage.senderId,
+            senderName: socketMessage.sender?.displayName || socketMessage.sender?.firstName || 'ผู้ใช้',
+            senderProfileImage: socketMessage.sender?.profileImages?.[0],
+            chatRoomId: selectedPrivateChat.id,
+            messageContent: socketMessage.content
+          },
+          createdAt: new Date(),
+          isRead: false
+        };
+        
+        // เพิ่มการแจ้งเตือนใหม่
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+        
+        // เล่นเสียงแจ้งเตือนข้อความใหม่
+        if (isNotificationSoundEnabled()) {
+          playNotificationSound('message');
+        }
+        
+        console.log('🔔 Created notification for new message:', notification);
+      }
       
       return; // ไม่ต้องส่งไปยัง API เพราะส่งผ่าน Socket.IO แล้ว
     }
@@ -1756,7 +2200,8 @@ function App() {
       }
 
       // ส่งข้อความผ่าน API
-      const response = await fetch('/api/messages', {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/messages`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2229,7 +2674,7 @@ function App() {
                         variant="outline" 
                         size="sm" 
                         onClick={() => window.location.href = '/admin'}
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                        className="hidden sm:flex text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 transition-colors"
                       >
                         <Settings className="h-4 w-4 mr-1" />
                         Admin
@@ -2319,16 +2764,7 @@ function App() {
                           (e.target as HTMLImageElement).style.display = 'none';
                         }}
                       />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                        <div className="text-center text-gray-500">
-                          <div className="w-16 h-16 mx-auto mb-2 bg-gray-400 rounded-full flex items-center justify-center">
-                            <span className="text-2xl">👤</span>
-                          </div>
-                          <p className="text-sm font-medium">{profile.name}</p>
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
                     {/* Mobile-First Badge โหวต */}
                     <div className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 bg-white/80 px-2 py-1 sm:px-3 sm:py-1 rounded-full text-xs font-medium text-pink-600 shadow">
                       ❤️ {(profile as any).voteCount ?? 0} votes
@@ -2883,7 +3319,7 @@ function App() {
                             interests: Array.isArray(u?.interests)
                               ? u.interests.map((it: any) => it?.category || it?.name || `${it}`).filter(Boolean)
                               : [],
-                            images: (u?.profileImages || []),
+                            images: (u?.profileImages || []).filter(img => !img.startsWith('data:image/svg+xml')),
                             verified: false,
                             online: (u as any)?.isOnline || false,
                             lastActive: (u as any)?.lastActive,
@@ -2905,16 +3341,7 @@ function App() {
                                 (e.target as HTMLImageElement).style.display = 'none';
                               }}
                             />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                              <div className="text-center text-gray-500">
-                                <div className="w-16 h-16 mx-auto mb-2 bg-gray-400 rounded-full flex items-center justify-center">
-                                  <span className="text-2xl">👤</span>
-                                </div>
-                                <p className="text-sm font-medium">{displayName}</p>
-                              </div>
-                            </div>
-                          )}
+                          ) : null}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
                           <div className="absolute top-2 sm:top-4 left-2 sm:left-4">
                             <div className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs font-semibold text-white bg-gradient-to-r ${badgeGradient} shadow-xl border border-white/10`}>{tier.toUpperCase()}</div>
@@ -3034,13 +3461,29 @@ function App() {
                     .slice(0, visibleCount)
                     .map(user => {
                     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-                    const profileImage = user.profileImages && user.profileImages.length > 0 
-                      ? (user.profileImages[0].startsWith('http') 
-                          ? user.profileImages[0] 
-                          : user.profileImages[0].startsWith('data:image/svg+xml')
-                          ? user.profileImages[0]
-                          : `${baseUrl}/uploads/profiles/${user.profileImages[0]}`)
-                      : ''
+                    
+                    // สร้าง profileImage URL ที่ถูกต้อง
+                    let profileImage = ''
+                    if (user.profileImages && user.profileImages.length > 0) {
+                      const firstImage = user.profileImages[0]
+                      if (firstImage.startsWith('http')) {
+                        // URL เต็มแล้ว
+                        profileImage = firstImage
+                      } else if (firstImage.startsWith('data:image/svg+xml')) {
+                        // SVG data
+                        profileImage = firstImage
+                      } else {
+                        // ไฟล์ในโฟลเดอร์ uploads
+                        profileImage = `${baseUrl}/uploads/profiles/${firstImage}`
+                      }
+                    }
+                    
+                    console.log('🔍 Homepage user profile image:', {
+                      userId: user._id || (user as any).id,
+                      username: (user as any).username,
+                      profileImages: user.profileImages,
+                      finalProfileImage: profileImage
+                    })
                     
                     const displayName = user.nickname || `${user.firstName || ''} ${user.lastName || ''}`.trim() || (user as any).username || 'Unknown'
                     const age = user.age || 'N/A'
@@ -3063,8 +3506,14 @@ function App() {
                           bio: bio,
                           interests: interests,
                           images: user.profileImages && user.profileImages.length > 0
-                            ? user.profileImages
-                            : [profileImage],
+                            ? user.profileImages.filter(img => !img.startsWith('data:image/svg+xml')).map(img => {
+                                if (img.startsWith('http')) {
+                                  return img
+                                } else {
+                                  return `${baseUrl}/uploads/profiles/${img}`
+                                }
+                              })
+                            : [],
                           verified: (user as any).isVerified,
                           online: (user as any).isOnline || false,
                           lastActive: (user as any).lastActive,
@@ -3078,23 +3527,41 @@ function App() {
                               alt={displayName} 
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                               onError={(e) => {
-                                console.error('❌ Homepage image failed to load:', profileImage);
+                                console.error('❌ Homepage image failed to load:', {
+                                  imageUrl: profileImage,
+                                  userId: user._id || (user as any).id,
+                                  username: (user as any).username
+                                });
+                                
+                                // ลองใช้รูปอื่นถ้ามี
+                                const otherImages = user.profileImages?.slice(1) || []
+                                if (otherImages.length > 0) {
+                                  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                                  const nextImage = otherImages[0]
+                                  let nextImageUrl = nextImage
+                                  
+                                  if (!nextImage.startsWith('http') && !nextImage.startsWith('data:')) {
+                                    nextImageUrl = `${baseUrl}/uploads/profiles/${nextImage}`
+                                  }
+                                  
+                                  console.log('🔄 Trying next image:', nextImageUrl)
+                                  ;(e.target as HTMLImageElement).src = nextImageUrl
+                                  return
+                                }
+                                
+                                // ถ้าไม่มีรูปอื่น ให้ซ่อนรูปและแสดง fallback
                                 (e.target as HTMLImageElement).style.display = 'none';
                                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
                               }}
                               onLoad={() => {
-                                console.log('✅ Homepage image loaded successfully:', profileImage);
+                                console.log('✅ Homepage image loaded successfully:', {
+                                  imageUrl: profileImage,
+                                  userId: user._id || (user as any).id,
+                                  username: (user as any).username
+                                });
                               }}
                             />
                           ) : null}
-                          <div className={`w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center ${profileImage && !profileImage.startsWith('data:image/svg+xml') ? 'hidden' : ''}`}>
-                            <div className="text-center text-gray-500">
-                              <div className="w-16 h-16 mx-auto mb-2 bg-gray-400 rounded-full flex items-center justify-center">
-                                <span className="text-2xl">👤</span>
-                              </div>
-                              <p className="text-sm font-medium">{displayName}</p>
-                            </div>
-                          </div>
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
                           
                           {/* Membership Tier Badge */}
@@ -3497,7 +3964,16 @@ function App() {
       {/* Profile Image Modal */}
       {selectedProfile && (
         <Dialog open={showProfileModal} onOpenChange={setShowProfileModal}>
-          <DialogContent className="w-[95vw] h-[90vh] sm:w-[90vw] sm:h-[85vh] md:w-[80vw] md:h-[80vh] lg:w-[700px] lg:h-[650px] xl:w-[800px] xl:h-[750px] 2xl:w-[900px] 2xl:h-[850px] bg-white backdrop-blur-md border border-gray-200 shadow-2xl rounded-xl sm:rounded-2xl p-0 overflow-hidden max-w-none max-h-none">
+          <DialogContent 
+            className="fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] w-[90vw] h-[80vh] max-w-[400px] max-h-[600px] sm:w-[500px] sm:h-[700px] bg-white backdrop-blur-md border border-gray-200 shadow-2xl rounded-none sm:rounded-xl p-0 overflow-hidden"
+            style={{
+              position: 'fixed',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 50
+            }}
+          >
             <VisuallyHidden>
               <DialogTitle>Profile of {selectedProfile.name}</DialogTitle>
               <DialogDescription>
@@ -3533,19 +4009,22 @@ function App() {
                 </button>
               )}
 
-              {/* Image Gallery */}
-              <div className="relative w-full h-full">
+              {/* Full Size Image */}
+              {selectedProfile.images && selectedProfile.images.length > 0 && selectedProfile.images[activeImageIndex] && !selectedProfile.images[activeImageIndex].startsWith('data:image/svg+xml') ? (
                 <img
                   src={selectedProfile.images[activeImageIndex]}
                   alt={selectedProfile.name}
                   className="w-full h-full object-cover"
                 />
+              ) : null}
+              
+              {/* Profile Info Overlay */}
+              <div className="absolute bottom-0 left-0 right-0 p-4 pb-15">
+                {/* Background overlay for better text visibility */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent"></div>
                 
-                {/* Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-white/90 via-white/20 to-transparent"></div>
-                
-                {/* Profile Info Overlay */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5 md:p-6 lg:p-7 xl:p-8 text-gray-800">
+                {/* Content with relative positioning */}
+                <div className="relative z-10 text-white">
                   {/* Alert Message */}
                   {profileAlert && (
                     <div className={`mb-2 sm:mb-3 md:mb-4 p-2 sm:p-3 rounded-lg flex items-center justify-between ${
@@ -3563,22 +4042,22 @@ function App() {
                     </div>
                   )}
                   
-                  <div className="flex justify-between items-end mb-3 sm:mb-4 md:mb-5 lg:mb-6">
+                  <div className="flex justify-between items-end mb-1">
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold mb-2 sm:mb-3">{selectedProfile.name}, {selectedProfile.age}</h3>
-                      <div className="flex items-center text-gray-700 text-sm sm:text-base md:text-lg lg:text-xl">
-                        <MapPin className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-2 sm:mr-3" />
+                      <h3 className="text-xl font-bold mb-1 text-white" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)'}}>{selectedProfile.name}, {selectedProfile.age}</h3>
+                      <div className="flex items-center text-white text-base" style={{textShadow: '1px 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.6)'}}>
+                        <MapPin className="h-5 w-5 mr-2" />
                         <span className="truncate">{selectedProfile.location}</span>
-                        <span className="mx-2 sm:mx-3">•</span>
+                        <span className="mx-2">•</span>
                         <div className="flex items-center">
-                          {selectedProfile.membershipTier === 'platinum' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-purple-300" />}
-                          {selectedProfile.membershipTier === 'diamond' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-blue-300" />}
-                          {selectedProfile.membershipTier === 'gold' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-yellow-300" />}
-                          {selectedProfile.membershipTier === 'silver' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-gray-300" />}
-                          {selectedProfile.membershipTier === 'vip' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-pink-300" />}
-                          {selectedProfile.membershipTier === 'vip1' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-orange-300" />}
-                          {selectedProfile.membershipTier === 'vip2' && <Crown className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 text-red-300" />}
-                          <span className="capitalize text-sm sm:text-base md:text-lg">{selectedProfile.membershipTier || 'Member'}</span>
+                          {selectedProfile.membershipTier === 'platinum' && <Crown className="h-5 w-5 mr-2 text-purple-300" />}
+                          {selectedProfile.membershipTier === 'diamond' && <Crown className="h-5 w-5 mr-2 text-blue-300" />}
+                          {selectedProfile.membershipTier === 'gold' && <Crown className="h-5 w-5 mr-2 text-yellow-300" />}
+                          {selectedProfile.membershipTier === 'silver' && <Crown className="h-5 w-5 mr-2 text-gray-300" />}
+                          {selectedProfile.membershipTier === 'vip' && <Crown className="h-5 w-5 mr-2 text-pink-300" />}
+                          {selectedProfile.membershipTier === 'vip1' && <Crown className="h-5 w-5 mr-2 text-orange-300" />}
+                          {selectedProfile.membershipTier === 'vip2' && <Crown className="h-5 w-5 mr-2 text-red-300" />}
+                          <span className="capitalize text-base">{selectedProfile.membershipTier || 'Member'}</span>
                         </div>
                       </div>
                     </div>
@@ -3586,25 +4065,25 @@ function App() {
                   
                   {/* Bio Section */}
                   {selectedProfile.bio && (
-                    <div className="mb-3 sm:mb-4 md:mb-5">
-                      <h4 className="text-sm sm:text-base md:text-lg font-semibold mb-2 sm:mb-3 text-gray-700">เกี่ยวกับฉัน</h4>
-                      <p className="text-sm sm:text-base md:text-lg text-gray-600 leading-relaxed line-clamp-3 sm:line-clamp-4">{selectedProfile.bio}</p>
+                    <div className="mb-1">
+                      <h4 className="text-base font-semibold mb-1 text-white" style={{textShadow: '1px 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.6)'}}>เกี่ยวกับฉัน</h4>
+                      <p className="text-base text-white leading-relaxed line-clamp-1" style={{textShadow: '1px 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.6)'}}>{selectedProfile.bio}</p>
                     </div>
                   )}
                   
                   {/* Interests Section */}
                   {selectedProfile.interests && selectedProfile.interests.length > 0 && (
-                    <div className="mb-3 sm:mb-4 md:mb-5">
-                      <h4 className="text-sm sm:text-base md:text-lg font-semibold mb-2 sm:mb-3 text-gray-700">ความสนใจ</h4>
-                      <div className="flex flex-wrap gap-2 sm:gap-3">
-                        {selectedProfile.interests.slice(0, 4).map((interest, index) => (
-                          <span key={index} className="px-3 py-1 sm:px-4 sm:py-2 bg-gray-100 backdrop-blur-sm rounded-full text-sm sm:text-base text-gray-700 border border-gray-200">
+                    <div className="mb-1">
+                      <h4 className="text-base font-semibold mb-1 text-white" style={{textShadow: '1px 1px 3px rgba(0,0,0,0.8), 0 0 6px rgba(0,0,0,0.6)'}}>ความสนใจ</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProfile.interests.slice(0, 3).map((interest, index) => (
+                          <span key={index} className="px-3 py-1 bg-black/60 backdrop-blur-sm rounded-full text-sm text-white" style={{textShadow: '1px 1px 2px rgba(0,0,0,0.8)'}}>
                             {interest}
                           </span>
                         ))}
-                        {selectedProfile.interests.length > 4 && (
-                          <span className="px-3 py-1 sm:px-4 sm:py-2 bg-gray-50 backdrop-blur-sm rounded-full text-sm sm:text-base text-gray-500 border border-gray-100">
-                            +{selectedProfile.interests.length - 4}
+                        {selectedProfile.interests.length > 3 && (
+                          <span className="px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-sm text-white" style={{textShadow: '1px 1px 2px rgba(0,0,0,0.8)'}}>
+                            +{selectedProfile.interests.length - 3}
                           </span>
                         )}
                       </div>
@@ -3614,12 +4093,12 @@ function App() {
                   
                   {/* Image Indicators */}
                   {selectedProfile.images.length > 1 && (
-                    <div className="flex justify-center space-x-2 sm:space-x-3 mb-3 sm:mb-4 md:mb-5">
+                    <div className="flex justify-center space-x-2 mb-1">
                       {selectedProfile.images.map((_, index) => (
                         <button
                           key={index}
                           onClick={() => setActiveImageIndex(index)}
-                          className={`w-3 h-3 sm:w-4 sm:h-4 rounded-full transition-all ${
+                          className={`w-3 h-3 rounded-full transition-all ${
                             index === activeImageIndex ? 'bg-white' : 'bg-white/50'
                           }`}
                         />
@@ -3628,10 +4107,10 @@ function App() {
                   )}
                   
                   {/* Action Icons */}
-                  <div className="flex justify-center items-center gap-4 sm:gap-5 md:gap-6 lg:gap-8 xl:gap-10 mb-4 sm:mb-5 md:mb-6 lg:mb-8 xl:mb-10">
+                  <div className="flex justify-center items-center gap-4 mb-10">
                     {/* Chat Icon */}
                     <button
-                      className="w-12 h-12 sm:w-14 sm:h-14 md:w-18 md:h-18 lg:w-20 lg:h-20 xl:w-24 xl:h-24 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600"
+                      className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600"
                       onClick={() => {
                         console.log('💬 Start chat with:', selectedProfile.name);
                         
@@ -3640,12 +4119,12 @@ function App() {
                         handleStartPrivateChat(targetUser);
                       }}
                     >
-                      <MessageCircle className="h-6 w-6 sm:h-7 sm:w-7 md:h-9 md:w-9 lg:h-11 lg:w-11 xl:h-12 xl:w-12" />
+                      <MessageCircle className="h-6 w-6" />
                     </button>
                     
                     {/* Heart Icon */}
                     <button
-                      className={`w-12 h-12 sm:w-14 sm:h-14 md:w-18 md:h-18 lg:w-20 lg:h-20 xl:w-24 xl:h-24 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 ${
+                      className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 ${
                         likedProfiles.has(selectedProfile.id?.toString() || '')
                           ? 'bg-red-500 text-white scale-110 border border-red-600'
                           : 'bg-pink-500 hover:bg-pink-600 text-white border border-pink-600'
@@ -3656,14 +4135,14 @@ function App() {
                         handleProfileLike(profileId);
                       }}
                     >
-                      <Heart className={`h-6 w-6 sm:h-7 sm:w-7 md:h-9 md:w-9 lg:h-11 lg:w-11 xl:h-12 xl:w-12 ${
+                      <Heart className={`h-6 w-6 ${
                         likedProfiles.has(selectedProfile.id?.toString() || '') ? 'fill-current' : ''
                       }`} />
                     </button>
                     
                     {/* Profile Details Icon */}
                     <button
-                      className="w-12 h-12 sm:w-14 sm:h-14 md:w-18 md:h-18 lg:w-20 lg:h-20 xl:w-24 xl:h-24 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 bg-purple-500 hover:bg-purple-600 text-white border border-purple-600"
+                      className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 bg-purple-500 hover:bg-purple-600 text-white border border-purple-600"
                       onClick={() => {
                         console.log('👤 View profile details:', selectedProfile.name);
                         
@@ -3682,25 +4161,25 @@ function App() {
                         handleViewProfile(profileData);
                       }}
                     >
-                      <User className="h-6 w-6 sm:h-7 sm:w-7 md:h-9 md:w-9 lg:h-11 lg:w-11 xl:h-12 xl:w-12" />
+                      <User className="h-6 w-6" />
                     </button>
                   </div>
                   
                   {/* Action Result Display */}
                   {modalAction && !isStartingChat && (
-                    <div className="mt-2 sm:mt-3 md:mt-4 mb-4 sm:mb-5 md:mb-6 lg:mb-8 xl:mb-10 p-2 sm:p-3 md:p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+                    <div className="mt-2 mb-2 p-3 bg-black/40 backdrop-blur-sm rounded-xl border border-white/30">
                       {modalAction === 'like' && (
                         <div className="text-center text-white">
-                          <Heart className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-red-400 fill-current" />
-                          <p className="text-xs sm:text-sm md:text-base font-medium">ส่งหัวใจให้ {selectedProfile.name}</p>
-                          <p className="text-xs sm:text-sm text-white/80 mt-1">💖 หวังว่าจะได้เจอกัน!</p>
+                          <Heart className="h-5 w-5 mx-auto mb-2 text-red-400 fill-current" />
+                          <p className="text-base font-medium">ส่งหัวใจให้ {selectedProfile.name}</p>
+                          <p className="text-sm text-white/80 mt-1">💖 หวังว่าจะได้เจอกัน!</p>
                         </div>
                       )}
                       {modalAction === 'profile' && (
                         <div className="text-center text-white">
-                          <User className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-blue-400" />
-                          <p className="text-xs sm:text-sm md:text-base font-medium">ดูรายละเอียด {selectedProfile.name}</p>
-                          <p className="text-xs sm:text-sm text-white/80 mt-1">กำลังโหลดข้อมูลโปรไฟล์...</p>
+                          <User className="h-5 w-5 mx-auto mb-2 text-blue-400" />
+                          <p className="text-base font-medium">ดูรายละเอียด {selectedProfile.name}</p>
+                          <p className="text-sm text-white/80 mt-1">กำลังโหลดข้อมูลโปรไฟล์...</p>
                         </div>
                       )}
                     </div>
@@ -3708,11 +4187,11 @@ function App() {
                   
                   {/* Chat Countdown Display */}
                   {isStartingChat && chatCountdown !== null && (
-                    <div className="mt-2 sm:mt-3 md:mt-4 mb-4 sm:mb-5 md:mb-6 lg:mb-8 xl:mb-10 p-2 sm:p-3 md:p-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+                    <div className="mt-2 mb-2 p-3 bg-black/40 backdrop-blur-sm rounded-xl border border-white/30">
                       <div className="text-center text-white">
-                        <MessageCircle className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-pink-400" />
-                        <p className="text-xs sm:text-sm md:text-base font-medium">เริ่มแชทกับ {selectedProfile.name}</p>
-                        <p className="text-xs sm:text-sm text-white/80 mt-1">กำลังเปิดหน้าต่างแชท... {chatCountdown}</p>
+                        <MessageCircle className="h-5 w-5 mx-auto mb-2 text-pink-400" />
+                        <p className="text-base font-medium">เริ่มแชทกับ {selectedProfile.name}</p>
+                        <p className="text-sm text-white/80 mt-1">กำลังเปิดหน้าต่างแชท... {chatCountdown}</p>
                       </div>
                     </div>
                   )}
@@ -3755,18 +4234,56 @@ function App() {
                         <div className="flex flex-col sm:flex-row items-start gap-4">
                           <div className="relative">
                             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold">
-                              {profileData.profileImages && profileData.profileImages.length > 0 ? (
-                                <img 
-                                  src={profileData.profileImages[0]}
-                                  alt="Profile"
-                                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                    ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
-                                  }}
-                                />
-                              ) : null}
-                              <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold ${profileData.profileImages && profileData.profileImages.length > 0 ? 'hidden' : ''}`}>
+                              {(() => {
+                                // สร้าง profile image URL ที่ถูกต้อง
+                                let profileImageUrl = ''
+                                if (profileData.profileImages && profileData.profileImages.length > 0) {
+                                  const firstImage = profileData.profileImages[0]
+                                  if (firstImage.startsWith('http')) {
+                                    profileImageUrl = firstImage
+                                  } else if (firstImage.startsWith('data:image/svg+xml')) {
+                                    profileImageUrl = firstImage
+                                  } else {
+                                    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                                    profileImageUrl = `${baseUrl}/uploads/profiles/${firstImage}`
+                                  }
+                                }
+                                
+                                return profileImageUrl ? (
+                                  <img 
+                                    src={profileImageUrl}
+                                    alt="Profile"
+                                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover"
+                                    onError={(e) => {
+                                      console.error('❌ Profile modal image failed to load:', {
+                                        imageUrl: profileImageUrl,
+                                        originalImage: profileData.profileImages[0],
+                                        profileId: profileData.id
+                                      });
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                      ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
+                                    }}
+                                    onLoad={() => {
+                                      console.log('✅ Profile modal image loaded successfully:', {
+                                        imageUrl: profileImageUrl,
+                                        originalImage: profileData.profileImages[0],
+                                        profileId: profileData.id
+                                      });
+                                    }}
+                                  />
+                                ) : null
+                              })()}
+                              <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold ${(() => {
+                                if (profileData.profileImages && profileData.profileImages.length > 0) {
+                                  const firstImage = profileData.profileImages[0]
+                                  if (firstImage.startsWith('http') || firstImage.startsWith('data:image/svg+xml')) {
+                                    return firstImage.startsWith('data:image/svg+xml') ? '' : 'hidden'
+                                  } else {
+                                    return 'hidden'
+                                  }
+                                }
+                                return ''
+                              })()}`}>
                                 <User className="h-10 w-10 sm:h-12 sm:w-12" />
                               </div>
                             </div>
@@ -3840,22 +4357,43 @@ function App() {
                         )}
                         
                         {/* Images Section */}
-                        {profileData.profileImages && profileData.profileImages.length > 1 && (
+                        {profileData.profileImages && profileData.profileImages.length > 1 && !profileData.profileImages.every(img => img.startsWith('data:image/svg+xml')) && (
                           <div className="space-y-2">
                             <h3 className="text-lg font-semibold text-gray-800">รูปภาพ</h3>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                              {profileData.profileImages.slice(1).map((image: string, index: number) => (
-                                <div key={index} className="aspect-square rounded-lg overflow-hidden shadow-lg">
+                              {profileData.profileImages.slice(1).filter(img => !img.startsWith('data:image/svg+xml')).map((image: string, index: number) => {
+                                // สร้าง image URL ที่ถูกต้อง
+                                let imageUrl = image
+                                if (!image.startsWith('http') && !image.startsWith('data:')) {
+                                  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+                                  imageUrl = `${baseUrl}/uploads/profiles/${image}`
+                                }
+                                
+                                return (
+                                <div key={`${profileData.id}-${index}`} className="aspect-square rounded-lg overflow-hidden shadow-lg">
                                   <img 
-                                    src={image}
+                                    src={imageUrl}
                                     alt={`${profileData.nickname || profileData.firstName} ${index + 2}`}
                                     className="w-full h-full object-cover"
                                     onError={(e) => {
+                                      console.error('❌ Profile modal gallery image failed to load:', {
+                                        imageUrl: imageUrl,
+                                        originalImage: image,
+                                        profileId: profileData.id
+                                      });
                                       (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                    onLoad={() => {
+                                      console.log('✅ Profile modal gallery image loaded successfully:', {
+                                        imageUrl: imageUrl,
+                                        originalImage: image,
+                                        profileId: profileData.id
+                                      });
                                     }}
                                   />
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </div>
                         )}

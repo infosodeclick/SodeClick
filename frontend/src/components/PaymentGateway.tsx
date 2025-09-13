@@ -56,6 +56,8 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   const { user } = useAuth()
   const [processing, setProcessing] = useState(false)
   const [qrData, setQrData] = useState<PaymentData | null>(null)
+  
+  
   const [paymentStatus, setPaymentStatus] = useState('pending')
   const [timeRemaining, setTimeRemaining] = useState(300000) // 5 นาที
   const [currentTransaction, setCurrentTransaction] = useState<PaymentData | null>(null)
@@ -63,7 +65,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
 
 
 
-  // ระดับชั้นและราคาที่ตรงกัน
+  // ระดับชั้นและราคาที่ตรงกัน (ใช้เป็น fallback เท่านั้น)
   const tierPricing = {
     member: { amount: 0, currency: 'THB', name: 'สมาชิกฟรี' },
     silver: { amount: 20, currency: 'THB', name: 'Silver Member' },
@@ -72,7 +74,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
     vip1: { amount: 150, currency: 'THB', name: 'VIP 1' },
     vip2: { amount: 300, currency: 'THB', name: 'VIP 2' },
     diamond: { amount: 500, currency: 'THB', name: 'Diamond Member' },
-    platinum: { amount: 1, currency: 'THB', name: 'Platinum Member' }
+    platinum: { amount: 1000, currency: 'THB', name: 'Platinum Member' }
   }
 
   // Timer สำหรับ QR Code - หมดอายุใน 5 นาที
@@ -151,34 +153,42 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
         console.error('Error parsing saved QR data:', error)
         localStorage.removeItem(qrKey)
       }
+    } else {
+      // ลบ QR data เก่าเมื่อไม่มี saved data
+      setQrData(null)
+      setPaymentStatus('idle')
+      setTimeRemaining(0)
     }
     
-    // สร้าง QR ใหม่เฉพาะเมื่อไม่มีข้อมูลเก่า
-    if (!savedQRData && !qrData && !processing) {
+    // สร้าง QR ใหม่ทันทีเมื่อเข้ามาหน้า (Auto Generate)
+    if (!processing) {
       createRabbitPayment()
     }
-  }, []) // ไม่มี dependency เพื่อให้รันแค่ครั้งเดียว
+  }, [plan?.id, plan?.tier]) // เพิ่ม plan.tier เป็น dependency ด้วย
 
   // สร้าง Rabbit Payment
   const createRabbitPayment = async () => {
     setProcessing(true)
     
     try {
+      
+      // ตาม RABBIT_GATEWAY_INTEGRATION_SUMMARY.md line 501-507
       const pricing = tierPricing[plan.tier] || tierPricing.vip
       const orderId = rabbitHelpers.generateOrderId()
       
-      // ใช้ rabbitAPI service
+      // ใช้ rabbitAPI service ตาม RABBIT_GATEWAY_INTEGRATION_SUMMARY.md
       const result = await rabbitAPI.createPayment({
         orderId: orderId,
         amount: pricing.amount
       })
       
       
+      // ตาม RABBIT_GATEWAY_INTEGRATION_SUMMARY.md line 512-525
       const transaction = {
         id: result.payment_id,
         transactionId: result.transaction_id,
         orderId: orderId,
-        amount: result.amount || pricing.amount,
+        amount: result.amount, // ใช้ result.amount ที่ backend ส่งมา (เป็นบาทแล้ว)
         currency: result.currency || 'THB',
         planId: plan.id,
         planTier: plan.tier,
@@ -189,13 +199,15 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
         expiryTime: new Date(result.expire_at)
       }
       
+      
       setCurrentTransaction(transaction)
       
+      // ตาม RABBIT_GATEWAY_INTEGRATION_SUMMARY.md line 528-541
       const qrDataToSave = {
         payment_id: result.payment_id,
         transaction_id: result.transaction_id,
         orderId: orderId,
-        amount: result.amount || pricing.amount,
+        amount: result.amount, // ใช้ result.amount ที่ backend ส่งมา (เป็นบาทแล้ว)
         currency: result.currency || 'THB',
         qr_image: result.qr_image || result.qr_image_url || result.qr_code_url,
         vendor_qr_code: result.vendor_qr_code,
@@ -215,6 +227,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
       // บันทึก QR data ลง localStorage
       const qrKey = `qr-${plan.id}-${user?._id || user?.id}`
       localStorage.setItem(qrKey, JSON.stringify(qrDataToSave))
+      
       
     } catch (error: unknown) {
       console.error('Rabbit QR Code generation failed:', error)
@@ -457,7 +470,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                     </div>
                     <div className="text-right">
                       <div className="text-xl font-bold text-slate-800">
-                        ฿{tierPricing[plan.tier]?.amount || plan.price?.amount || 0}
+                        ฿{tierPricing[plan.tier]?.amount || 0}
                         </div>
                       <div className="text-xs text-slate-600">THB</div>
                     </div>
