@@ -61,24 +61,13 @@ import {
   Filter, 
   MapPin, 
   Calendar, 
-  Utensils, 
   Sparkles,
   CheckCircle,
   X,
   ArrowLeft,
   Users,
   Crown,
-  RefreshCw,
-  Briefcase,
-  Languages,
-  GraduationCap,
-  Building,
-  PawPrint,
-  Dumbbell,
-  Wine,
-  Cigarette,
-  Church,
-  Baby
+  RefreshCw
 } from 'lucide-react'
 
 type PublicUser = {
@@ -817,8 +806,8 @@ function App() {
   // Profile details view state
   const [showProfileDetails, setShowProfileDetails] = useState(false)
   
-  // Profile data state
-  const [profileData, setProfileData] = useState<any>(null)
+  // Profile data state - only keep setProfileData for component usage
+  const [, setProfileData] = useState<any>(null)
   
   
   // ฟังก์ชันลบแชทซ้ำจากอาร์เรย์
@@ -1686,76 +1675,13 @@ function App() {
     return currentLevel >= targetLevel;
   };
 
-  // Helper function to safely display data that might be an object
-  const safeDisplay = (data: any) => {
-    if (data === null || data === undefined) return '';
-    if (typeof data === 'string' || typeof data === 'number') return data;
-    if (typeof data === 'object') {
-      // Handle specific object types
-      if (data.level !== undefined) {
-        return data.level || 'ไม่ระบุ';
-      }
-      if (data.category) {
-        return data.category;
-      }
-      if (data.name) {
-        return data.name;
-      }
-      // For other objects, try to find a meaningful value
-      if (data.value) return data.value;
-      if (data.text) return data.text;
-      if (data.label) return data.label;
-      // If no meaningful value found, return empty string
-      return '';
-    }
-    return String(data);
-  };
+  // Helper functions removed to fix TypeScript unused errors
 
-  // Helper function to format interests data
-  const formatInterests = (interests: any[]) => {
-    if (!interests || !Array.isArray(interests)) return [];
-    
-    return interests.map(interest => {
-      if (typeof interest === 'string') return interest;
-      if (typeof interest === 'object' && interest.category) {
-        return interest.category;
-      }
-      return String(interest);
-    }).filter(Boolean);
-  };
+  // formatInterests function removed - unused
 
-  // Helper function to translate gender to Thai
-  const translateGender = (gender: string) => {
-    const genderMap: { [key: string]: string } = {
-      'male': 'ชาย',
-      'female': 'หญิง',
-      'other': 'อื่นๆ',
-      'non-binary': 'ไม่ระบุเพศ',
-      'prefer-not-to-say': 'ไม่ระบุ'
-    };
-    return genderMap[gender?.toLowerCase()] || gender || 'ยังไม่ระบุ';
-  };
+  // translateGender function removed - unused
 
-  // Helper function to translate relationship preference to Thai
-  const translateRelationship = (relationship: string) => {
-    const relationshipMap: { [key: string]: string } = {
-      'serious': 'ความสัมพันธ์จริงจัง',
-      'casual': 'ความสัมพันธ์แบบสบายๆ',
-      'friendship': 'เพื่อน',
-      'dating': 'เดท',
-      'marriage': 'แต่งงาน',
-      'not-sure': 'ยังไม่แน่ใจ',
-      'friends-with-benefits': 'เพื่อนที่มีประโยชน์',
-      'long-term': 'ความสัมพันธ์ระยะยาว',
-      'short-term': 'ความสัมพันธ์ระยะสั้น',
-      'female': 'หญิง',
-      'male': 'ชาย',
-      'any': 'ทุกเพศ',
-      'both': 'ทั้งสองเพศ',
-      'other': 'อื่นๆ'
-    };
-    return relationshipMap[relationship?.toLowerCase()] || relationship || 'ยังไม่ระบุ';
-  };
+  // translateRelationship function removed - unused
 
 
   // ฟังก์ชันจัดการการดูโปรไฟล์
@@ -2857,6 +2783,57 @@ function App() {
     window.addEventListener('profile-avatar-updated', handler)
     return () => window.removeEventListener('profile-avatar-updated', handler)
   }, [user])
+
+  // Handle Google OAuth callback
+  useEffect(() => {
+    const handleGoogleOAuthCallback = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      const loginSuccess = urlParams.get('login_success');
+      
+      if (token && loginSuccess === 'true') {
+        console.log('🔍 Google OAuth callback detected, token:', token);
+        
+        // Store token and fetch user data
+        sessionStorage.setItem('token', token);
+        
+        // Fetch user data with the token
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            console.log('✅ Google OAuth login successful:', data.data.user);
+            login({
+              user: data.data.user,
+              token: token
+            });
+            setIsAuthenticated(true);
+            
+            // Clean up URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            console.error('❌ Failed to fetch user data:', data.message);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Error fetching user data:', error);
+        });
+      }
+      
+      // Handle OAuth error
+      const error = urlParams.get('error');
+      if (error === 'auth_failed') {
+        console.error('❌ Google OAuth failed');
+        // You can show an error message to the user here
+      }
+    };
+    
+    handleGoogleOAuthCallback();
+  }, []); // Empty dependency array means this runs once when component mounts
 
   // ฟัง event เมื่อมีการเปลี่ยนแปลงสถานะการกดไลค์
   useEffect(() => {
@@ -5054,391 +5031,6 @@ function App() {
                   )}
                 </div>
             </div>
-              
-              {/* Full Profile Details View */}
-              {showProfileDetails && (
-                <div className="absolute inset-0 bg-gradient-to-br from-pink-50/95 via-violet-50/95 to-blue-50/95 backdrop-blur-md overflow-y-auto">
-                  {/* Background Elements */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-10 left-4 w-48 h-48 sm:top-20 sm:left-10 sm:w-96 sm:h-96 bg-gradient-to-br from-pink-300/20 to-violet-300/20 rounded-full blur-3xl animate-pulse"></div>
-                    <div className="absolute top-40 right-8 w-40 h-40 sm:top-60 sm:right-20 sm:w-80 sm:h-80 bg-gradient-to-br from-blue-300/15 to-cyan-300/15 rounded-full blur-3xl animate-pulse delay-1000"></div>
-                    <div className="absolute bottom-20 left-1/4 w-36 h-36 sm:bottom-32 sm:left-1/4 sm:w-72 sm:h-72 bg-gradient-to-br from-orange-300/20 to-pink-300/20 rounded-full blur-3xl animate-pulse delay-2000"></div>
-                    <div className="absolute bottom-40 right-1/3 w-32 h-32 sm:bottom-60 sm:right-1/3 sm:w-64 sm:h-64 bg-gradient-to-br from-purple-300/25 to-indigo-300/25 rounded-full blur-3xl animate-pulse delay-3000"></div>
-                  </div>
-                  {/* Floating Elements */}
-                  <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                    <div className="absolute top-1/4 left-1/4 text-2xl sm:text-4xl opacity-20 animate-float">✨</div>
-                    <div className="absolute top-1/3 right-1/4 text-3xl sm:text-5xl opacity-15 animate-float delay-1000">💫</div>
-                    <div className="absolute bottom-1/3 left-1/3 text-4xl sm:text-6xl opacity-10 animate-float delay-2000">🌟</div>
-                    <div className="absolute bottom-1/4 right-1/3 text-2xl sm:text-3xl opacity-25 animate-float delay-3000">💖</div>
-                    <div className="absolute top-1/2 left-1/6 text-2xl sm:text-4xl opacity-20 animate-float delay-4000">🎉</div>
-                    <div className="absolute top-3/4 right-1/6 text-3xl sm:text-5xl opacity-15 animate-float delay-5000">🌈</div>
-                  </div>
-                  
-                  <div className="relative p-6 sm:p-8 text-gray-800 space-y-6">
-                    {/* Loading State */}
-                    {false && (
-                      <div className="flex items-center justify-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
-                        <span className="ml-3 text-gray-600">กำลังโหลดข้อมูลโปรไฟล์...</span>
-                      </div>
-                    )}
-                    
-                    {/* Profile Data */}
-                    {(profileData || selectedProfile) && (() => {
-                      // Create a unified profile object with all available data
-                      const unifiedProfile = {
-                        ...selectedProfile,
-                        ...profileData,
-                        // Ensure images field is available
-                        profileImages: profileData?.profileImages || selectedProfile?.images || [],
-                        images: selectedProfile?.images || profileData?.profileImages || [],
-                        // Ensure basic fields are always available
-                        name: profileData?.name || selectedProfile?.name || 'ไม่ระบุชื่อ',
-                        age: profileData?.age || selectedProfile?.age || null,
-                        location: profileData?.location || selectedProfile?.location || null,
-                        bio: profileData?.bio || selectedProfile?.bio || null,
-                        membership: profileData?.membership || selectedProfile?.membership || { tier: 'member' }
-                      };
-                      
-                      
-                      return (
-                      <>
-                        {/* Profile Header */}
-                        <div className="flex flex-col sm:flex-row items-start gap-4">
-                          <div className="relative">
-                            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold overflow-hidden">
-                              {(() => {
-                                // สร้าง profile image URL ที่ถูกต้อง
-                                let profileImageUrl = ''
-                                if (unifiedProfile.profileImages && unifiedProfile.profileImages.length > 0) {
-                                  const mainImageIndex = unifiedProfile.mainProfileImageIndex || 0
-                                  const firstImage = unifiedProfile.profileImages[mainImageIndex]
-                                  if (firstImage.startsWith('http')) {
-                                    profileImageUrl = firstImage
-                                  } else if (firstImage.startsWith('data:image/svg+xml')) {
-                                    profileImageUrl = firstImage
-                                  } else {
-                                    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-                                    profileImageUrl = `${baseUrl}/uploads/profiles/${firstImage}`
-                                  }
-                                }
-                                
-                                return profileImageUrl ? (
-                                  <img 
-                                    src={profileImageUrl}
-                                    alt="Profile"
-                                    className="w-full h-full rounded-full object-cover object-center"
-                                    style={{ objectFit: 'cover', width: '100%', height: '100%' }}
-                                    onError={(e) => {
-                                      console.error('❌ Profile modal image failed to load:', {
-                                        imageUrl: profileImageUrl,
-                                        originalImage: unifiedProfile.profileImages[0],
-                                        profileId: unifiedProfile.id
-                                      });
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                      ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
-                                    }}
-                                    onLoad={() => {
-                                      console.log('✅ Profile modal image loaded successfully:', {
-                                        imageUrl: profileImageUrl,
-                                        originalImage: unifiedProfile.profileImages[0],
-                                        profileId: unifiedProfile.id
-                                      });
-                                    }}
-                                  />
-                                ) : null
-                              })()}
-                              <div className={`absolute inset-0 w-full h-full rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold ${(() => {
-                                if (unifiedProfile.profileImages && unifiedProfile.profileImages.length > 0) {
-                                  const mainImageIndex = unifiedProfile.mainProfileImageIndex || 0
-                                  const firstImage = unifiedProfile.profileImages[mainImageIndex]
-                                  if (firstImage.startsWith('http') || firstImage.startsWith('data:image/svg+xml')) {
-                                    return firstImage.startsWith('data:image/svg+xml') ? '' : 'hidden'
-                                  } else {
-                                    return 'hidden'
-                                  }
-                                }
-                                return ''
-                              })()}`}>
-                                <User className="h-10 w-10 sm:h-12 sm:w-12" />
-                              </div>
-                            </div>
-                            {unifiedProfile.membership?.tier && unifiedProfile.membership.tier !== 'member' && (
-                              <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs shadow-lg">
-                                <Crown className="h-4 w-4" />
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex-1">
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-2 mb-1">
-                              <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
-                                {unifiedProfile.nickname || unifiedProfile.name || `${unifiedProfile.firstName || ''} ${unifiedProfile.lastName || ''}`.trim() || (unifiedProfile as any).username || 'ไม่ระบุชื่อ'}
-                              </h1>
-                              {unifiedProfile.membership?.tier && (
-                                <Badge className={`bg-gradient-to-r ${
-                                  unifiedProfile.membership.tier === 'platinum' ? 'from-purple-500 to-pink-500' :
-                                  unifiedProfile.membership.tier === 'diamond' ? 'from-blue-500 to-cyan-500' :
-                                  unifiedProfile.membership.tier === 'vip2' ? 'from-red-500 to-orange-500' :
-                                  unifiedProfile.membership.tier === 'vip1' ? 'from-orange-500 to-yellow-500' :
-                                  unifiedProfile.membership.tier === 'vip' ? 'from-purple-400 to-pink-400' :
-                                  unifiedProfile.membership.tier === 'gold' ? 'from-yellow-500 to-amber-500' :
-                                  unifiedProfile.membership.tier === 'silver' ? 'from-gray-400 to-slate-400' :
-                                  'from-gray-300 to-gray-400'
-                                } text-white text-xs`}>
-                                  <Crown className="h-3 w-3 mr-1" />
-                                  {unifiedProfile.membership.tier === 'platinum' ? 'PLATINUM' :
-                                   unifiedProfile.membership.tier === 'diamond' ? 'DIAMOND' :
-                                   unifiedProfile.membership.tier === 'vip2' ? 'VIP2' :
-                                   unifiedProfile.membership.tier === 'vip1' ? 'VIP1' :
-                                   unifiedProfile.membership.tier === 'vip' ? 'VIP' :
-                                   unifiedProfile.membership.tier === 'gold' ? 'GOLD' :
-                                   unifiedProfile.membership.tier === 'silver' ? 'SILVER' :
-                                   'MEMBER'}
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-1 sm:space-y-0 sm:space-x-4 text-sm text-gray-600">
-                              {unifiedProfile.location && (
-                                <span className="flex items-center">
-                                  <MapPin className="h-4 w-4 mr-1" />
-                                  {unifiedProfile.location}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                    
-                        {/* Bio Section */}
-                        {unifiedProfile.bio && (
-                          <div className="space-y-2">
-                            <h3 className="text-lg font-semibold text-gray-800">เกี่ยวกับฉัน</h3>
-                            <p className="text-gray-600 leading-relaxed">{unifiedProfile.bio}</p>
-                          </div>
-                        )}
-                        
-                        {/* Interests Section */}
-                        {unifiedProfile.interests && unifiedProfile.interests.length > 0 && (
-                          <div className="space-y-2">
-                            <h3 className="text-lg font-semibold text-gray-800">ความสนใจ</h3>
-                            <div className="flex flex-wrap gap-2">
-                              {formatInterests(unifiedProfile.interests).map((interest: string, index: number) => (
-                                <Badge key={index} variant="secondary" className="px-3 py-1 bg-white/80 text-gray-700 border-gray-300 shadow-sm">
-                                  {interest}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Images Section */}
-                        {unifiedProfile.profileImages && unifiedProfile.profileImages.length > 1 && !unifiedProfile.profileImages.every(img => img.startsWith('data:image/svg+xml')) && (
-                          <div className="space-y-2">
-                            <h3 className="text-lg font-semibold text-gray-800">รูปภาพ</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                              {unifiedProfile.profileImages.slice(1).filter(img => !img.startsWith('data:image/svg+xml')).map((image: string, index: number) => {
-                                // สร้าง image URL ที่ถูกต้อง
-                                let imageUrl = image
-                                if (!image.startsWith('http') && !image.startsWith('data:')) {
-                                  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-                                  imageUrl = `${baseUrl}/uploads/profiles/${image}`
-                                }
-                                
-                                return (
-                                <div key={`${unifiedProfile.id}-${index}`} className="aspect-square rounded-lg overflow-hidden shadow-lg">
-                                  <img 
-                                    src={imageUrl}
-                                    alt={`${unifiedProfile.nickname || unifiedProfile.firstName} ${index + 2}`}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      console.error('❌ Profile modal gallery image failed to load:', {
-                                        imageUrl: imageUrl,
-                                        originalImage: image,
-                                        profileId: unifiedProfile.id
-                                      });
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
-                                    onLoad={() => {
-                                      console.log('✅ Profile modal gallery image loaded successfully:', {
-                                        imageUrl: imageUrl,
-                                        originalImage: image,
-                                        profileId: unifiedProfile.id
-                                      });
-                                    }}
-                                  />
-                                </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Basic Information - Always show */}
-                        <div className="space-y-3">
-                          <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">ข้อมูลพื้นฐาน</h3>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                              <Calendar className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <span className="text-sm font-medium text-gray-700">อายุ</span>
-                                <p className="text-sm text-gray-600 mt-1">{unifiedProfile.age ? `${unifiedProfile.age} ปี` : 'ไม่ระบุ'}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                              <MapPin className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <span className="text-sm font-medium text-gray-700">ที่อยู่</span>
-                                <p className="text-sm text-gray-600 mt-1">{unifiedProfile.location || 'ไม่ระบุ'}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                              <div className={`h-5 w-5 rounded-full mt-0.5 flex-shrink-0 ${unifiedProfile.online ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-sm font-medium text-gray-700">สถานะ</span>
-                                <p className="text-sm text-gray-600 mt-1">{unifiedProfile.online ? 'ออนไลน์' : 'ออฟไลน์'}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                              <User className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <span className="text-sm font-medium text-gray-700">สมาชิก</span>
-                                <p className="text-sm text-gray-600 mt-1">{unifiedProfile.membership?.tier || 'Member'}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Additional Profile Information */}
-                        <div className="space-y-6">
-                          {/* Personal Information */}
-                          <div className="space-y-3">
-                            <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">ข้อมูลส่วนตัว</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <User className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">เพศ</span>
-                                  <p className="text-sm text-gray-600 mt-1">{translateGender(unifiedProfile.gender)}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <GraduationCap className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">การศึกษา</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.education) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Briefcase className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">อาชีพ</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.occupation) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Church className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ศาสนา</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.religion) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Languages className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ภาษา</span>
-                                  <p className="text-sm text-gray-600 mt-1">{unifiedProfile.languages ? (Array.isArray(unifiedProfile.languages) ? unifiedProfile.languages.join(', ') : safeDisplay(unifiedProfile.languages)) : 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Lifestyle Information */}
-                          <div className="space-y-3">
-                            <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">ไลฟ์สไตล์</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Cigarette className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">สูบบุหรี่</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.smoking) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Wine className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ดื่มแอลกอฮอล์</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.drinking) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Dumbbell className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ออกกำลังกาย</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.exercise) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Utensils className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">อาหาร</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.diet) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Additional Information */}
-                          <div className="space-y-3">
-                            <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-200 pb-2">ข้อมูลเพิ่มเติม</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Heart className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ความสัมพันธ์ที่ต้องการ</span>
-                                  <p className="text-sm text-gray-600 mt-1">{translateRelationship(safeDisplay(unifiedProfile.lookingFor))}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <PawPrint className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">สัตว์เลี้ยง</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.pets) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Building className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ที่อยู่อาศัย</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.livingSituation) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                <Baby className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <span className="text-sm font-medium text-gray-700">ต้องการมีลูก</span>
-                                  <p className="text-sm text-gray-600 mt-1">{safeDisplay(unifiedProfile.wantChildren) || 'ยังไม่ระบุ'}</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                      )})()}
-                    
-                    {/* No Data State */}
-                    {!(profileData || selectedProfile) && (
-                      <div className="text-center py-12">
-                        <User className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-600">ไม่สามารถโหลดข้อมูลโปรไฟล์ได้</p>
-                      </div>
-                    )}
-                    
-                    
-                  </div>
-                </div>
-              )}
           </DialogContent>
         </Dialog>
       )}
