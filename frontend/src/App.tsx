@@ -2784,56 +2784,7 @@ function App() {
     return () => window.removeEventListener('profile-avatar-updated', handler)
   }, [user])
 
-  // Handle Google OAuth callback
-  useEffect(() => {
-    const handleGoogleOAuthCallback = () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      const loginSuccess = urlParams.get('login_success');
-      
-      if (token && loginSuccess === 'true') {
-        console.log('🔍 Google OAuth callback detected, token:', token);
-        
-        // Store token and fetch user data
-        sessionStorage.setItem('token', token);
-        
-        // Fetch user data with the token
-        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            console.log('✅ Google OAuth login successful:', data.data.user);
-            login({
-              user: data.data.user,
-              token: token
-            });
-            setIsAuthenticated(true);
-            
-            // Clean up URL parameters
-            window.history.replaceState({}, document.title, window.location.pathname);
-          } else {
-            console.error('❌ Failed to fetch user data:', data.message);
-          }
-        })
-        .catch(error => {
-          console.error('❌ Error fetching user data:', error);
-        });
-      }
-      
-      // Handle OAuth error
-      const error = urlParams.get('error');
-      if (error === 'auth_failed') {
-        console.error('❌ Google OAuth failed');
-        // You can show an error message to the user here
-      }
-    };
-    
-    handleGoogleOAuthCallback();
-  }, []); // Empty dependency array means this runs once when component mounts
+  // Google OAuth callback handler moved to main.tsx
 
   // ฟัง event เมื่อมีการเปลี่ยนแปลงสถานะการกดไลค์
   useEffect(() => {
