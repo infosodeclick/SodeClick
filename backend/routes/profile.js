@@ -1231,6 +1231,12 @@ router.post('/:userId/upload-image', authenticateToken, (req, res, next) => {
     // เก็บ path/URL ลงใน database
     user.profileImages.push(imagePathToSave);
 
+    // ถ้าเป็นรูปภาพแรก ให้ตั้งเป็นรูปโปรไฟล์หลักอัตโนมัติ
+    if (user.profileImages.length === 1) {
+      user.mainProfileImageIndex = 0;
+      console.log('🎯 Auto-setting first image as main profile image');
+    }
+
     // จำกัดจำนวนรูปภาพตามระดับสมาชิก
     const limits = user.getMembershipLimits();
     const maxImages = limits.dailyImages === -1 ? 10 : Math.min(limits.dailyImages, 10);
@@ -1285,6 +1291,7 @@ router.post('/:userId/upload-image', authenticateToken, (req, res, next) => {
         imageUrl: imageUrl,
         imagePath: imagePathToSave,
         profileImages: user.profileImages,
+        mainProfileImageIndex: user.mainProfileImageIndex,
         cdn: CLOUDINARY_ENABLED,
         storage: CLOUDINARY_ENABLED ? 'cloudinary' : 'local'
       }

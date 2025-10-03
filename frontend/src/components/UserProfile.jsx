@@ -10,7 +10,7 @@ import { useToast } from './ui/toast';
 import { membershipHelpers } from '../services/membershipAPI';
 import { profileAPI } from '../services/profileAPI';
 import { useLazyData } from '../hooks/useLazyData';
-import { getProfileImageUrl, getMainProfileImage, getMainProfileImageWithFallback } from '../utils/profileImageUtils';
+import { getProfileImageUrl, getMainProfileImage } from '../utils/profileImageUtils';
 import { thaiProvinces } from '../utils/thaiProvinces';
 import {
   User,
@@ -162,35 +162,31 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
 
   // อัปเดต main profile image URL เมื่อข้อมูลโปรไฟล์เปลี่ยนแปลง
   useEffect(() => {
-    const updateMainProfileImage = async () => {
-      if (profile?.data?.profileImages && profile.data.profileImages.length > 0) {
-        try {
-          // ใช้ async version เพื่อให้แน่ใจว่าการสร้าง URL ทำงานได้อย่างถูกต้อง
-          const imageUrl = await getMainProfileImageWithFallback(
-            profile.data.profileImages,
-            profile.data.mainProfileImageIndex,
-            userId
-          );
+    if (profile?.data?.profileImages && profile.data.profileImages.length > 0) {
+      try {
+        // ใช้ synchronous version เพื่อหลีกเลี่ยง race condition
+        const imageUrl = getMainProfileImage(
+          profile.data.profileImages,
+          profile.data.mainProfileImageIndex,
+          userId
+        );
 
-          console.log('🖼️ Updated main profile image URL:', imageUrl);
-          console.log('🖼️ Profile images:', profile.data.profileImages);
-          console.log('🖼️ Main image index:', profile.data.mainProfileImageIndex);
-          setMainProfileImageUrl(imageUrl);
-        } catch (error) {
-          console.error('❌ Error getting main profile image URL:', error);
-          setMainProfileImageUrl('');
-        }
-      } else {
+        console.log('🖼️ Updated main profile image URL:', imageUrl);
+        console.log('🖼️ Profile images:', profile.data.profileImages);
+        console.log('🖼️ Main image index:', profile.data.mainProfileImageIndex);
+        setMainProfileImageUrl(imageUrl);
+      } catch (error) {
+        console.error('❌ Error getting main profile image URL:', error);
         setMainProfileImageUrl('');
       }
-    };
-
-    updateMainProfileImage();
+    } else {
+      setMainProfileImageUrl('');
+    }
   }, [profile?.data?.profileImages, profile?.data?.mainProfileImageIndex, userId]);
 
   // ฟัง event เมื่อมีการอัปเดตรูปโปรไฟล์หลัก
   useEffect(() => {
-    const handleProfileImageUpdated = async (event) => {
+    const handleProfileImageUpdated = (event) => {
       const { userId: eventUserId, profileImages, mainProfileImageIndex } = event.detail;
       
       // ตรวจสอบว่าเป็น user เดียวกันหรือไม่
@@ -202,18 +198,23 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         try {
           // อัปเดต mainProfileImageUrl ทันที
           if (profileImages && profileImages.length > 0) {
-            const imageUrl = await getMainProfileImageWithFallback(
-              profileImages,
-              mainProfileImageIndex || 0,
-              userId
-            );
-            console.log('🖼️ Updated main profile image URL from event:', imageUrl);
-            setMainProfileImageUrl(imageUrl);
+            const mainImageIndex = mainProfileImageIndex || 0;
+            const mainImage = profileImages[mainImageIndex];
+            const imagePath = typeof mainImage === 'string' ? mainImage : (mainImage?.url || '');
+            
+            if (imagePath && !imagePath.startsWith('data:image/svg+xml')) {
+              const imageUrl = getProfileImageUrl(imagePath, userId);
+              console.log('🖼️ Updated main profile image URL from event:', imageUrl);
+              setMainProfileImageUrl(imageUrl);
+            } else {
+              setMainProfileImageUrl('');
+            }
           } else {
             setMainProfileImageUrl('');
           }
         } catch (error) {
           console.error('❌ Error updating main profile image URL from event:', error);
+          setMainProfileImageUrl('');
         }
       }
     };
@@ -572,19 +573,24 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         // สร้าง profile object ใหม่ที่มี profileImages อัพเดท
         const updatedProfileData = {
           ...profileData,
-          profileImages: response.data.profileImages
+          profileImages: response.data.profileImages,
+          // อัปเดต mainProfileImageIndex จาก response (สำหรับรูปภาพแรก)
+          ...(response.data.mainProfileImageIndex !== undefined && {
+            mainProfileImageIndex: response.data.mainProfileImageIndex
+          })
         };
         
         // อัพเดทข้อมูลใน cache แบบถาวร (ไม่ต้อง invalidate)
         updateProfile({ data: { profile: updatedProfileData } });
         console.log('✅ Profile images updated permanently in real-time:', response.data.profileImages);
+        console.log('✅ Main profile image index:', response.data.mainProfileImageIndex);
         
         // ส่ง event เพื่ออัปเดตรูปโปรไฟล์ขนาดเล็กทันที
         const event = new CustomEvent('profileImageUpdated', { 
           detail: { 
             userId, 
             profileImages: response.data.profileImages,
-            mainProfileImageIndex: profileData?.mainProfileImageIndex || 0
+            mainProfileImageIndex: response.data.mainProfileImageIndex !== undefined ? response.data.mainProfileImageIndex : (profileData?.mainProfileImageIndex || 0)
           } 
         });
         window.dispatchEvent(event);
@@ -1351,6 +1357,11 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                   // ตรวจสอบว่ารูปหลักเบลอหรือไม่
                   const isMainImageBlurred = typeof mainImage === 'object' && mainImage.isBlurred;
 
+                  // สร้าง mainImagePath ก่อนที่จะใช้
+                  const mainImagePath = typeof profileData.profileImages[mainImageIndex] === 'string'
+                    ? profileData.profileImages[mainImageIndex]
+                    : profileData.profileImages[mainImageIndex]?.url || '';
+
                   console.log('🔍 Main profile image debug:', {
                     mainImageIndex,
                     mainImage,
@@ -1359,10 +1370,6 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                     mainImagePath,
                     shouldShow: mainProfileImageUrl && !mainImagePath.startsWith('data:image/svg+xml')
                   });
-
-                  const mainImagePath = typeof profileData.profileImages[mainImageIndex] === 'string'
-                    ? profileData.profileImages[mainImageIndex]
-                    : profileData.profileImages[mainImageIndex]?.url || '';
 
                   // ตรวจสอบว่ามี URL ที่ถูกต้องหรือไม่
                   if (!mainProfileImageUrl || mainProfileImageUrl === '' || mainProfileImageUrl.includes('undefined') || mainProfileImageUrl.includes('null')) {
