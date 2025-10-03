@@ -76,7 +76,7 @@ const corsOptions = {
   },
   credentials: true, // อนุญาตให้ส่ง cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma'],
 };
 
 // Middleware
@@ -123,7 +123,7 @@ app.use('/uploads', (req, res, next) => {
   // Set CORS headers for static files
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
   
   // Set cache headers
   res.header('Cache-Control', 'public, max-age=86400'); // 1 day
@@ -1189,9 +1189,9 @@ io.on('connection', (socket) => {
 
   // เข้าร่วมห้องแชท
   socket.on('join-room', async (data) => {
-    // Rate limiting สำหรับการ join room (ลด rate limit ลงเหลือ 500ms และเพิ่ม exception สำหรับ private chat)
+    // ลด rate limiting สำหรับการ join room เพื่อให้เร็วขึ้น
     const isPrivateChat = data.roomId && data.roomId.startsWith('private_');
-    const rateLimit = isPrivateChat ? 200 : 500; // Private chat ใช้ 200ms, ห้องปกติ 500ms
+    const rateLimit = isPrivateChat ? 100 : 200; // Private chat ใช้ 100ms, ห้องปกติ 200ms
     
     if (!checkSocketRateLimit(socket.id, 'join-room', rateLimit)) {
       console.warn(`⚠️ Rate limit exceeded for socket ${socket.id}, room: ${data.roomId}`);
@@ -1427,10 +1427,15 @@ io.on('connection', (socket) => {
   // ส่งข้อความ
   socket.on('send-message', async (data) => {
     try {
-      // Rate limiting สำหรับการส่งข้อความ (เพิ่มเป็น 100ms เพื่อให้ส่งเร็วขึ้นมาก)
-      if (!checkSocketRateLimit(socket.id, 'send-message', 100)) {
-        // ไม่ส่ง error เพื่อไม่ให้รบกวน UX แต่แค่ skip การส่ง
-        console.log(`⏱️ Rate limit: send-message from ${socket.id} (${Date.now()})`);
+      // ลด rate limiting เป็น 50ms เพื่อให้ส่งเร็วขึ้น และไม่ skip การส่ง
+      if (!checkSocketRateLimit(socket.id, 'send-message', 50)) {
+        console.log(`⏱️ Rate limit: send-message from ${socket.id} - queuing message`);
+        // แทนที่จะ skip ให้ส่ง error กลับไปให้ frontend จัดการ
+        socket.emit('message-rate-limited', {
+          message: 'ส่งข้อความเร็วเกินไป กรุณารอสักครู่',
+          tempId: data.tempId,
+          retryAfter: 50
+        });
         return;
       }
 
@@ -1524,7 +1529,8 @@ io.on('connection', (socket) => {
         console.log('✅ [server.js] Private message broadcasted immediately to', roomSize, 'client(s)');
         
         // ทำ unread count และ notification แบบ async (ไม่บล็อก broadcast)
-        setImmediate(async () => {
+        // ใช้ setTimeout แทน setImmediate เพื่อให้ broadcast เสร็จก่อน
+        setTimeout(async () => {
           try {
             // ตรวจสอบว่ามีข้อความใน private chat นี้อยู่แล้วหรือไม่
             const existingMessages = await Message.find({
@@ -1653,7 +1659,7 @@ io.on('connection', (socket) => {
           } catch (err) {
             console.error('❌ Error in async private chat notification:', err);
           }
-        });
+        }, 10); // รอ 10ms หลังจาก broadcast เสร็จ
         
         return;
       }
@@ -1740,7 +1746,8 @@ io.on('connection', (socket) => {
       console.log('✅ [server.js] Room message broadcasted immediately to', roomSize, 'client(s)');
       
       // ส่ง notification และ unread count แบบ async (ไม่บล็อก)
-      setImmediate(async () => {
+      // ใช้ setTimeout แทน setImmediate เพื่อให้ broadcast เสร็จก่อน
+      setTimeout(async () => {
         try {
           // ส่ง notification ไปยังเจ้าของข้อความเดิมเมื่อมีคนตอบกลับ (ป้องกันการแจ้งเตือนซ้ำ)
           if (replyToId) {
@@ -1794,7 +1801,7 @@ io.on('connection', (socket) => {
         } catch (err) {
           console.error('❌ Error in async notification/unread count:', err);
         }
-      });
+      }, 10); // รอ 10ms หลังจาก broadcast เสร็จ
       
     } catch (error) {
       console.error('❌ Error sending message:', error);
@@ -1803,10 +1810,22 @@ io.on('connection', (socket) => {
         stack: error.stack,
         data: data
       });
-      socket.emit('error', { 
-        message: 'Failed to send message',
+      // ส่ง error ที่มีประโยชน์กลับไปยัง client
+      let errorMessage = 'ไม่สามารถส่งข้อความได้';
+      if (error.message.includes('validation')) {
+        errorMessage = 'ข้อความไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+      } else if (error.message.includes('permission')) {
+        errorMessage = 'คุณไม่มีสิทธิ์ส่งข้อความในห้องนี้';
+      } else if (error.message.includes('database')) {
+        errorMessage = 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่';
+      }
+      
+      socket.emit('message-send-failed', { 
+        message: errorMessage,
         details: error.message,
-        type: 'send-message-error'
+        type: 'send-message-error',
+        tempId: data.tempId,
+        retryable: true
       });
     }
   });
@@ -1884,8 +1903,8 @@ io.on('connection', (socket) => {
   // จัดการสเตตัสข้อความ - ทำเครื่องหมายว่าอ่านแล้ว
   socket.on('mark-message-read', async (data) => {
     try {
-      // Rate limiting สำหรับการทำเครื่องหมายอ่าน (100ms ต่อครั้ง) - ลดลงเพื่อให้เร็วขึ้น
-      if (!checkSocketRateLimit(socket.id, 'mark-message-read', 100)) {
+      // ลด rate limiting สำหรับการทำเครื่องหมายอ่าน (50ms ต่อครั้ง) - ลดลงเพื่อให้เร็วขึ้น
+      if (!checkSocketRateLimit(socket.id, 'mark-message-read', 50)) {
         return; // ไม่แสดง error เพื่อไม่ให้รบกวน UX
       }
 

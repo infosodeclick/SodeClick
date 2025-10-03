@@ -98,7 +98,7 @@ const fixBrokenUrl = (url: string): string => {
 
 // Utility function to generate correct profile image URL
 export const getProfileImageUrl = (imagePath: string, userId?: string, baseUrl?: string): string => {
-  if (!imagePath || typeof imagePath !== 'string') {
+  if (!imagePath || typeof imagePath !== 'string' || imagePath === 'undefined' || imagePath === 'null') {
     console.warn('🚨 Invalid image path provided:', imagePath);
     return '';
   }

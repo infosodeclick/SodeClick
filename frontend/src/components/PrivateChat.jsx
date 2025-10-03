@@ -41,6 +41,54 @@ const PrivateChat = ({
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // ฟังก์ชันสำหรับการ react ต่อข้อความ
+  const handleReactToMessage = async (messageId, reactionType = 'heart') => {
+    try {
+      console.log('💖 Reacting to message:', messageId, 'with type:', reactionType);
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${messageId}/react`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            userId: currentUser._id,
+            reactionType: reactionType
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Reaction successful:', data);
+        
+        // อัปเดตข้อความใน local state ถ้าจำเป็น
+        // หรือให้ parent component จัดการ
+      } else {
+        console.error('❌ Failed to react to message:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error reacting to message:', error);
+    }
+  };
+
+  // ฟังก์ชันตรวจสอบว่าผู้ใช้เคยกด like แล้วหรือไม่
+  const hasUserLiked = (message) => {
+    if (!message.reactions || !currentUser._id) return false;
+    return message.reactions.some(
+      reaction => (reaction.user === currentUser._id || reaction.user._id === currentUser._id) && reaction.type === 'heart'
+    );
+  };
+
+  // ฟังก์ชันนับจำนวน likes
+  const getLikeCount = (message) => {
+    if (!message.reactions) return 0;
+    return message.reactions.filter(reaction => reaction.type === 'heart').length;
+  };
+
   // Lock scroll when image modal is open
   useEffect(() => {
     if (imageModal.show) {
@@ -54,7 +102,7 @@ const PrivateChat = ({
       document.body.style.position = '';
       document.body.style.width = '';
     }
-
+    
     // Cleanup on unmount
     return () => {
       document.body.style.overflow = '';
@@ -62,6 +110,54 @@ const PrivateChat = ({
       document.body.style.width = '';
     };
   }, [imageModal.show]);
+
+  // Socket.IO listener สำหรับการอัปเดต reactions
+  useEffect(() => {
+    const handleReactionUpdate = (data) => {
+      console.log('💖 PrivateChat - Reaction update received:', data);
+      
+      // อัปเดตข้อความที่เกี่ยวข้อง
+      // ให้ parent component จัดการการอัปเดต messages
+      if (onSendMessage && typeof onSendMessage === 'function') {
+        // ส่ง event กลับไปให้ parent component เพื่ออัปเดต messages
+        onSendMessage('reaction-updated', data);
+      }
+    };
+
+    // ตั้งค่า Socket.IO listener
+    const setupSocketListener = () => {
+      if (window.socketManager && window.socketManager.socket && window.socketManager.socket.connected) {
+        console.log('🔌 PrivateChat - Setting up reaction listener');
+        window.socketManager.socket.on('message-reaction-updated', handleReactionUpdate);
+        return true;
+      } else {
+        console.log('⚠️ PrivateChat - Socket not ready, will retry...');
+        return false;
+      }
+    };
+
+    // ลองตั้งค่า listener
+    if (!setupSocketListener()) {
+      // ถ้ายังไม่ได้ ลองใหม่ใน 1 วินาที
+      const retryTimeout = setTimeout(() => {
+        setupSocketListener();
+      }, 1000);
+
+      return () => {
+        clearTimeout(retryTimeout);
+        if (window.socketManager && window.socketManager.socket) {
+          window.socketManager.socket.off('message-reaction-updated', handleReactionUpdate);
+        }
+      };
+    }
+
+    // Cleanup
+    return () => {
+      if (window.socketManager && window.socketManager.socket) {
+        window.socketManager.socket.off('message-reaction-updated', handleReactionUpdate);
+      }
+    };
+  }, [onSendMessage]);
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
@@ -172,6 +268,20 @@ const PrivateChat = ({
       // ฟังข้อผิดพลาดจาก socket
       socket.on('error', (error) => {
         console.warn('⚠️ PrivateChat Socket error:', error);
+      });
+
+      // จัดการ rate limiting สำหรับการส่งข้อความ
+      socket.on('message-rate-limited', (data) => {
+        console.warn('⚠️ PrivateChat Message rate limited:', data);
+        // แสดงข้อความเตือนให้ผู้ใช้
+        if (onSendMessage && typeof onSendMessage === 'function') {
+          // ส่ง notification กลับไปให้ parent component
+          onSendMessage('notification', {
+            type: 'warning',
+            title: 'ส่งข้อความเร็วเกินไป',
+            message: data.message || 'กรุณารอสักครู่แล้วลองใหม่'
+          });
+        }
       });
 
       hasSetupListeners = true;
@@ -598,10 +708,22 @@ const PrivateChat = ({
                         <Reply className="h-3 w-3 text-gray-600" />
                       </button>
                       <button
-                        className="p-1 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors"
-                        title="ไลค์"
+                        onClick={() => handleReactToMessage(message._id, 'heart')}
+                        className={`p-1 rounded-full shadow-md transition-colors ${
+                          hasUserLiked(message) 
+                            ? 'bg-red-50 hover:bg-red-100' 
+                            : 'bg-white hover:bg-gray-50'
+                        }`}
+                        title={hasUserLiked(message) ? 'กดเพื่อยกเลิกหัวใจ' : 'กดไลค์'}
                       >
-                        <Heart className="h-3 w-3 text-gray-600" />
+                        <Heart className={`h-3 w-3 ${
+                          hasUserLiked(message) 
+                            ? 'fill-current text-red-600' 
+                            : 'text-gray-600'
+                        }`} />
+                        {getLikeCount(message) > 0 && (
+                          <span className="ml-1 text-xs text-gray-600">({getLikeCount(message)})</span>
+                        )}
                       </button>
                     </div>
                   </div>

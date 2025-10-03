@@ -243,10 +243,38 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           if (showWebappNotification) {
             showWebappNotification('กรุณารอสักครู่ก่อนเข้าร่วมห้องใหม่');
           }
-        } else if (error.message === 'คุณได้กดหัวใจข้อความนี้แล้ว') {
-          if (showWebappNotification) {
-            showWebappNotification('คุณได้กดหัวใจข้อความนี้แล้ว');
-          }
+        }
+      });
+
+      // จัดการ rate limiting สำหรับการส่งข้อความ
+      socket.on('message-rate-limited', (data) => {
+        console.warn('⚠️ Message rate limited:', data);
+        // แสดงข้อความเตือนให้ผู้ใช้
+        if (showWebappNotification) {
+          showWebappNotification({
+            type: 'warning',
+            title: 'ส่งข้อความเร็วเกินไป',
+            message: data.message || 'กรุณารอสักครู่แล้วลองใหม่'
+          });
+        }
+      });
+
+      // จัดการการส่งข้อความล้มเหลว
+      socket.on('message-send-failed', (data) => {
+        console.error('❌ Message send failed:', data);
+        // แสดงข้อความเตือนให้ผู้ใช้
+        if (showWebappNotification) {
+          showWebappNotification({
+            type: 'error',
+            title: 'ส่งข้อความไม่สำเร็จ',
+            message: data.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่'
+          });
+        }
+        
+        // ถ้าสามารถ retry ได้ ให้แสดงปุ่มลองใหม่
+        if (data.retryable) {
+          console.log('🔄 Message can be retried:', data.tempId);
+          // TODO: เพิ่มระบบ retry สำหรับข้อความที่ส่งล้มเหลว
         }
       });
 
@@ -507,9 +535,18 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         const response = await fetch(
           `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${roomId}?userId=${currentUser._id}`,
           {
-            credentials: 'include'
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            }
           }
         );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
         
         if (data.success) {
@@ -527,9 +564,14 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
               hasScrolledToBottomRef.current = true;
             }, 1000); // เพิ่มเวลารอให้ DOM render เสร็จ
           }
+        } else {
+          console.error('❌ API returned error:', data.message || 'Unknown error');
         }
       } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error('❌ Error fetching messages:', error);
+        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+          console.error('❌ Network error - check if backend is running and CORS is configured correctly');
+        }
       }
     };
 
@@ -1365,7 +1407,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 {message.sender ? (
                   <>
                     <AvatarImage 
-                      src={getProfileImageUrl(message.sender.profileImages?.[0], message.sender._id)} 
+                      src={message.sender.profileImages?.[0] ? getProfileImageUrl(message.sender.profileImages[0], message.sender._id) : ''} 
                       alt={message.sender.displayName || message.sender.username} 
                     />
                     <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white text-xs">
