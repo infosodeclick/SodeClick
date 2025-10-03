@@ -13,7 +13,7 @@ const { getSocketInstance } = require('../socket'); // เพิ่ม Socket.IO
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadPath = path.join(__dirname, '../uploads/messages');
+    const uploadPath = path.join(__dirname, '../uploads/chat-files');
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
@@ -40,6 +40,60 @@ const upload = multer({
     } else {
       cb(new Error('Invalid file type'));
     }
+  }
+});
+
+// POST /api/messages/upload - อัปโหลดรูปภาพสำหรับแชท
+router.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const { senderId, chatRoomId } = req.body;
+    
+    if (!senderId || !chatRoomId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+
+    // สร้าง URL สำหรับไฟล์
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
+      : `${req.protocol}://${req.get('host')}`;
+    const fileUrl = `${baseUrl}/uploads/chat-files/${req.file.filename}`;
+
+    console.log('📤 Image uploaded successfully:', {
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      url: fileUrl
+    });
+
+    res.json({
+      success: true,
+      message: 'File uploaded successfully',
+      data: {
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        url: fileUrl,
+        path: `/uploads/chat-files/${req.file.filename}`
+      }
+    });
+
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload file',
+      error: error.message
+    });
   }
 });
 
@@ -284,10 +338,11 @@ router.post('/', upload.array('attachments', 5), async (req, res) => {
 });
 
 // POST /api/messages/:messageId/react - เพิ่ม/ลบ reaction
-router.post('/:messageId/react', async (req, res) => {
+router.post('/:messageId/react', auth, async (req, res) => {
   try {
     const { messageId } = req.params;
-    const { userId, reactionType = 'heart' } = req.body;
+    const { reactionType = 'heart' } = req.body;
+    const userId = req.user._id; // ใช้ userId จาก authentication
 
     if (!userId) {
       return res.status(400).json({
@@ -305,12 +360,30 @@ router.post('/:messageId/react', async (req, res) => {
     }
 
     // ตรวจสอบว่าผู้ใช้เป็นสมาชิกของห้องแชทหรือไม่
-    const chatRoom = await ChatRoom.findById(message.chatRoom);
-    if (!chatRoom.isMember(userId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not a member of this chat room'
-      });
+    // สำหรับ private chat ที่ไม่ใช่ ChatRoom
+    if (message.chatRoom.startsWith('private_')) {
+      console.log('🔒 Processing reaction for private chat:', message.chatRoom);
+      // ตรวจสอบว่า userId อยู่ใน private chat ID หรือไม่
+      const chatParts = message.chatRoom.split('_');
+      if (chatParts.length >= 3) {
+        const userId1 = chatParts[1];
+        const userId2 = chatParts[2];
+        if (userId !== userId1 && userId !== userId2) {
+          return res.status(403).json({
+            success: false,
+            message: 'You are not authorized to react to this message'
+          });
+        }
+      }
+    } else {
+      // สำหรับ ChatRoom ปกติ
+      const chatRoom = await ChatRoom.findById(message.chatRoom);
+      if (!chatRoom || !chatRoom.isMember(userId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not a member of this chat room'
+        });
+      }
     }
 
     // เพิ่ม/ลบ reaction

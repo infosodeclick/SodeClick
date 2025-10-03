@@ -78,10 +78,58 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
   const messageInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
+  // ฟังก์ชันปรับขนาด textarea อัตโนมัติ
+  const autoResizeTextarea = (textarea) => {
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    }
+  };
+
+  // ฟังก์ชันจัดการการวางรูปภาพ
+  const handlePaste = async (e) => {
+    const items = e.clipboardData.items;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        
+        const file = item.getAsFile();
+        if (file) {
+          console.log('📋 Image pasted from clipboard:', file.name || 'clipboard-image');
+          
+          // ตรวจสอบขนาดไฟล์ (จำกัด 5MB)
+          if (file.size > 5 * 1024 * 1024) {
+            alert('รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB');
+            return;
+          }
+          
+          // ตรวจสอบประเภทไฟล์
+          if (!file.type.startsWith('image/')) {
+            alert('กรุณาวางเฉพาะรูปภาพเท่านั้น');
+            return;
+          }
+          
+          // อัปโหลดรูปภาพ
+          await handleImageUpload(file);
+        }
+      }
+    }
+  };
+
   // อัปเดตจำนวน active chatters เมื่อ activeChatters เปลี่ยน
   useEffect(() => {
     setActiveChattersCount(activeChatters.size);
   }, [activeChatters]);
+
+  // ปรับขนาด textarea เมื่อ newMessage เปลี่ยน
+  useEffect(() => {
+    if (messageInputRef.current) {
+      autoResizeTextarea(messageInputRef.current);
+    }
+  }, [newMessage]);
 
   // อัปเดต active chatters จากข้อความที่มีอยู่
   useEffect(() => {
@@ -1054,7 +1102,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/chatroom/upload`,
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/upload`,
         {
           method: 'POST',
           credentials: 'include',
@@ -1263,16 +1311,37 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       // ตรวจสอบและแก้ไข URL ถ้าจำเป็น
       let finalImageUrl = imageUrl;
       if (imageUrl && typeof imageUrl === 'string') {
+        console.log('🖼️ Processing image URL:', imageUrl);
+        
         // ถ้า URL เริ่มต้นด้วย /uploads/chat-files/ ให้เพิ่ม base URL
         if (imageUrl.startsWith('/uploads/chat-files/')) {
           const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-          finalImageUrl = `${baseUrl}${imageUrl}`;
+          // ตรวจสอบว่า baseUrl มี trailing slash หรือไม่
+          const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          finalImageUrl = `${cleanBaseUrl}${imageUrl}`;
         }
-        // ถ้า URL ไม่มี protocol ให้เพิ่ม base URL
-        else if (!imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+        // ถ้า URL เป็น full URL แล้ว (มี protocol)
+        else if (imageUrl.startsWith('http')) {
+          finalImageUrl = imageUrl;
+        }
+        // ถ้า URL เป็น data URL (base64)
+        else if (imageUrl.startsWith('data:')) {
+          finalImageUrl = imageUrl;
+        }
+        // ถ้า URL ไม่มี protocol และไม่ใช่ path ที่เริ่มต้นด้วย /
+        else if (!imageUrl.startsWith('/')) {
           const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-          finalImageUrl = `${baseUrl}/uploads/chat-files/${imageUrl}`;
+          const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          finalImageUrl = `${cleanBaseUrl}/uploads/chat-files/${imageUrl}`;
         }
+        // ถ้า URL เป็น path ที่เริ่มต้นด้วย / แต่ไม่ใช่ /uploads/chat-files/
+        else {
+          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+          const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+          finalImageUrl = `${cleanBaseUrl}${imageUrl}`;
+        }
+        
+        console.log('🖼️ Final image URL:', finalImageUrl);
       }
       
       return (
@@ -1289,16 +1358,49 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
               });
             }}
             onError={(e) => {
-              console.warn('⚠️ Image failed to load, using fallback:', {
+              console.error('❌ Image failed to load:', {
                 originalUrl: imageUrl,
-                finalUrl: finalImageUrl
+                finalUrl: finalImageUrl,
+                error: e
               });
+              
+              // ซ่อนรูปภาพที่โหลดไม่สำเร็จ
               e.target.style.display = 'none';
+              
+              // ลบ fallback ที่มีอยู่แล้ว (ถ้ามี)
+              const existingFallback = e.target.parentNode.querySelector('.image-fallback');
+              if (existingFallback) {
+                existingFallback.remove();
+              }
+              
               // แสดง fallback content
               const fallbackDiv = document.createElement('div');
-              fallbackDiv.className = 'w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500 text-sm';
-              fallbackDiv.textContent = 'รูปภาพไม่สามารถโหลดได้';
+              fallbackDiv.className = 'image-fallback w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-500 text-sm rounded-lg border-2 border-dashed border-gray-300';
+              fallbackDiv.innerHTML = `
+                <div class="text-center">
+                  <div class="text-2xl mb-2">📷</div>
+                  <div>รูปภาพไม่สามารถโหลดได้</div>
+                  <div class="text-xs mt-1 opacity-75">ลองรีเฟรชหน้าดูครับ</div>
+                </div>
+              `;
               e.target.parentNode.appendChild(fallbackDiv);
+              
+              // ลองโหลดรูปภาพใหม่ด้วย URL ที่แตกต่าง (ถ้าเป็นไปได้)
+              if (imageUrl && !finalImageUrl.includes('cloudinary.com')) {
+                // ถ้าเป็นรูปภาพ local ลองใช้ URL ที่แตกต่าง
+                const alternativeUrl = imageUrl.startsWith('/') ? imageUrl : `/uploads/chat-files/${imageUrl}`;
+                if (alternativeUrl !== finalImageUrl) {
+                  console.log('🔄 Trying alternative URL:', alternativeUrl);
+                  setTimeout(() => {
+                    e.target.src = alternativeUrl;
+                    e.target.style.display = 'block';
+                    const fallback = e.target.parentNode.querySelector('.image-fallback');
+                    if (fallback) {
+                      fallback.remove();
+                    }
+                  }, 1000);
+                }
+              }
             }}
             onLoad={() => {
               console.log('✅ Chat image loaded successfully:', finalImageUrl);
@@ -1678,23 +1780,39 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             </Button>
         
             <div className="flex-1 relative">
-              <input
+              <textarea
                 ref={messageInputRef}
-                type="text"
                 value={newMessage}
                 onChange={(e) => {
                   setNewMessage(e.target.value);
                   handleTyping();
+                  autoResizeTextarea(e.target);
                 }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (e.shiftKey) {
+                      // Shift+Enter = เพิ่มบรรทัดใหม่ (ไม่ทำอะไร เพราะ textarea รองรับอยู่แล้ว)
+                      return;
+                    } else {
+                      // Enter ธรรมดา = ส่งข้อความ
+                      e.preventDefault();
+                      if (newMessage.trim()) {
+                        handleSendMessage();
+                      }
+                    }
                   }
                 }}
-                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ...'}
-                className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base sm:text-base"
+                onPaste={(e) => handlePaste(e)}
+                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ... (Shift+Enter สำหรับบรรทัดใหม่)'}
+                className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base sm:text-base resize-none min-h-[40px] max-h-[120px]"
                 disabled={!isConnected}
+                rows={1}
+                style={{ 
+                  resize: 'none',
+                  overflow: 'hidden',
+                  minHeight: '40px',
+                  maxHeight: '120px'
+                }}
               />
 
               {/* Emoji Picker */}

@@ -41,10 +41,93 @@ const PrivateChat = ({
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // ฟังก์ชันจัดการการกดปุ่ม
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Shift+Enter = เพิ่มบรรทัดใหม่
+        e.preventDefault();
+        const cursorPosition = e.target.selectionStart;
+        const newValue = newMessage.slice(0, cursorPosition) + '\n' + newMessage.slice(cursorPosition);
+        setNewMessage(newValue);
+        
+        // ตั้งค่า cursor position หลังบรรทัดใหม่
+        setTimeout(() => {
+          e.target.selectionStart = e.target.selectionEnd = cursorPosition + 1;
+          // ปรับขนาด textarea ให้พอดีกับเนื้อหา
+          autoResizeTextarea(e.target);
+        }, 0);
+      } else {
+        // Enter ธรรมดา = ส่งข้อความ
+        e.preventDefault();
+        if (newMessage.trim()) {
+          handleSendMessage(e);
+        }
+      }
+    }
+  };
+
+  // ฟังก์ชันปรับขนาด textarea อัตโนมัติ
+  const autoResizeTextarea = (textarea) => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  };
+
+  // ฟังก์ชันจัดการการวางรูปภาพ
+  const handlePaste = async (e) => {
+    const items = e.clipboardData.items;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        
+        const file = item.getAsFile();
+        if (file) {
+          console.log('📋 Image pasted from clipboard:', file.name || 'clipboard-image');
+          
+          // ตรวจสอบขนาดไฟล์ (จำกัด 5MB)
+          if (file.size > 5 * 1024 * 1024) {
+            alert('รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB');
+            return;
+          }
+          
+          // ตรวจสอบประเภทไฟล์
+          if (!file.type.startsWith('image/')) {
+            alert('กรุณาวางเฉพาะรูปภาพเท่านั้น');
+            return;
+          }
+          
+          // แสดง preview รูปภาพ
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            setSelectedImage({
+              file: file,
+              preview: event.target.result,
+              name: file.name || 'clipboard-image.png'
+            });
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    }
+  };
+
   // ฟังก์ชันสำหรับการ react ต่อข้อความ
   const handleReactToMessage = async (messageId, reactionType = 'heart') => {
     try {
       console.log('💖 Reacting to message:', messageId, 'with type:', reactionType);
+      console.log('💖 Current user:', currentUser);
+      
+      // ตรวจสอบว่า currentUser และ _id มีอยู่
+      if (!currentUser || (!currentUser._id && !currentUser.id)) {
+        console.error('❌ No current user or user ID available');
+        return;
+      }
+      
+      const userId = currentUser._id || currentUser.id;
+      console.log('💖 Using user ID:', userId);
       
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${messageId}/react`,
@@ -55,7 +138,6 @@ const PrivateChat = ({
           },
           credentials: 'include',
           body: JSON.stringify({
-            userId: currentUser._id,
             reactionType: reactionType
           })
         }
@@ -68,18 +150,40 @@ const PrivateChat = ({
         // อัปเดตข้อความใน local state ถ้าจำเป็น
         // หรือให้ parent component จัดการ
       } else {
-        console.error('❌ Failed to react to message:', response.status);
+        const errorData = await response.json();
+        console.error('❌ Failed to react to message:', response.status, errorData);
+        
+        // แสดง error message ให้ผู้ใช้
+        if (onSendMessage && typeof onSendMessage === 'function') {
+          onSendMessage('notification', {
+            type: 'error',
+            title: 'ไม่สามารถกดหัวใจได้',
+            message: errorData.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่'
+          });
+        }
       }
     } catch (error) {
       console.error('❌ Error reacting to message:', error);
+      
+      // แสดง error message ให้ผู้ใช้
+      if (onSendMessage && typeof onSendMessage === 'function') {
+        onSendMessage('notification', {
+          type: 'error',
+          title: 'ไม่สามารถกดหัวใจได้',
+          message: 'เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่'
+        });
+      }
     }
   };
 
   // ฟังก์ชันตรวจสอบว่าผู้ใช้เคยกด like แล้วหรือไม่
   const hasUserLiked = (message) => {
-    if (!message.reactions || !currentUser._id) return false;
+    if (!message.reactions || !currentUser) return false;
+    const userId = currentUser._id || currentUser.id;
+    if (!userId) return false;
+    
     return message.reactions.some(
-      reaction => (reaction.user === currentUser._id || reaction.user._id === currentUser._id) && reaction.type === 'heart'
+      reaction => (reaction.user === userId || reaction.user._id === userId) && reaction.type === 'heart'
     );
   };
 
@@ -361,6 +465,14 @@ const PrivateChat = ({
       }
     };
   }, [newMessage, onTyping, onStopTyping]);
+
+  // ปรับขนาด textarea เมื่อ newMessage เปลี่ยน
+  useEffect(() => {
+    const textarea = document.querySelector('textarea[placeholder*="พิมพ์ข้อความ"]');
+    if (textarea) {
+      autoResizeTextarea(textarea);
+    }
+  }, [newMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -836,10 +948,22 @@ const PrivateChat = ({
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="พิมพ์ข้อความ..."
-              className="pr-12 resize-none"
-              rows={1}
-            />
+              onKeyDown={(e) => handleKeyDown(e)}
+              onPaste={(e) => handlePaste(e)}
+              placeholder="พิมพ์ข้อความ... (Shift+Enter สำหรับบรรทัดใหม่)"
+              className="pr-12 resize-none min-h-[40px] max-h-[120px]"
+              asChild
+            >
+              <textarea
+                rows={1}
+                style={{ 
+                  resize: 'none',
+                  overflow: 'hidden',
+                  minHeight: '40px',
+                  maxHeight: '120px'
+                }}
+              />
+            </Input>
             
             {/* Emoji Picker */}
             {showEmojiPicker && (
