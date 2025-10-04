@@ -92,7 +92,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
     error: profileError,
     refetch: refetchProfile,
     updateData: updateProfile,
-    invalidateCache: invalidateProfileCache
+    invalidateCache: invalidateProfileCache,
+    isRetrying: profileRetrying
   } = useLazyData(
     useCallback(async () => {
       // ป้องกันการเรียกซ้ำเมื่อกำลังโหลดอยู่แล้ว
@@ -149,15 +150,9 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         }
         lastErrorRef.current = currentError;
 
-        if (err.message.includes('403')) {
-          showError('ไม่มีสิทธิ์เข้าถึงโปรไฟล์นี้');
-        } else if (err.message.includes('404')) {
-          showError('ไม่พบโปรไฟล์ผู้ใช้');
-        } else if (err.message.includes('401')) {
-          showError('กรุณาเข้าสู่ระบบใหม่');
-        } else {
-          showError('ไม่สามารถดึงข้อมูลโปรไฟล์ได้');
-        }
+        // ไม่แสดง error toast notification ทันที ให้รอ retry เสร็จก่อน
+        // จะแสดง error เฉพาะเมื่อ retry หมดแล้วและยังไม่สำเร็จ
+        console.log('⚠️ Profile loading error, will retry automatically');
       }
     }
   );
@@ -1255,45 +1250,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
       .join(', ');
   };
 
-  if (profileLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
-        <span className="ml-3 text-gray-600">กำลังโหลดโปรไฟล์...</span>
-      </div>
-    );
-  }
-
-  if (profileError) {
-    return (
-      <div className="text-center py-12">
-        <div className="text-red-500 mb-2">
-          <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-          <p className="text-lg font-semibold">เกิดข้อผิดพลาด</p>
-        </div>
-        <p className="text-gray-500 mb-4">{profileError.message || 'ไม่สามารถโหลดข้อมูลโปรไฟล์ได้'}</p>
-        <div className="space-x-2">
-          <Button 
-            onClick={() => refetchProfile()} 
-            variant="outline"
-            className="text-sm"
-          >
-            ลองใหม่
-          </Button>
-          <Button 
-            onClick={() => window.location.reload()} 
-            variant="outline"
-            className="text-sm"
-          >
-            รีเฟรชหน้า
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   // แสดง loading state เมื่อกำลังโหลดหรือยังไม่มีข้อมูล
-  if (profileLoading || (!profile && !profileError)) {
+  if (profileLoading || profileRetrying || (!profile && !profileError)) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
@@ -1302,8 +1260,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
     );
   }
   
-  // แสดง error state เมื่อมี error
-  if (profileError) {
+  // แสดง error state เมื่อมี error และไม่ใช่ loading state
+  if (profileError && !profileLoading && !profileRetrying) {
     return (
       <div className="text-center py-12">
         <div className="text-gray-400 mb-2">

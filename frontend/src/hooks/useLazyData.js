@@ -23,6 +23,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true); // เริ่มต้นเป็น true เพื่อแสดง loading
   const [error, setError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false); // เพิ่ม state สำหรับติดตาม retry
   const [lastFetchTime, setLastFetchTime] = useState(null);
   
   const retryCountRef = useRef(0);
@@ -97,6 +98,8 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
         }
         
         setData(result);
+        setError(null);
+        setIsRetrying(false);
         setLastFetchTime(Date.now());
         setCachedData(key, result);
         retryCountRef.current = 0;
@@ -111,6 +114,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
         // Retry logic สำหรับกรณีที่ไม่มีข้อมูล
         if (retryCountRef.current < retryCount) {
           retryCountRef.current++;
+          setIsRetrying(true);
           const delay = Math.min(retryDelay * Math.pow(1.2, retryCountRef.current - 1), 1500);
           console.log(`🔄 Retrying profile fetch (${retryCountRef.current}/${retryCount}) in ${delay}ms`);
           setTimeout(() => {
@@ -120,6 +124,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
         } else {
           // ถ้า retry หมดแล้ว ให้แสดง error
           console.log('❌ Profile fetch failed after all retries');
+          setIsRetrying(false);
           setError(new Error('ไม่พบข้อมูล'));
         }
       }
@@ -129,6 +134,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
       // Retry logic - ปรับปรุงให้เร็วขึ้น
       if (retryCountRef.current < retryCount) {
         retryCountRef.current++;
+        setIsRetrying(true);
         // ใช้ exponential backoff แต่เริ่มต้นเร็วกว่าเดิม
         const delay = Math.min(retryDelay * Math.pow(1.2, retryCountRef.current - 1), 1500);
         console.log(`🔄 Retrying profile fetch after error (${retryCountRef.current}/${retryCount}) in ${delay}ms`);
@@ -139,6 +145,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
       }
       
       // ตั้งค่า error เฉพาะเมื่อ retry หมดแล้ว
+      setIsRetrying(false);
       setError(err);
       if (onError) {
         onError(err);
@@ -196,6 +203,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
     data,
     loading,
     error,
+    isRetrying,
     refetch,
     invalidateCache,
     updateData,
