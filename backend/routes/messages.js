@@ -64,7 +64,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     // สร้าง URL สำหรับไฟล์
     const baseUrl = process.env.NODE_ENV === 'production' 
-      ? process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
+      ? (process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
       : `${req.protocol}://${req.get('host')}`;
     const fileUrl = `${baseUrl}/uploads/chat-files/${req.file.filename}`;
 
@@ -83,6 +83,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         originalName: req.file.originalname,
         size: req.file.size,
         url: fileUrl,
+        fileUrl: fileUrl, // เพิ่ม fileUrl เพื่อให้ frontend ใช้ได้
         path: `/uploads/chat-files/${req.file.filename}`
       }
     });
@@ -112,6 +113,19 @@ router.get('/:roomId', async (req, res) => {
         .populate('replyTo', 'content sender')
         .sort({ createdAt: -1 }) // ใหม่ -> เก่า
         .limit(parseInt(limit));
+        
+      console.log('🔍 [messages.js] Private messages loaded:', messages.length);
+      messages.forEach(msg => {
+        if (msg.messageType === 'image') {
+          console.log('🖼️ [messages.js] Image message found:', {
+            _id: msg._id,
+            fileUrl: msg.fileUrl,
+            imageUrl: msg.imageUrl,
+            hasFileUrl: !!msg.fileUrl,
+            hasImageUrl: !!msg.imageUrl
+          });
+        }
+      });
       // reverse ที่ backend เพื่อให้ frontend ได้ array จากเก่า -> ใหม่
       const orderedMessages = [...messages].reverse();
       // เพิ่มข้อมูลว่าผู้ใช้ปัจจุบัน react หรือไม่
@@ -162,6 +176,19 @@ router.get('/:roomId', async (req, res) => {
 
     const messages = await Message.getMessagesInRoom(roomId, parseInt(page), parseInt(limit));
     
+    console.log('🔍 [messages.js] Room messages loaded:', messages.length);
+    messages.forEach(msg => {
+      if (msg.messageType === 'image') {
+        console.log('🖼️ [messages.js] Image message found:', {
+          _id: msg._id,
+          fileUrl: msg.fileUrl,
+          imageUrl: msg.imageUrl,
+          hasFileUrl: !!msg.fileUrl,
+          hasImageUrl: !!msg.imageUrl
+        });
+      }
+    });
+    
     // เพิ่มข้อมูลว่าผู้ใช้ปัจจุบัน react หรือไม่
     const messagesWithUserReactions = messages.map(message => {
       const messageObj = message.toObject();
@@ -195,9 +222,40 @@ router.get('/:roomId', async (req, res) => {
 });
 
 // POST /api/messages - ส่งข้อความใหม่
-router.post('/', upload.array('attachments', 5), async (req, res) => {
+router.post('/', auth, upload.array('attachments', 5), async (req, res) => {
   try {
     const { content, senderId, chatRoomId, messageType = 'text', replyToId } = req.body;
+    const authenticatedUserId = req.user._id; // ใช้ userId จาก authentication
+    
+    console.log('📤 Message creation request:', {
+      content: content?.substring(0, 50),
+      senderId,
+      chatRoomId,
+      messageType,
+      authenticatedUserId,
+      'senderId === authenticatedUserId': senderId === authenticatedUserId.toString()
+    });
+    
+    // ตรวจสอบว่า senderId ตรงกับ authenticated user หรือไม่
+    const senderIdStr = senderId.toString();
+    const authenticatedUserIdStr = authenticatedUserId.toString();
+    
+    console.log('🔍 ID Comparison:', {
+      senderId,
+      senderIdStr,
+      authenticatedUserId,
+      authenticatedUserIdStr,
+      'senderId === authenticatedUserId': senderId === authenticatedUserId,
+      'senderIdStr === authenticatedUserIdStr': senderIdStr === authenticatedUserIdStr
+    });
+    
+    if (senderIdStr !== authenticatedUserIdStr) {
+      console.log('❌ Sender ID mismatch:', { senderId, authenticatedUserId });
+      return res.status(403).json({
+        success: false,
+        message: 'You can only send messages as yourself'
+      });
+    }
 
     if (!senderId || !chatRoomId) {
       return res.status(400).json({
@@ -218,8 +276,38 @@ router.post('/', upload.array('attachments', 5), async (req, res) => {
     // ตรวจสอบว่าเป็น private chat หรือไม่
     let chatRoom = null;
     if (chatRoomId.startsWith('private_')) {
-      // สำหรับ private chat ไม่ต้องตรวจสอบ ChatRoom
+      // สำหรับ private chat ตรวจสอบสิทธิ์
       console.log('🔒 Processing private chat message:', chatRoomId);
+      console.log('🔒 Sender ID:', senderId, 'Type:', typeof senderId);
+      
+      const chatParts = chatRoomId.split('_');
+      console.log('🔒 Chat parts:', chatParts);
+      
+      if (chatParts.length >= 3) {
+        const userId1 = chatParts[1];
+        const userId2 = chatParts[2];
+        console.log('🔒 User IDs in chat:', { userId1, userId2 });
+        console.log('🔒 Comparison:', {
+          'senderId === userId1': senderId === userId1,
+          'senderId === userId2': senderId === userId2,
+          'senderId.toString() === userId1': senderId.toString() === userId1,
+          'senderId.toString() === userId2': senderId.toString() === userId2
+        });
+        
+        // เปรียบเทียบทั้ง string และ ObjectId
+        const senderIdStr = senderId.toString();
+        const isAuthorized = senderIdStr === userId1 || senderIdStr === userId2;
+        
+        if (!isAuthorized) {
+          console.log('❌ Sender not authorized for private chat');
+          return res.status(403).json({
+            success: false,
+            message: 'You are not authorized to send messages to this private chat'
+          });
+        }
+        
+        console.log('✅ Sender authorized for private chat');
+      }
     } else {
       // สำหรับ ChatRoom ปกติ
       chatRoom = await ChatRoom.findById(chatRoomId);
@@ -363,17 +451,36 @@ router.post('/:messageId/react', auth, async (req, res) => {
     // สำหรับ private chat ที่ไม่ใช่ ChatRoom
     if (message.chatRoom.startsWith('private_')) {
       console.log('🔒 Processing reaction for private chat:', message.chatRoom);
+      console.log('🔒 User ID from auth:', userId, 'Type:', typeof userId);
+      
       // ตรวจสอบว่า userId อยู่ใน private chat ID หรือไม่
       const chatParts = message.chatRoom.split('_');
+      console.log('🔒 Chat parts:', chatParts);
+      
       if (chatParts.length >= 3) {
         const userId1 = chatParts[1];
         const userId2 = chatParts[2];
-        if (userId !== userId1 && userId !== userId2) {
+        console.log('🔒 User IDs in chat:', { userId1, userId2 });
+        console.log('🔒 Comparison:', {
+          'userId === userId1': userId === userId1,
+          'userId === userId2': userId === userId2,
+          'userId.toString() === userId1': userId.toString() === userId1,
+          'userId.toString() === userId2': userId.toString() === userId2
+        });
+        
+        // เปรียบเทียบทั้ง string และ ObjectId
+        const userIdStr = userId.toString();
+        const isAuthorized = userIdStr === userId1 || userIdStr === userId2;
+        
+        if (!isAuthorized) {
+          console.log('❌ User not authorized for private chat');
           return res.status(403).json({
             success: false,
             message: 'You are not authorized to react to this message'
           });
         }
+        
+        console.log('✅ User authorized for private chat');
       }
     } else {
       // สำหรับ ChatRoom ปกติ
@@ -414,7 +521,9 @@ router.post('/:messageId/react', auth, async (req, res) => {
           userId,
           reactionType: currentReactionType,
           action: hasReactionNow ? action : 'removed',
-          stats: message.stats
+          reactions: message.reactions,
+          stats: message.stats,
+          chatRoomId: message.chatRoom
         });
         console.log('✅ [messages.js] Reaction broadcasted');
       }

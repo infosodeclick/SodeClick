@@ -41,6 +41,7 @@ const messageSchema = new mongoose.Schema({
   
   // สำหรับไฟล์แนบ (ใหม่)
   fileUrl: String,
+  imageUrl: String, // เพิ่ม imageUrl field สำหรับรูปภาพ
   fileName: String,
   fileSize: Number,
   fileType: String,

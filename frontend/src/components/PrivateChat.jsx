@@ -128,6 +128,41 @@ const PrivateChat = ({
       
       const userId = currentUser._id || currentUser.id;
       console.log('💖 Using user ID:', userId);
+
+      // Optimistic UI update - อัปเดต UI ทันที
+      const currentMessage = messages.find(msg => msg._id === messageId);
+      if (currentMessage) {
+        const hasLiked = hasUserLiked(currentMessage);
+        const newReactions = hasLiked 
+          ? (currentMessage.reactions || []).filter(r => !(r.user === userId || r.user._id === userId) || r.type !== 'heart')
+          : [...(currentMessage.reactions || []), { user: userId, type: 'heart' }];
+        
+        // อัปเดต UI ทันที
+        if (onSendMessage && typeof onSendMessage === 'function') {
+          onSendMessage({
+            type: 'reaction-updated',
+            messageId: messageId,
+            reactions: newReactions,
+            chatRoomId: selectedChat.id
+          });
+        }
+      }
+      
+      // ดึง token จาก sessionStorage
+      const token = sessionStorage.getItem('token');
+      console.log('💖 Token available:', !!token);
+      
+      if (!token) {
+        console.error('❌ No access token available');
+        if (onSendMessage && typeof onSendMessage === 'function') {
+          onSendMessage('notification', {
+            type: 'error',
+            title: 'ไม่สามารถกดหัวใจได้',
+            message: 'กรุณาเข้าสู่ระบบใหม่'
+          });
+        }
+        return;
+      }
       
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${messageId}/react`,
@@ -135,6 +170,7 @@ const PrivateChat = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           },
           credentials: 'include',
           body: JSON.stringify({
@@ -153,13 +189,35 @@ const PrivateChat = ({
         const errorData = await response.json();
         console.error('❌ Failed to react to message:', response.status, errorData);
         
-        // แสดง error message ให้ผู้ใช้
-        if (onSendMessage && typeof onSendMessage === 'function') {
-          onSendMessage('notification', {
-            type: 'error',
-            title: 'ไม่สามารถกดหัวใจได้',
-            message: errorData.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่'
-          });
+        // จัดการ error ตาม status code
+        if (response.status === 401) {
+          console.error('❌ Unauthorized - token may be expired');
+          // ลบ token เก่าและ redirect ไป login
+          sessionStorage.removeItem('token');
+          if (onSendMessage && typeof onSendMessage === 'function') {
+            onSendMessage('notification', {
+              type: 'error',
+              title: 'เซสชันหมดอายุ',
+              message: 'กรุณาเข้าสู่ระบบใหม่'
+            });
+          }
+        } else if (response.status === 403) {
+          if (onSendMessage && typeof onSendMessage === 'function') {
+            onSendMessage('notification', {
+              type: 'error',
+              title: 'ไม่มีสิทธิ์',
+              message: 'คุณไม่มีสิทธิ์ในการกดหัวใจข้อความนี้'
+            });
+          }
+        } else {
+          // แสดง error message ทั่วไป
+          if (onSendMessage && typeof onSendMessage === 'function') {
+            onSendMessage('notification', {
+              type: 'error',
+              title: 'ไม่สามารถกดหัวใจได้',
+              message: errorData.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่'
+            });
+          }
         }
       }
     } catch (error) {
@@ -224,7 +282,12 @@ const PrivateChat = ({
       // ให้ parent component จัดการการอัปเดต messages
       if (onSendMessage && typeof onSendMessage === 'function') {
         // ส่ง event กลับไปให้ parent component เพื่ออัปเดต messages
-        onSendMessage('reaction-updated', data);
+        onSendMessage({
+          type: 'reaction-updated',
+          messageId: data.messageId,
+          reactions: data.reactions,
+          chatRoomId: data.chatRoomId
+        });
       }
     };
 
@@ -266,9 +329,35 @@ const PrivateChat = ({
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
     if (messages.length > 0) {
-      scrollToBottom();
+      console.log('🔍 PrivateChat - Auto scrolling to bottom on messages change:', messages.length);
+      // ใช้ setTimeout เพื่อให้ DOM render เสร็จก่อน
+      setTimeout(() => {
+        scrollToBottom();
+      }, 300);
     }
   }, [messages.length]);
+
+  // Auto scroll to bottom when entering a chat room for the first time
+  useEffect(() => {
+    if (selectedChat?.id && messages.length > 0) {
+      console.log('🔍 PrivateChat - Auto scrolling to bottom on chat entry:', selectedChat.id);
+      // ใช้ setTimeout เพื่อให้ DOM render เสร็จก่อน
+      setTimeout(() => {
+        scrollToBottom();
+      }, 500);
+    }
+  }, [selectedChat?.id]);
+
+  // Auto scroll to bottom when component mounts with messages
+  useEffect(() => {
+    if (messages.length > 0 && messagesEndRef.current) {
+      console.log('🔍 PrivateChat - Auto scrolling to bottom on component mount:', messages.length);
+      // ใช้ setTimeout เพื่อให้ DOM render เสร็จก่อน
+      setTimeout(() => {
+        scrollToBottom();
+      }, 500);
+    }
+  }, [messagesEndRef.current, messages.length]);
 
   // Setup socket listeners for real-time messaging
   useEffect(() => {
@@ -347,6 +436,9 @@ const PrivateChat = ({
               messageType: 'socket-message'
             }
           }));
+
+          // Scroll ไปยังข้อความล่าสุดเสมอเมื่อรับข้อความใหม่
+          scrollToBottomAlways();
         } else {
           console.log('⏭️ Message for different chat:', message.chatRoom);
         }
@@ -478,6 +570,13 @@ const PrivateChat = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // ฟังก์ชันสำหรับ scroll ไปยังข้อความล่าสุดเสมอ (ใช้เมื่อส่งข้อความ)
+  const scrollToBottomAlways = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !selectedImage) return;
@@ -513,6 +612,9 @@ const PrivateChat = ({
         messageType: 'temp-message'
       }
     }));
+
+    // Scroll ไปยังข้อความล่าสุดเสมอเมื่อส่งข้อความ
+    scrollToBottomAlways();
 
     // ล้าง input field ทันทีเพื่อ UX ที่ดี
     const currentMessage = newMessage;
@@ -945,25 +1047,21 @@ const PrivateChat = ({
       <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0 z-50 shadow-lg">
         <form onSubmit={handleSendMessage} className="flex items-end space-x-2">
           <div className="flex-1 relative">
-            <Input
+            <textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={(e) => handleKeyDown(e)}
               onPaste={(e) => handlePaste(e)}
-              placeholder="พิมพ์ข้อความ... (Shift+Enter สำหรับบรรทัดใหม่)"
-              className="pr-12 resize-none min-h-[40px] max-h-[120px]"
-              asChild
-            >
-              <textarea
-                rows={1}
-                style={{ 
-                  resize: 'none',
-                  overflow: 'hidden',
-                  minHeight: '40px',
-                  maxHeight: '120px'
-                }}
-              />
-            </Input>
+              placeholder="พิมพ์ข้อความ"
+              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-12 resize-none min-h-[40px] max-h-[120px]"
+              rows={1}
+              style={{ 
+                resize: 'none',
+                overflow: 'hidden',
+                minHeight: '40px',
+                maxHeight: '120px'
+              }}
+            />
             
             {/* Emoji Picker */}
             {showEmojiPicker && (

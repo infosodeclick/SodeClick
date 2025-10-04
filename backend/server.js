@@ -50,7 +50,6 @@ const corsOptions = {
       'https://sodeclick.com',
       'https://www.sodeclick.com',
       'https://sodeclick-frontend-production.up.railway.app',
-      'https://sodeclick-frontend-production-8907.up.railway.app',
     ];
     
     // อนุญาต IP ใน local network (192.168.x.x, 10.x.x.x)
@@ -76,7 +75,7 @@ const corsOptions = {
   },
   credentials: true, // อนุญาตให้ส่ง cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma', 'Accept', 'Origin', 'User-Agent'],
 };
 
 // Middleware
@@ -1474,10 +1473,21 @@ io.on('connection', (socket) => {
 
         // เพิ่มข้อมูลไฟล์ถ้ามี
         if ((messageType === 'file' || messageType === 'image') && (fileUrl || data.imageUrl)) {
-          messageData.fileUrl = fileUrl || data.imageUrl;
+          const imageUrl = fileUrl || data.imageUrl;
+          messageData.fileUrl = imageUrl;
+          messageData.imageUrl = imageUrl; // เพิ่ม imageUrl ด้วย
           messageData.fileName = fileName;
           messageData.fileSize = fileSize;
           messageData.fileType = fileType;
+          
+          console.log('🔍 [server.js] Adding file data to private message:', {
+            messageType,
+            fileUrl: imageUrl,
+            imageUrl: imageUrl,
+            fileName,
+            fileSize,
+            fileType
+          });
         }
 
         const message = new Message(messageData);
@@ -1507,6 +1517,15 @@ io.on('connection', (socket) => {
         console.log('📤 [server.js] Sender:', message.sender.displayName || message.sender.username);
         
         // Broadcast ทันที
+        console.log('🔍 [server.js] Message data before broadcast:', {
+          _id: message._id,
+          messageType: message.messageType,
+          fileUrl: message.fileUrl,
+          imageUrl: message.imageUrl,
+          attachments: message.attachments,
+          allKeys: Object.keys(message)
+        });
+        
         const broadcastPayload = {
           _id: message._id,
           content: message.content,
@@ -1520,6 +1539,8 @@ io.on('connection', (socket) => {
           chatRoom: message.chatRoom,
           messageType: message.messageType,
           fileUrl: message.fileUrl,
+          imageUrl: message.imageUrl || message.fileUrl, // ใช้ imageUrl ก่อน ถ้าไม่มีใช้ fileUrl
+          attachments: message.attachments, // เพิ่ม attachments
           replyTo: message.replyTo,
           createdAt: message.createdAt,
           updatedAt: message.updatedAt
@@ -1691,10 +1712,21 @@ io.on('connection', (socket) => {
 
       // เพิ่มข้อมูลไฟล์ถ้ามี
       if ((messageType === 'file' || messageType === 'image') && (fileUrl || data.imageUrl)) {
-        messageData.fileUrl = fileUrl || data.imageUrl;
+        const imageUrl = fileUrl || data.imageUrl;
+        messageData.fileUrl = imageUrl;
+        messageData.imageUrl = imageUrl; // เพิ่ม imageUrl ด้วย
         messageData.fileName = fileName;
         messageData.fileSize = fileSize;
         messageData.fileType = fileType;
+        
+        console.log('🔍 [server.js] Adding file data to message:', {
+          messageType,
+          fileUrl: imageUrl,
+          imageUrl: imageUrl,
+          fileName,
+          fileSize,
+          fileType
+        });
       }
 
       const message = new Message(messageData);
@@ -1722,6 +1754,15 @@ io.on('connection', (socket) => {
       console.log('📤 [server.js] Sender:', message.sender.displayName || message.sender.username);
       
       // Broadcast ทันที
+      console.log('🔍 [server.js] Room message data before broadcast:', {
+        _id: message._id,
+        messageType: message.messageType,
+        fileUrl: message.fileUrl,
+        imageUrl: message.imageUrl,
+        attachments: message.attachments,
+        allKeys: Object.keys(message)
+      });
+      
       const broadcastPayload = {
         _id: message._id,
         content: message.content,
@@ -1736,6 +1777,8 @@ io.on('connection', (socket) => {
         chatRoom: message.chatRoom,
         messageType: message.messageType,
         fileUrl: message.fileUrl,
+        imageUrl: message.imageUrl || message.fileUrl, // ใช้ imageUrl ก่อน ถ้าไม่มีใช้ fileUrl
+        attachments: message.attachments, // เพิ่ม attachments
         replyTo: message.replyTo,
         createdAt: message.createdAt,
         updatedAt: message.updatedAt,

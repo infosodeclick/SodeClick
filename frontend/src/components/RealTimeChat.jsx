@@ -48,6 +48,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageModal, setImageModal] = useState({ show: false, src: '', alt: '' });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
@@ -112,8 +113,13 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             return;
           }
           
-          // อัปโหลดรูปภาพ
-          await handleImageUpload(file);
+          // ตั้งค่า selectedImage และ imagePreview
+          setSelectedImage(file);
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            setImagePreview(event.target.result);
+          };
+          reader.readAsDataURL(file);
         }
       }
     }
@@ -338,7 +344,10 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           content: message.content,
           sender: message.sender?._id,
           roomId: message.chatRoom,
-          currentRoom: roomId
+          currentRoom: roomId,
+          messageType: message.messageType,
+          fileUrl: message.fileUrl,
+          imageUrl: message.imageUrl
         });
         
         // ประมวลผลข้อความทันที - ไม่มี delay
@@ -368,12 +377,21 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             const tempIndex = prev.findIndex(msg => 
               msg.isTemp && 
               msg.sender._id === currentUser._id &&
-              msg.content === message.content &&
-              msg.messageType === message.messageType
+              msg.messageType === message.messageType &&
+              // สำหรับข้อความรูปภาพ ให้เปรียบเทียบ fileUrl หรือ imageUrl
+              (message.messageType === 'image' 
+                ? (msg.fileUrl === message.fileUrl || msg.imageUrl === message.imageUrl)
+                : msg.content === message.content)
             );
             
             if (tempIndex !== -1) {
-              console.log('🔄 Replacing temp message with real message');
+              console.log('🔄 Replacing temp message with real message:', {
+                tempId: prev[tempIndex]._id,
+                realId: message._id,
+                messageType: message.messageType,
+                tempImageUrl: prev[tempIndex].imageUrl || prev[tempIndex].fileUrl,
+                realImageUrl: message.imageUrl || message.fileUrl
+              });
               const newMessages = [...prev];
               newMessages[tempIndex] = { ...message, isTemp: false };
               return newMessages;
@@ -387,8 +405,8 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           return newMessages;
         });
         
-        // Scroll ทันที
-        setTimeout(() => scrollToBottomOnNewMessage(), 50);
+        // Scroll ไปยังข้อความล่าสุดเสมอเมื่อรับข้อความใหม่
+        setTimeout(() => scrollToBottomAlways(), 50);
       });
 
       // อัปเดต reaction
@@ -792,6 +810,15 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     }, 50);
   };
 
+  // ฟังก์ชันสำหรับ scroll ไปยังข้อความล่าสุดเสมอ (ใช้เมื่อส่งข้อความ)
+  const scrollToBottomAlways = () => {
+    setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    }, 100);
+  };
+
   // ฟังก์ชันสำหรับ scroll ไปยังข้อความล่าสุด (ใช้เมื่อเข้าห้องแชทหรือกลับมาหน้าแชท)
   const scrollToBottom = () => {
     console.log('🔍 scrollToBottom called, messagesContainerRef:', messagesContainerRef.current);
@@ -819,8 +846,14 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     console.log('🔍 Socket state:', {
       hasSocket: !!socket,
       isConnected: socket?.connected,
-      socketId: socket?.id
+      socketId: socket?.id,
+      isSendingMessage
     });
+    
+    if (isSendingMessage) {
+      console.log('❌ Already sending message, ignoring duplicate click');
+      return;
+    }
     
     if (!newMessage.trim()) {
       console.log('❌ No message content');
@@ -835,6 +868,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       return;
     }
 
+    setIsSendingMessage(true);
     console.log('✅ Ready to send message');
 
     // Debug current user membership
@@ -888,6 +922,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         return [...prev, tempMessage];
       });
 
+      // Scroll ไปยังข้อความล่าสุดเสมอเมื่อส่งข้อความ
+      scrollToBottomAlways();
+
       // ส่งข้อความใหม่ผ่าน socket
       const messageData = {
         content: newMessage,
@@ -931,6 +968,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     setNewMessage('');
     setReplyTo(null);
     setEditingMessage(null);
+    setIsSendingMessage(false);
     messageInputRef.current?.focus();
   };
 
@@ -994,8 +1032,21 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
   };
 
   const handleReactToMessage = (messageId, reactionType = 'heart') => {
+    console.log('💖 handleReactToMessage called:', {
+      messageId,
+      reactionType,
+      hasSocket: !!socket,
+      socketConnected: socket?.connected,
+      currentUserId: currentUser._id
+    });
+
     if (!socket) {
       console.log('❌ Socket not available for reaction');
+      return;
+    }
+
+    if (!socket.connected) {
+      console.log('❌ Socket not connected for reaction');
       return;
     }
 
@@ -1005,13 +1056,14 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       reaction => (reaction.user === currentUser._id || reaction.user._id === currentUser._id) && reaction.type === reactionType
     );
     
-    console.log('💖 Heart reaction clicked:', {
+    console.log('💖 Reaction details:', {
       messageId,
       reactionType,
       hasReacted,
       action: hasReacted ? 'remove' : 'add',
       currentUserId: currentUser._id,
-      messageReactions: message?.reactions
+      messageReactions: message?.reactions,
+      messageFound: !!message
     });
     
     // ส่งข้อมูลไปยัง backend
@@ -1021,6 +1073,8 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       reactionType,
       action: hasReacted ? 'remove' : 'add'
     });
+    
+    console.log('📤 Reaction emitted to server');
   };
 
   // ฟังก์ชันตรวจสอบว่าผู้ใช้เคยกด like แล้วหรือไม่
@@ -1092,13 +1146,43 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
   };
 
   const handleImageUpload = async () => {
-    if (!selectedImage || !socket) return;
+    console.log('🖼️ handleImageUpload called:', {
+      hasSelectedImage: !!selectedImage,
+      hasSocket: !!socket,
+      socketConnected: socket?.connected,
+      roomId,
+      currentUserId: currentUser._id,
+      uploadingImage,
+      isSendingMessage
+    });
+
+    if (uploadingImage || isSendingMessage) {
+      console.log('❌ Already uploading or sending, ignoring duplicate click');
+      return;
+    }
+
+    if (!selectedImage || !socket) {
+      console.log('❌ Missing required data:', {
+        selectedImage: !!selectedImage,
+        socket: !!socket
+      });
+      return;
+    }
 
     setUploadingImage(true);
+    setIsSendingMessage(true);
     const formData = new FormData();
     formData.append('file', selectedImage);
     formData.append('senderId', currentUser._id);
     formData.append('chatRoomId', roomId);
+
+    console.log('📤 Uploading image:', {
+      fileName: selectedImage.name,
+      fileSize: selectedImage.size,
+      fileType: selectedImage.type,
+      senderId: currentUser._id,
+      chatRoomId: roomId
+    });
 
     try {
       const response = await fetch(
@@ -1110,10 +1194,18 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         }
       );
 
+      console.log('📤 Upload response status:', response.status);
       const data = await response.json();
+      console.log('📤 Upload response data:', data);
       
       if (data.success) {
+        console.log('✅ Image upload successful:', data.data.fileUrl);
+        
         // สร้างข้อความรูปภาพชั่วคราวเพื่อแสดงทันที
+        console.log('🔍 Upload response data:', data);
+        console.log('🔍 data.data:', data.data);
+        console.log('🔍 data.data.fileUrl:', data.data?.fileUrl);
+        
         const tempImageMessage = {
           _id: `temp-image-${Date.now()}`,
           content: '',
@@ -1124,16 +1216,25 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             profileImages: currentUser.profileImages,
             membershipTier: currentUser.membership?.tier || 'member'
           },
-          chatRoomId: roomId,
+          chatRoom: roomId,
           messageType: 'image',
-          fileUrl: data.data.fileUrl,
-          imageUrl: data.data.fileUrl,
+          fileUrl: data.data?.fileUrl || data.data?.url || data.data?.path,
+          imageUrl: data.data?.fileUrl || data.data?.url || data.data?.path,
           createdAt: new Date().toISOString(),
           isTemp: true
         };
 
+        console.log('➕ Adding temp image message:', tempImageMessage);
         // เพิ่มข้อความรูปภาพชั่วคราวลงใน state ทันที
-        setMessages(prev => [...prev, tempImageMessage]);
+        setMessages(prev => {
+          console.log('📝 Current messages before adding temp:', prev.length);
+          const newMessages = [...prev, tempImageMessage];
+          console.log('📝 New messages after adding temp:', newMessages.length);
+          return newMessages;
+        });
+
+        // Scroll ไปยังข้อความล่าสุดเสมอเมื่อส่งรูปภาพ
+        scrollToBottomAlways();
 
         // ส่งข้อความรูปภาพผ่าน socket
         const messageData = {
@@ -1141,9 +1242,11 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           senderId: currentUser._id,
           chatRoomId: roomId,
           messageType: 'image',
-          fileUrl: data.data.fileUrl
+          fileUrl: data.data.fileUrl,
+          imageUrl: data.data.fileUrl
         };
         
+        console.log('📤 Emitting image message:', messageData);
         socket.emit('send-message', messageData);
         
         // Scroll ลงด้านล่างเมื่อผู้ใช้ส่งรูปภาพ
@@ -1156,17 +1259,20 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         // รีเซ็ต state
         setSelectedImage(null);
         setImagePreview(null);
+        setIsSendingMessage(false);
         if (imageInputRef.current) {
           imageInputRef.current.value = '';
         }
       } else {
+        console.error('❌ Image upload failed:', data.message);
         alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + (data.message || 'ไม่ทราบสาเหตุ'));
       }
     } catch (error) {
-      console.error('Error uploading image:', error);
+      console.error('❌ Error uploading image:', error);
       alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ');
     } finally {
       setUploadingImage(false);
+      setIsSendingMessage(false);
     }
   };
 
@@ -1305,8 +1411,97 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     const textColor = isOwnMessage ? 'text-white' : 'text-gray-900';
     
     // Image message
-    if (message.messageType === 'image' && (message.imageUrl || message.fileUrl)) {
+    if (message.messageType === 'image') {
+      console.log('🖼️ Found image message:', {
+        messageId: message._id,
+        messageType: message.messageType,
+        hasImageUrl: !!message.imageUrl,
+        hasFileUrl: !!message.fileUrl,
+        imageUrl: message.imageUrl,
+        fileUrl: message.fileUrl,
+        allKeys: Object.keys(message)
+      });
+      
+      if (!message.imageUrl && !message.fileUrl) {
+        console.warn('⚠️ Image message without imageUrl or fileUrl:', message);
+        
+        // สำหรับ temporary messages ให้แสดง image preview ถ้ามี
+        if (message.isTemp && imagePreview) {
+          console.log('🖼️ Showing image preview for temp message');
+          return (
+            <div className="space-y-2">
+              <img
+                src={imagePreview}
+                alt="Uploading image"
+                className="max-w-[200px] max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm opacity-75"
+                onClick={() => {
+                  setImageModal({
+                    show: true,
+                    src: imagePreview,
+                    alt: 'Uploading image'
+                  });
+                }}
+              />
+              <div className="text-xs text-gray-500 text-center">กำลังอัปโหลด...</div>
+            </div>
+          );
+        }
+        
+        // ตรวจสอบว่ามี attachments หรือไม่
+        if (message.attachments && message.attachments.length > 0) {
+          const imageAttachment = message.attachments.find(att => att.type === 'image');
+          if (imageAttachment) {
+            console.log('🖼️ Found image in attachments:', imageAttachment);
+            const imageUrl = imageAttachment.url;
+            return (
+              <div className="space-y-2">
+                <img
+                  src={imageUrl}
+                  alt="Shared image"
+                  className="max-w-[200px] max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm"
+                  onClick={() => {
+                    setImageModal({
+                      show: true,
+                      src: imageUrl,
+                      alt: 'Shared image'
+                    });
+                  }}
+                  onError={(e) => {
+                    console.error('❌ Image from attachments failed to load:', imageUrl);
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+            );
+          }
+        }
+        
+        return (
+          <div className="space-y-2">
+            <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-500 text-sm rounded-lg border-2 border-dashed border-gray-300">
+              <div className="text-center">
+                <div className="text-2xl mb-2">📷</div>
+                <div>รูปภาพไม่พร้อมใช้งาน</div>
+                <div className="text-xs mt-1 opacity-75">ไม่มี URL รูปภาพ</div>
+                {message.isTemp && (
+                  <div className="text-xs mt-1 opacity-75">กำลังอัปโหลด...</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
       const imageUrl = message.imageUrl || message.fileUrl;
+      console.log('🖼️ Rendering image message:', {
+        messageId: message._id,
+        messageType: message.messageType,
+        imageUrl: imageUrl,
+        fileUrl: message.fileUrl,
+        isTemp: message.isTemp,
+        hasImageUrl: !!message.imageUrl,
+        hasFileUrl: !!message.fileUrl,
+        allMessageKeys: Object.keys(message)
+      });
       
       // ตรวจสอบและแก้ไข URL ถ้าจำเป็น
       let finalImageUrl = imageUrl;
@@ -1361,7 +1556,10 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
               console.error('❌ Image failed to load:', {
                 originalUrl: imageUrl,
                 finalUrl: finalImageUrl,
-                error: e
+                error: e,
+                messageId: message._id,
+                messageType: message.messageType,
+                isTemp: message.isTemp
               });
               
               // ซ่อนรูปภาพที่โหลดไม่สำเร็จ
@@ -1380,6 +1578,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 <div class="text-center">
                   <div class="text-2xl mb-2">📷</div>
                   <div>รูปภาพไม่สามารถโหลดได้</div>
+                  <div class="text-xs mt-1 opacity-75">URL: ${finalImageUrl}</div>
                   <div class="text-xs mt-1 opacity-75">ลองรีเฟรชหน้าดูครับ</div>
                 </div>
               `;
@@ -1585,7 +1784,12 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                   <div className={`absolute -bottom-8 ${message.sender && message.sender._id === currentUser._id ? 'right-0' : 'left-0'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-2 bg-white rounded-full shadow-md px-2 py-1 z-10`}>
                     {/* Like Button */}
                     <button
-                      onClick={() => handleReactToMessage(message._id, 'heart')}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('💖 Like button clicked for message:', message._id);
+                        handleReactToMessage(message._id, 'heart');
+                      }}
                       className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 ${
                         hasUserLiked(message) 
                           ? 'text-red-600 hover:text-red-700' 
@@ -1632,35 +1836,66 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 </div>
 
                 {/* Reactions */}
-                {message.reactions && message.reactions.length > 0 && (
-                  <div className="flex items-center flex-wrap gap-1 mt-2">
-                    {Object.entries(
-                      message.reactions.reduce((acc, reaction) => {
-                        acc[reaction.type] = (acc[reaction.type] || 0) + 1;
-                        return acc;
-                      }, {})
-                    ).map(([type, count]) => {
-                      const userHasReacted = hasUserReacted(message, type);
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => handleReactToMessage(message._id, type)}
-                          className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors ${
-                            userHasReacted 
-                              ? 'bg-red-100 text-red-600 hover:bg-red-200' 
-                              : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                          }`}
-                          title={userHasReacted ? `กดเพื่อยกเลิก ${type}` : `กด ${type}`}
-                        >
-                          <div className={userHasReacted ? 'text-red-600' : 'text-gray-600'}>
-                            {getReactionIcon(type)}
-                          </div>
-                          <span>{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="flex items-center flex-wrap gap-1 mt-2">
+                  {/* ปุ่มหัวใจเริ่มต้น - แสดงเสมอ */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('💖 Default heart button clicked:', { messageId: message._id });
+                      handleReactToMessage(message._id, 'heart');
+                    }}
+                    className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors cursor-pointer ${
+                      hasUserLiked(message)
+                        ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                    }`}
+                    title={hasUserLiked(message) ? 'กดเพื่อยกเลิกหัวใจ' : 'กดหัวใจ'}
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <div className={hasUserLiked(message) ? 'text-red-600' : 'text-gray-600'}>
+                      <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current' : ''}`} />
+                    </div>
+                    {getLikeCount(message) > 0 && <span>{getLikeCount(message)}</span>}
+                  </button>
+
+                  {/* Reactions อื่นๆ */}
+                  {message.reactions && message.reactions.length > 0 && (
+                    <>
+                      {Object.entries(
+                        message.reactions.reduce((acc, reaction) => {
+                          acc[reaction.type] = (acc[reaction.type] || 0) + 1;
+                          return acc;
+                        }, {})
+                      ).filter(([type]) => type !== 'heart').map(([type, count]) => {
+                        const userHasReacted = hasUserReacted(message, type);
+                        return (
+                          <button
+                            key={type}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              console.log('💖 Reaction button clicked:', { messageId: message._id, type });
+                              handleReactToMessage(message._id, type);
+                            }}
+                            className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors cursor-pointer ${
+                              userHasReacted 
+                                ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                            }`}
+                            title={userHasReacted ? `กดเพื่อยกเลิก ${type}` : `กด ${type}`}
+                            style={{ pointerEvents: 'auto' }}
+                          >
+                            <div className={userHasReacted ? 'text-red-600' : 'text-gray-600'}>
+                              {getReactionIcon(type)}
+                            </div>
+                            <span>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
 
               </div>
             </div>
@@ -1803,7 +2038,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                   }
                 }}
                 onPaste={(e) => handlePaste(e)}
-                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ... (Shift+Enter สำหรับบรรทัดใหม่)'}
+                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ'}
                 className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base sm:text-base resize-none min-h-[40px] max-h-[120px]"
                 disabled={!isConnected}
                 rows={1}
@@ -1841,9 +2076,11 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 console.log('Send button clicked!', { 
                   newMessage: newMessage.trim(), 
                   isConnected,
-                  messageLength: newMessage.length 
+                  messageLength: newMessage.length,
+                  isSendingMessage,
+                  uploadingImage
                 });
-                if (newMessage.trim()) {
+                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   handleSendMessage();
                 }
               }}
@@ -1861,9 +2098,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 fontWeight: '500',
                 transition: 'all 0.2s ease',
                 cursor: 'pointer',
-                backgroundColor: newMessage.trim() ? '#ec4899' : '#9ca3af',
+                backgroundColor: (newMessage.trim() && !isSendingMessage && !uploadingImage) ? '#ec4899' : '#9ca3af',
                 color: 'white',
-                opacity: newMessage.trim() ? '1' : '0.6',
+                opacity: (newMessage.trim() && !isSendingMessage && !uploadingImage) ? '1' : '0.6',
                 boxShadow: newMessage.trim() ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
                 position: 'relative',
                 zIndex: 100,
@@ -1871,30 +2108,34 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 flexShrink: 0
               }}
               onMouseEnter={(e) => {
-                if (newMessage.trim()) {
+                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   e.target.style.backgroundColor = '#be185d';
                   e.target.style.transform = 'scale(1.05)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (newMessage.trim()) {
+                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   e.target.style.backgroundColor = '#ec4899';
                   e.target.style.transform = 'scale(1)';
                 }
               }}
               onTouchStart={(e) => {
-                if (newMessage.trim()) {
+                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   e.target.style.backgroundColor = '#be185d';
                   e.target.style.transform = 'scale(1.05)';
                 }
               }}
               onTouchEnd={(e) => {
-                if (newMessage.trim()) {
+                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   e.target.style.backgroundColor = '#ec4899';
                   e.target.style.transform = 'scale(1)';
                 }
               }}
-              title={!newMessage.trim() ? 'กรุณาพิมพ์ข้อความ' : 'ส่งข้อความ'}
+              title={
+                isSendingMessage ? 'กำลังส่งข้อความ...' : 
+                uploadingImage ? 'กำลังอัปโหลดรูปภาพ...' :
+                !newMessage.trim() ? 'กรุณาพิมพ์ข้อความ' : 'ส่งข้อความ'
+              }
             >
               <Send className="h-4 w-4 sm:h-5 sm:w-5" style={{ pointerEvents: 'none' }} />
             </button>

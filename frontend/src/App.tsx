@@ -2704,6 +2704,56 @@ function App() {
       selectedPrivateChat: selectedPrivateChat,
       chatId: selectedPrivateChat.id
     });
+
+    // จัดการ reaction updates
+    if (messageData === 'reaction-updated') {
+      console.log('💖 Reaction update received:', messageData);
+      return;
+    }
+
+    // จัดการ reaction updates จาก Socket.IO
+    if (messageData && messageData.type === 'reaction-updated') {
+      console.log('💖 Reaction update received from Socket.IO:', messageData);
+      
+      // อัปเดตข้อความที่มี reaction เปลี่ยนแปลง
+      setSelectedPrivateChat((prev: any) => ({
+        ...prev,
+        messages: prev.messages.map((msg: any) => {
+          if (msg._id === messageData.messageId) {
+            return {
+              ...msg,
+              reactions: messageData.reactions
+            };
+          }
+          return msg;
+        })
+      }));
+
+      // อัปเดตรายการแชทด้วย reaction ที่เปลี่ยนแปลง
+      setPrivateChats(prev => {
+        const updatedChats = prev.map(chat => {
+          if (chat.id === selectedPrivateChat.id) {
+            return {
+              ...chat,
+              messages: chat.messages.map((msg: any) => {
+                if (msg._id === messageData.messageId) {
+                  return {
+                    ...msg,
+                    reactions: messageData.reactions
+                  };
+                }
+                return msg;
+              })
+            };
+          }
+          return chat;
+        });
+        saveChatsToStorage(updatedChats);
+        return updatedChats;
+      });
+      
+      return;
+    }
     
     // สร้างข้อความชั่วคราวเพื่อแสดงใน UI ทันที
     const tempMessage = {
