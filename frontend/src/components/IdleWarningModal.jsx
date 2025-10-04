@@ -42,6 +42,9 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
         className="sm:max-w-md w-[95vw] modern-card border-0 shadow-2xl p-0 rounded-3xl overflow-hidden"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
       >
         <DialogTitle className="sr-only">
           เตือนการใช้งาน
@@ -79,6 +82,9 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
                 onClick={handleDismiss}
                 disabled={isProcessing}
                 className="w-full h-12 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+                onMouseDown={(e) => e.stopPropagation()}
+                onMouseUp={(e) => e.stopPropagation()}
+                onClickCapture={(e) => e.stopPropagation()}
               >
                 {isProcessing ? 'กำลังประมวลผล...' : 'ยังใช้งานอยู่'}
               </Button>
@@ -88,6 +94,9 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
                 disabled={isProcessing}
                 variant="outline"
                 className="w-full h-12 border-gray-300 text-gray-600 hover:bg-gray-50 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+                onMouseDown={(e) => e.stopPropagation()}
+                onMouseUp={(e) => e.stopPropagation()}
+                onClickCapture={(e) => e.stopPropagation()}
               >
                 {isProcessing ? 'กำลังออกจากระบบ...' : 'ออกจากระบบ'}
               </Button>

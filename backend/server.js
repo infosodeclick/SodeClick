@@ -151,6 +151,27 @@ app.use('/assets', express.static(path.join(frontendDistPath, 'assets'), {
 app.use('/vite.svg', express.static(path.join(frontendDistPath, 'vite.svg')));
 app.use('/favicon.ico', express.static(path.join(frontendDistPath, 'vite.svg')));
 
+// Serve Service Worker files with correct MIME type
+app.use('/sw-auto-refresh.js', express.static(path.join(frontendDistPath, 'sw-auto-refresh.js'), {
+  maxAge: '1h', // Cache for 1 hour
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, path) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Service-Worker-Allowed', '/');
+  }
+}));
+
+app.use('/sw-auto-refresh-dev.js', express.static(path.join(frontendDistPath, 'sw-auto-refresh-dev.js'), {
+  maxAge: '1h', // Cache for 1 hour
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, path) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Service-Worker-Allowed', '/');
+  }
+}));
+
 // Admin privileges middleware
 const { bypassMembershipRestrictions } = require('./middleware/adminPrivileges');
 app.use(bypassMembershipRestrictions);
@@ -284,6 +305,7 @@ app.get('*', (req, res, next) => {
       req.path.startsWith('/assets') ||
       req.path.startsWith('/vite.svg') ||
       req.path.startsWith('/favicon.ico') ||
+      req.path.startsWith('/sw-auto-refresh') ||
       req.path === '/create-qr' ||
       req.path === '/webhook-endpoint' ||
       req.path === '/api/info') {
@@ -1543,7 +1565,8 @@ io.on('connection', (socket) => {
           attachments: message.attachments, // เพิ่ม attachments
           replyTo: message.replyTo,
           createdAt: message.createdAt,
-          updatedAt: message.updatedAt
+          updatedAt: message.updatedAt,
+          reactions: message.reactions || [] // เพิ่ม reactions
         };
         
         io.to(chatRoomId).emit('new-message', broadcastPayload);
@@ -1923,9 +1946,10 @@ io.on('connection', (socket) => {
         messageId: message._id,
         userId,
         reactionType: reactionType,
-        hasReaction: finalAction === 'added',
+        action: finalAction,
+        reactions: message.reactions,
         stats: message.stats,
-        action: finalAction
+        chatRoomId: message.chatRoom
       });
 
       // ส่ง notification ไปยังเจ้าของข้อความเมื่อมีคนกดหัวใจ

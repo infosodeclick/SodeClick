@@ -1723,7 +1723,7 @@ function App() {
 
   // ฟัง event สำหรับการอัปเดตสเตตัสข้อความ (เพิ่ม debouncing)
   useEffect(() => {
-    let timeoutId: number;
+    let timeoutId: ReturnType<typeof setTimeout>;
     
     const handleMessageStatusUpdate = (event: CustomEvent) => {
       // Clear previous timeout

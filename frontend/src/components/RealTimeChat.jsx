@@ -51,6 +51,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageModal, setImageModal] = useState({ show: false, src: '', alt: '' });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactingMessages, setReactingMessages] = useState(new Set());
 
   // Lock scroll when image modal is open
   useEffect(() => {
@@ -417,8 +418,27 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         const updateReaction = () => {
           setMessages(prev => prev.map(msg => {
             if (msg._id === data.messageId) {
-              // อัปเดต reactions array
-              let updatedReactions = msg.reactions || [];
+              console.log('💖 Updating reaction for message:', {
+                messageId: data.messageId,
+                action: data.action,
+                reactionType: data.reactionType,
+                userId: data.userId,
+                currentReactions: msg.reactions,
+                newReactions: data.reactions
+              });
+              
+              // ใช้ reactions ที่ส่งมาจาก server โดยตรง (server เป็น source of truth)
+              if (data.reactions) {
+                console.log('💖 Using server reactions:', data.reactions);
+                return {
+                  ...msg,
+                  reactions: data.reactions,
+                  stats: data.stats
+                };
+              }
+              
+              // ถ้าไม่มี reactions จาก server ให้อัปเดตเอง
+              let updatedReactions = [...(msg.reactions || [])];
               
               if (data.action === 'removed') {
                 // ลบ reaction ของผู้ใช้นี้
@@ -426,35 +446,35 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                   reaction => !((reaction.user === data.userId || reaction.user._id === data.userId) && reaction.type === data.reactionType)
                 );
                 console.log('💖 Reaction removed:', { messageId: data.messageId, reactionType: data.reactionType, updatedReactions });
-           } else if (data.action === 'added') {
-             // เพิ่ม reaction ใหม่
-             const existingIndex = updatedReactions.findIndex(
-               reaction => (reaction.user === data.userId || reaction.user._id === data.userId) && reaction.type === data.reactionType
-             );
-            
-            if (existingIndex === -1) {
-              // เพิ่ม reaction ใหม่
-              updatedReactions.push({
-                user: data.userId,
-                type: data.reactionType,
-                createdAt: new Date()
-              });
-              console.log('💖 Reaction added:', { messageId: data.messageId, reactionType: data.reactionType, updatedReactions });
-            }
-          } else if (data.action === 'changed') {
-            // เปลี่ยน reaction type
-            const existingIndex = updatedReactions.findIndex(
-              reaction => reaction.user === data.userId
-            );
-            
-            if (existingIndex !== -1) {
-              // อัปเดต reaction type
-              updatedReactions[existingIndex].type = data.reactionType;
-              updatedReactions[existingIndex].createdAt = new Date();
-              console.log('💖 Reaction changed:', { messageId: data.messageId, reactionType: data.reactionType, updatedReactions });
-            }
-          }
-          
+              } else if (data.action === 'added') {
+                // เพิ่ม reaction ใหม่
+                const existingIndex = updatedReactions.findIndex(
+                  reaction => (reaction.user === data.userId || reaction.user._id === data.userId) && reaction.type === data.reactionType
+                );
+               
+                if (existingIndex === -1) {
+                  // เพิ่ม reaction ใหม่
+                  updatedReactions.push({
+                    user: data.userId,
+                    type: data.reactionType,
+                    createdAt: new Date()
+                  });
+                  console.log('💖 Reaction added:', { messageId: data.messageId, reactionType: data.reactionType, updatedReactions });
+                }
+              } else if (data.action === 'changed') {
+                // เปลี่ยน reaction type
+                const existingIndex = updatedReactions.findIndex(
+                  reaction => reaction.user === data.userId
+                );
+                
+                if (existingIndex !== -1) {
+                  // อัปเดต reaction type
+                  updatedReactions[existingIndex].type = data.reactionType;
+                  updatedReactions[existingIndex].createdAt = new Date();
+                  console.log('💖 Reaction changed:', { messageId: data.messageId, reactionType: data.reactionType, updatedReactions });
+                }
+              }
+              
               return {
                 ...msg,
                 reactions: updatedReactions,
@@ -1037,7 +1057,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       reactionType,
       hasSocket: !!socket,
       socketConnected: socket?.connected,
-      currentUserId: currentUser._id
+      currentUserId: currentUser._id,
+      roomId,
+      isReacting: reactingMessages.has(messageId)
     });
 
     if (!socket) {
@@ -1047,6 +1069,12 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
     if (!socket.connected) {
       console.log('❌ Socket not connected for reaction');
+      return;
+    }
+
+    // ป้องกันการกดซ้ำ
+    if (reactingMessages.has(messageId)) {
+      console.log('❌ Already reacting to this message, ignoring');
       return;
     }
 
@@ -1066,13 +1094,57 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       messageFound: !!message
     });
     
+    // เพิ่ม messageId ลงใน reactingMessages เพื่อป้องกันการกดซ้ำ
+    setReactingMessages(prev => new Set(prev).add(messageId));
+    
+    // อัปเดต UI ทันที (optimistic update)
+    setMessages(prev => prev.map(msg => {
+      if (msg._id === messageId) {
+        let updatedReactions = [...(msg.reactions || [])];
+        
+        if (hasReacted) {
+          // ลบ reaction
+          updatedReactions = updatedReactions.filter(
+            reaction => !((reaction.user === currentUser._id || reaction.user._id === currentUser._id) && reaction.type === reactionType)
+          );
+          console.log('💖 Optimistic: Reaction removed');
+        } else {
+          // เพิ่ม reaction
+          updatedReactions.push({
+            user: currentUser._id,
+            type: reactionType,
+            createdAt: new Date()
+          });
+          console.log('💖 Optimistic: Reaction added');
+        }
+        
+        return {
+          ...msg,
+          reactions: updatedReactions
+        };
+      }
+      return msg;
+    }));
+    
     // ส่งข้อมูลไปยัง backend
-    socket.emit('react-message', {
+    const reactionData = {
       messageId,
       userId: currentUser._id,
       reactionType,
       action: hasReacted ? 'remove' : 'add'
-    });
+    };
+    
+    console.log('📤 Emitting reaction to server:', reactionData);
+    socket.emit('react-message', reactionData);
+    
+    // ลบ messageId ออกจาก reactingMessages หลังจาก 1 วินาที
+    setTimeout(() => {
+      setReactingMessages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(messageId);
+        return newSet;
+      });
+    }, 1000);
     
     console.log('📤 Reaction emitted to server');
   };
@@ -1790,12 +1862,21 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                         console.log('💖 Like button clicked for message:', message._id);
                         handleReactToMessage(message._id, 'heart');
                       }}
-                      className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 ${
-                        hasUserLiked(message) 
+                    className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 ${
+                      reactingMessages.has(message._id)
+                        ? 'text-gray-400 cursor-not-allowed'
+                        : hasUserLiked(message) 
                           ? 'text-red-600 hover:text-red-700' 
                           : 'text-gray-600 hover:text-red-500'
-                      }`}
-                      title={hasUserLiked(message) ? 'กดเพื่อยกเลิกหัวใจ' : 'กดไลค์'}
+                    }`}
+                    title={
+                      reactingMessages.has(message._id)
+                        ? 'กำลังประมวลผล...'
+                        : hasUserLiked(message) 
+                          ? 'กดเพื่อยกเลิกหัวใจ' 
+                          : 'กดไลค์'
+                    }
+                    disabled={reactingMessages.has(message._id)}
                     >
                       <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current text-red-600' : 'text-gray-600'}`} />
                       {getLikeCount(message) > 0 && (
@@ -1845,13 +1926,24 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                       console.log('💖 Default heart button clicked:', { messageId: message._id });
                       handleReactToMessage(message._id, 'heart');
                     }}
-                    className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors cursor-pointer ${
+                    className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors ${
+                      reactingMessages.has(message._id)
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'cursor-pointer'
+                    } ${
                       hasUserLiked(message)
                         ? 'bg-red-100 text-red-600 hover:bg-red-200' 
                         : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
                     }`}
-                    title={hasUserLiked(message) ? 'กดเพื่อยกเลิกหัวใจ' : 'กดหัวใจ'}
-                    style={{ pointerEvents: 'auto' }}
+                    title={
+                      reactingMessages.has(message._id)
+                        ? 'กำลังประมวลผล...'
+                        : hasUserLiked(message) 
+                          ? 'กดเพื่อยกเลิกหัวใจ' 
+                          : 'กดหัวใจ'
+                    }
+                    style={{ pointerEvents: reactingMessages.has(message._id) ? 'none' : 'auto' }}
+                    disabled={reactingMessages.has(message._id)}
                   >
                     <div className={hasUserLiked(message) ? 'text-red-600' : 'text-gray-600'}>
                       <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current' : ''}`} />

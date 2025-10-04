@@ -34,15 +34,21 @@ export const AuthProvider = ({ children }) => {
     }
     
     // Hide warning modal if it's showing
-    setShowIdleWarning(false);
+    if (showIdleWarning) {
+      console.log('✅ Hiding idle warning during timer reset');
+      setShowIdleWarning(false);
+    }
 
     if (user) {
       console.log('🔄 Resetting idle timer - fresh 15 minutes');
       
       // Set warning timer (14 minutes)
       const warningTimerId = setTimeout(() => {
-        setShowIdleWarning(true);
-        console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+        // Only show warning if user is still logged in and no recent activity
+        if (user) {
+          setShowIdleWarning(true);
+          console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+        }
       }, WARNING_TIME);
 
       // Set auto sign out timer (15 minutes)
@@ -67,6 +73,11 @@ export const AuthProvider = ({ children }) => {
       
       activityTimeout = setTimeout(() => {
         console.log('🔄 User activity detected, resetting idle timer');
+        // Hide warning modal immediately when user is active
+        if (showIdleWarning) {
+          console.log('✅ Hiding idle warning due to user activity');
+          setShowIdleWarning(false);
+        }
         resetIdleTimer();
       }, 1000); // Reset timer max once per second
     }
@@ -176,8 +187,7 @@ export const AuthProvider = ({ children }) => {
         'touchstart', 'touchend', 'touchmove',
         'click', 'dblclick',
         'focus', 'blur',
-        'resize',
-        'visibilitychange' // ตรวจจับเมื่อผู้ใช้กลับมาใช้ tab
+        'resize'
       ];
       
       // ใช้ passive listeners เพื่อประสิทธิภาพที่ดีขึ้น
@@ -185,10 +195,15 @@ export const AuthProvider = ({ children }) => {
         document.addEventListener(event, handleUserActivity, { passive: true, capture: true });
       });
 
-      // ตรวจจับเมื่อผู้ใช้กลับมาใช้ tab/window
+      // ตรวจจับเมื่อผู้ใช้กลับมาใช้ tab/window (แยกต่างหากเพื่อจัดการพิเศษ)
       const handleVisibilityChange = () => {
         if (!document.hidden && user) {
           console.log('👀 User returned to tab, resetting idle timer');
+          // Hide warning modal immediately when user returns to tab
+          if (showIdleWarning) {
+            console.log('✅ Hiding idle warning due to tab focus');
+            setShowIdleWarning(false);
+          }
           handleUserActivity();
         }
       };
@@ -202,7 +217,7 @@ export const AuthProvider = ({ children }) => {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
     }
-  }, [user]);
+  }, [user, showIdleWarning]);
 
   const login = (userData) => {
     console.log('🔍 AuthContext login called with:', userData);
@@ -305,7 +320,7 @@ export const AuthProvider = ({ children }) => {
       setWarningTimer(null);
     }
     
-    // Hide the warning modal
+    // Hide the warning modal immediately
     setShowIdleWarning(false);
     
     // Reset the idle timer to start fresh
@@ -314,8 +329,11 @@ export const AuthProvider = ({ children }) => {
       
       // Set warning timer (14 minutes)
       const warningTimerId = setTimeout(() => {
-        setShowIdleWarning(true);
-        console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+        // Only show warning if user is still logged in and no recent activity
+        if (user) {
+          setShowIdleWarning(true);
+          console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+        }
       }, WARNING_TIME);
 
       // Set auto sign out timer (15 minutes)

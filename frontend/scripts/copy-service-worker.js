@@ -21,8 +21,8 @@ try {
 
   // ปรับแต่งเนื้อหาให้เหมาะกับ development
   const devContent = content.replace(
-    "const API_BASE_URL = 'http://localhost:5000'; // ควรใช้ environment variable",
-    "const API_BASE_URL = 'http://localhost:5000'; // Development mode"
+    "const API_BASE_URL = 'https://sodeclick-backend-production.up.railway.app'; // Production API",
+    "const API_BASE_URL = 'http://localhost:5000'; // Development API"
   );
 
   // เขียนไฟล์สำหรับ development

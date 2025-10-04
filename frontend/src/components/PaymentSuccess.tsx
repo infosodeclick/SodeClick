@@ -71,7 +71,7 @@ const PaymentSuccess = ({ transactionData, plan, onContinue }: PaymentSuccessPro
   const [newBenefits, setNewBenefits] = useState<any[]>([])
   const [syncingData, setSyncingData] = useState(false)
   const [, setPreviousTier] = useState<string | null>(null)
-  const syncTimeoutRef = useRef<number | null>(null)
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ดึงข้อมูลผู้ใช้ล่าสุดจาก localStorage
   const getCurrentUser = useCallback(() => {

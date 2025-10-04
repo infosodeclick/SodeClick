@@ -1,9 +1,36 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { copyFileSync, existsSync } from 'fs'
+import { resolve } from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Plugin to copy Service Worker files to dist
+    {
+      name: 'copy-service-worker',
+      writeBundle() {
+        const publicDir = resolve(__dirname, 'public')
+        const distDir = resolve(__dirname, 'dist')
+        
+        // Copy Service Worker files
+        const swFiles = ['sw-auto-refresh.js', 'sw-auto-refresh-dev.js']
+        
+        swFiles.forEach(file => {
+          const sourcePath = resolve(publicDir, file)
+          const targetPath = resolve(distDir, file)
+          
+          if (existsSync(sourcePath)) {
+            copyFileSync(sourcePath, targetPath)
+            console.log(`✅ Copied ${file} to dist folder`)
+          } else {
+            console.warn(`⚠️ Service Worker file not found: ${sourcePath}`)
+          }
+        })
+      }
+    }
+  ],
   base: '/', // Use root path for assets
   server: {
     port: 5173,
