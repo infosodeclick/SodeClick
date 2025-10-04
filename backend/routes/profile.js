@@ -10,7 +10,7 @@ const { auth } = require('../middleware/auth');
 const { profileImageStorage, deleteImage, getPublicIdFromUrl, CLOUDINARY_ENABLED } = require('../config/cloudinary');
 
 // JWT Secret - use the actual secret from environment
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-for-development-2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-for-development-2025';
 
 // Middleware to verify JWT token and get user from database
 const authenticateToken = async (req, res, next) => {

@@ -1446,7 +1446,7 @@ function App() {
 
   // Handle dev access to maintenance mode
   const handleDevAccess = (code: string) => {
-    if (code === 'DEV2024LOVE') {
+    if (code === 'DEV2025LOVE') {
       setHasDevAccess(true);
       localStorage.setItem('devAccess', 'true');
       showWebappNotification('เข้าสู่ระบบในโหมด Developer สำเร็จ! คุณสามารถเข้าถึงระบบได้แล้ว แต่หน้า Maintenance Mode ยังคงแสดงอยู่', 'success');

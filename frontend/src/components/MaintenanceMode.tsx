@@ -19,7 +19,7 @@ const MaintenanceMode: React.FC<MaintenanceModeProps> = ({ onDevAccess, hasDevAc
 
     try {
       // ตรวจสอบรหัส dev
-      if (devCode === 'DEV2024LOVE') {
+      if (devCode === 'DEV2025LOVE') {
         onDevAccess(devCode)
       } else {
         setError('รหัสเข้าถึงไม่ถูกต้อง')

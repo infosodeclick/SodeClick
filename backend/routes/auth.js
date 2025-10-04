@@ -6,7 +6,7 @@ const User = require('../models/User');
 const router = express.Router();
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-for-development-2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-for-development-2025';
 
 // Generate JWT Token
 const generateToken = (user) => {
