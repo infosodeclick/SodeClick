@@ -39,27 +39,28 @@ export const AuthProvider = ({ children }) => {
       setShowIdleWarning(false);
     }
 
-    if (user) {
-      console.log('🔄 Resetting idle timer - fresh 15 minutes');
-      
-      // Set warning timer (14 minutes)
-      const warningTimerId = setTimeout(() => {
-        // Only show warning if user is still logged in and no recent activity
-        if (user) {
-          setShowIdleWarning(true);
+    console.log('🔄 Resetting idle timer - fresh 15 minutes');
+    
+    // Set warning timer (14 minutes)
+    const warningTimerId = setTimeout(() => {
+      // Use functional update to get current state
+      setShowIdleWarning(prevShow => {
+        if (!prevShow) {
           console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+          return true;
         }
-      }, WARNING_TIME);
+        return prevShow;
+      });
+    }, WARNING_TIME);
 
-      // Set auto sign out timer (15 minutes)
-      const timerId = setTimeout(() => {
-        console.log('🚪 Auto sign out due to inactivity');
-        logout();
-      }, IDLE_TIMEOUT);
+    // Set auto sign out timer (15 minutes)
+    const timerId = setTimeout(() => {
+      console.log('🚪 Auto sign out due to inactivity');
+      logout();
+    }, IDLE_TIMEOUT);
 
-      setWarningTimer(warningTimerId);
-      setIdleTimer(timerId);
-    }
+    setWarningTimer(warningTimerId);
+    setIdleTimer(timerId);
   };
 
   // Handle user activity with debouncing to prevent excessive timer resets
@@ -161,8 +162,10 @@ export const AuthProvider = ({ children }) => {
   // Set up idle timer when user logs in
   useEffect(() => {
     if (user) {
+      console.log('👤 User logged in, setting up idle timer');
       resetIdleTimer();
     } else {
+      console.log('👤 User logged out, clearing timers');
       // Clear timers when user logs out
       if (idleTimer) {
         clearTimeout(idleTimer);
@@ -174,7 +177,7 @@ export const AuthProvider = ({ children }) => {
       }
       setShowIdleWarning(false);
     }
-  }, [user]);
+  }, [user]); // Only depend on user, not on timer functions
 
   // Set up activity listeners
   useEffect(() => {
@@ -309,42 +312,51 @@ export const AuthProvider = ({ children }) => {
   // Function to dismiss idle warning
   const dismissIdleWarning = async () => {
     console.log('✅ User dismissed idle warning, resetting timer');
+    console.log('🔍 Current timers before clearing - idleTimer:', idleTimer, 'warningTimer:', warningTimer);
     
     // Clear all existing timers first
     if (idleTimer) {
+      console.log('🗑️ Clearing idle timer:', idleTimer);
       clearTimeout(idleTimer);
       setIdleTimer(null);
     }
     if (warningTimer) {
+      console.log('🗑️ Clearing warning timer:', warningTimer);
       clearTimeout(warningTimer);
       setWarningTimer(null);
     }
     
     // Hide the warning modal immediately
+    console.log('👁️ Hiding warning modal');
     setShowIdleWarning(false);
     
     // Reset the idle timer to start fresh
-    if (user) {
-      console.log('🔄 Restarting idle timer after user confirmation');
-      
-      // Set warning timer (14 minutes)
-      const warningTimerId = setTimeout(() => {
-        // Only show warning if user is still logged in and no recent activity
-        if (user) {
-          setShowIdleWarning(true);
+    console.log('🔄 Restarting idle timer after user confirmation');
+    
+    // Set warning timer (14 minutes)
+    const warningTimerId = setTimeout(() => {
+      console.log('⏰ Warning timer triggered after 14 minutes');
+      // Check current user state instead of closure
+      setShowIdleWarning(prevShow => {
+        // Only show warning if modal is not already showing
+        if (!prevShow) {
           console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+          return true;
         }
-      }, WARNING_TIME);
+        return prevShow;
+      });
+    }, WARNING_TIME);
 
-      // Set auto sign out timer (15 minutes)
-      const timerId = setTimeout(() => {
-        console.log('🚪 Auto sign out due to inactivity');
-        logout();
-      }, IDLE_TIMEOUT);
+    // Set auto sign out timer (15 minutes)
+    const timerId = setTimeout(() => {
+      console.log('⏰ Idle timer triggered after 15 minutes - logging out');
+      logout();
+    }, IDLE_TIMEOUT);
 
-      setWarningTimer(warningTimerId);
-      setIdleTimer(timerId);
-    }
+    console.log('🆔 Setting new timers - warningTimerId:', warningTimerId, 'timerId:', timerId);
+    setWarningTimer(warningTimerId);
+    setIdleTimer(timerId);
+    console.log('✅ Timers reset complete');
   };
 
   // Function to update user data (for coin/vote updates)

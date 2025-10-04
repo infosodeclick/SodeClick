@@ -374,16 +374,27 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           
           // ถ้าเป็นข้อความจากผู้ใช้ปัจจุบัน ให้แทนที่ข้อความชั่วคราว
           if (message.sender && message.sender._id === currentUser._id) {
-            // หาข้อความชั่วคราวที่ตรงกัน
-            const tempIndex = prev.findIndex(msg => 
-              msg.isTemp && 
-              msg.sender._id === currentUser._id &&
-              msg.messageType === message.messageType &&
+            // หาข้อความชั่วคราวที่ตรงกัน - ปรับปรุงการตรวจสอบให้ครอบคลุมมากขึ้น
+            const tempIndex = prev.findIndex(msg => {
+              if (!msg.isTemp || msg.sender._id !== currentUser._id) return false;
+              
+              // ตรวจสอบ messageType
+              if (msg.messageType !== message.messageType) return false;
+              
               // สำหรับข้อความรูปภาพ ให้เปรียบเทียบ fileUrl หรือ imageUrl
-              (message.messageType === 'image' 
-                ? (msg.fileUrl === message.fileUrl || msg.imageUrl === message.imageUrl)
-                : msg.content === message.content)
-            );
+              if (message.messageType === 'image') {
+                const msgImageUrl = msg.imageUrl || msg.fileUrl;
+                const newImageUrl = message.imageUrl || message.fileUrl;
+                return msgImageUrl === newImageUrl;
+              }
+              
+              // สำหรับข้อความข้อความ ให้เปรียบเทียบ content
+              if (message.messageType === 'text') {
+                return msg.content === message.content;
+              }
+              
+              return false;
+            });
             
             if (tempIndex !== -1) {
               console.log('🔄 Replacing temp message with real message:', {
@@ -391,16 +402,22 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 realId: message._id,
                 messageType: message.messageType,
                 tempImageUrl: prev[tempIndex].imageUrl || prev[tempIndex].fileUrl,
-                realImageUrl: message.imageUrl || message.fileUrl
+                realImageUrl: message.imageUrl || message.fileUrl,
+                tempContent: prev[tempIndex].content,
+                realContent: message.content
               });
               const newMessages = [...prev];
               newMessages[tempIndex] = { ...message, isTemp: false };
               return newMessages;
+            } else {
+              console.log('⚠️ No matching temp message found for current user message');
+              // ถ้าไม่เจอ temp message ที่ตรงกัน ให้ข้ามข้อความนี้
+              return prev;
             }
           }
           
-          // เพิ่มข้อความใหม่
-          console.log('➕ Adding new message to list');
+          // เพิ่มข้อความใหม่ (เฉพาะข้อความจากผู้อื่น)
+          console.log('➕ Adding new message from other user to list');
           const newMessages = [...prev, message];
           console.log('✅ New messages count:', newMessages.length);
           return newMessages;

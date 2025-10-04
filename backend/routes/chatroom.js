@@ -947,28 +947,11 @@ router.get('/user/:userId', async (req, res) => {
 
 // POST /api/chatroom/upload - อัปโหลดไฟล์
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { chatFileStorage } = require('../config/cloudinary'); // เพิ่ม Cloudinary storage
 
-// สร้างโฟลเดอร์สำหรับเก็บไฟล์
-const uploadDir = path.join(__dirname, '../uploads/chat-files');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// ตั้งค่า multer
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// ใช้ Cloudinary storage สำหรับการอัพโหลดไฟล์แชท
 const upload = multer({
-  storage: storage,
+  storage: chatFileStorage,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB
   },
@@ -1025,20 +1008,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       });
     }
 
-    // สร้าง URL สำหรับไฟล์
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`
-      : `${req.protocol}://${req.get('host')}`;
-    const fileUrl = `${baseUrl}/uploads/chat-files/${req.file.filename}`;
+    // ใช้ URL จาก Cloudinary โดยตรง
+    const fileUrl = req.file.path; // Cloudinary จะให้ URL มาพร้อมแล้ว
 
     const response = {
       success: true,
-      message: 'อัปโหลดไฟล์สำเร็จ',
+      message: 'อัปโหลดไฟล์สำเร็จไปยัง Cloudinary',
       data: {
         fileUrl,
         fileName: req.file.originalname,
         fileSize: req.file.size,
-        fileType: req.file.mimetype
+        fileType: req.file.mimetype,
+        cloudinaryUrl: fileUrl
       }
     };
 

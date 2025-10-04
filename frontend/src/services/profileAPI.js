@@ -64,14 +64,14 @@ class ProfileAPI {
       if (!actualData || !actualData.profile) {
         console.warn('⚠️ Profile data is missing from response, but API call was successful:', result);
         // ถ้าไม่มีข้อมูลโปรไฟล์ แต่ API สำเร็จ อาจเป็นเพราะข้อมูลยังไม่พร้อม
-        // ให้ return ข้อมูลว่างแทนการ throw error
-        return {
-          success: true,
-          data: {
-            profile: null,
-            message: 'Profile data not available yet'
-          }
-        };
+        // ให้ return null เพื่อให้ useLazyData retry
+        return null;
+      }
+      
+      // ตรวจสอบว่าข้อมูลโปรไฟล์มีข้อมูลพื้นฐานหรือไม่
+      if (!actualData.profile._id && !actualData.profile.id) {
+        console.warn('⚠️ Profile data exists but missing ID:', actualData.profile);
+        return null;
       }
       
       // ส่งคืนข้อมูลในรูปแบบที่ component คาดหวัง

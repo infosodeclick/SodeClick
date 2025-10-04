@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Clock, AlertTriangle } from 'lucide-react';
@@ -12,13 +12,37 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
     // User must click one of the buttons
   };
 
+  // Add keyboard event handler as fallback
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (isOpen && !isProcessing) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          console.log('⌨️ Keyboard shortcut triggered - dismissing modal');
+          e.preventDefault();
+          handleDismiss();
+        }
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, isProcessing]);
+
   const handleDismiss = async () => {
-    if (isProcessing) return;
+    console.log('🔄 handleDismiss called, isProcessing:', isProcessing);
+    if (isProcessing) {
+      console.log('⚠️ Already processing, ignoring click');
+      return;
+    }
     setIsProcessing(true);
     try {
       console.log('👆 User clicked "Still using" button');
+      console.log('📞 Calling onDismiss function...');
       await onDismiss();
       console.log('✅ Idle warning dismissed successfully');
+      console.log('🎯 Timer should be reset now - modal will close');
     } catch (error) {
       console.error('❌ Error dismissing idle warning:', error);
     } finally {
@@ -42,9 +66,6 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
         className="sm:max-w-md w-[95vw] modern-card border-0 shadow-2xl p-0 rounded-3xl overflow-hidden"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onMouseUp={(e) => e.stopPropagation()}
       >
         <DialogTitle className="sr-only">
           เตือนการใช้งาน
@@ -79,12 +100,25 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
             
             <div className="space-y-3">
               <Button 
-                onClick={handleDismiss}
+                onClick={(e) => {
+                  console.log('🖱️ Button clicked directly');
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDismiss();
+                }}
+                onMouseDown={(e) => {
+                  console.log('🖱️ Button mouse down');
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onMouseUp={(e) => {
+                  console.log('🖱️ Button mouse up');
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 disabled={isProcessing}
                 className="w-full h-12 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-                onMouseDown={(e) => e.stopPropagation()}
-                onMouseUp={(e) => e.stopPropagation()}
-                onClickCapture={(e) => e.stopPropagation()}
+                style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1001 }}
               >
                 {isProcessing ? 'กำลังประมวลผล...' : 'ยังใช้งานอยู่'}
               </Button>
@@ -94,9 +128,6 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
                 disabled={isProcessing}
                 variant="outline"
                 className="w-full h-12 border-gray-300 text-gray-600 hover:bg-gray-50 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-                onMouseDown={(e) => e.stopPropagation()}
-                onMouseUp={(e) => e.stopPropagation()}
-                onClickCapture={(e) => e.stopPropagation()}
               >
                 {isProcessing ? 'กำลังออกจากระบบ...' : 'ออกจากระบบ'}
               </Button>

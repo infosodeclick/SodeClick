@@ -21,7 +21,7 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
   } = options;
 
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // เริ่มต้นเป็น true เพื่อแสดง loading
   const [error, setError] = useState(null);
   const [lastFetchTime, setLastFetchTime] = useState(null);
   
@@ -105,9 +105,23 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
           onSuccess(result);
         }
       } else {
-        // ถ้าไม่มีข้อมูล ให้ตั้งค่าเป็น null
+        // ถ้าไม่มีข้อมูล ให้ตั้งค่าเป็น null และ retry
         setData(null);
-        setError(new Error('ไม่พบข้อมูล'));
+        
+        // Retry logic สำหรับกรณีที่ไม่มีข้อมูล
+        if (retryCountRef.current < retryCount) {
+          retryCountRef.current++;
+          const delay = Math.min(retryDelay * Math.pow(1.2, retryCountRef.current - 1), 1500);
+          console.log(`🔄 Retrying profile fetch (${retryCountRef.current}/${retryCount}) in ${delay}ms`);
+          setTimeout(() => {
+            fetchData(forceRefresh);
+          }, delay);
+          return;
+        } else {
+          // ถ้า retry หมดแล้ว ให้แสดง error
+          console.log('❌ Profile fetch failed after all retries');
+          setError(new Error('ไม่พบข้อมูล'));
+        }
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -116,13 +130,15 @@ export const useLazyData = (fetchFunction, dependencies = [], options = {}) => {
       if (retryCountRef.current < retryCount) {
         retryCountRef.current++;
         // ใช้ exponential backoff แต่เริ่มต้นเร็วกว่าเดิม
-        const delay = Math.min(retryDelay * Math.pow(1.5, retryCountRef.current - 1), 2000);
+        const delay = Math.min(retryDelay * Math.pow(1.2, retryCountRef.current - 1), 1500);
+        console.log(`🔄 Retrying profile fetch after error (${retryCountRef.current}/${retryCount}) in ${delay}ms`);
         setTimeout(() => {
           fetchData(forceRefresh);
         }, delay);
         return;
       }
       
+      // ตั้งค่า error เฉพาะเมื่อ retry หมดแล้ว
       setError(err);
       if (onError) {
         onError(err);

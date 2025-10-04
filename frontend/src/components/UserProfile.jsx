@@ -78,7 +78,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
   const [blurredImages, setBlurredImages] = useState([]); // รูปที่เบลอของผู้ใช้
   const [showBlurredImages, setShowBlurredImages] = useState(false); // แสดง modal รูปเบลอ
   const [purchasingImage, setPurchasingImage] = useState(null); // รูปที่กำลังซื้อ
-  const [mainProfileImageUrl, setMainProfileImageUrl] = useState(''); // URL ของรูปโปรไฟล์หลัก
+  const [mainProfileImageUrl, setMainProfileImageUrl] = useState(''); // URL ของรูปโปรไฟล์หลัก (deprecated - ใช้ profileData โดยตรงแทน)
   const { success, error: showError } = useToast();
   const lastClickTimeRef = useRef({ blur: 0, unblur: 0, delete: 0 }); // ป้องกันการกดเร็วเกินไปแยกตามปุ่ม
   const retryCountRef = useRef(0); // เพิ่ม ref สำหรับนับ retry
@@ -107,13 +107,15 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         return result;
       } finally {
         isFetchingRef.current = false;
-      }
+}
     }, [userId]),
     [userId],
     {
       cacheKey: `profile_${userId}`,
       staleTime: 2 * 60 * 1000, // ลดเหลือ 2 นาที เพื่อลดการ cache ที่อาจทำให้เกิดปัญหา
       backgroundRefresh: false, // ปิด background refresh เพื่อป้องกันการ overwrite ข้อมูลใหม่
+      retryCount: 5, // เพิ่มจำนวน retry
+      retryDelay: 500, // เริ่มต้น retry เร็วขึ้น
       onSuccess: (response) => {
         console.log('✅ Profile loaded successfully:', response);
 
@@ -174,12 +176,14 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         console.log('🖼️ Updated main profile image URL:', imageUrl);
         console.log('🖼️ Profile images:', profile.data.profileImages);
         console.log('🖼️ Main image index:', profile.data.mainProfileImageIndex);
+        console.log('🖼️ Main image data:', profile.data.profileImages[profile.data.mainProfileImageIndex || 0]);
         setMainProfileImageUrl(imageUrl);
       } catch (error) {
         console.error('❌ Error getting main profile image URL:', error);
         setMainProfileImageUrl('');
       }
     } else {
+      console.log('🖼️ No profile images available, clearing main profile image URL');
       setMainProfileImageUrl('');
     }
   }, [profile?.data?.profileImages, profile?.data?.mainProfileImageIndex, userId]);
@@ -203,8 +207,9 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
             const imagePath = typeof mainImage === 'string' ? mainImage : (mainImage?.url || '');
             
             if (imagePath && !imagePath.startsWith('data:image/svg+xml')) {
-              const imageUrl = getProfileImageUrl(imagePath, userId);
+              const imageUrl = getProfileImageUrl(imagePath, eventUserId);
               console.log('🖼️ Updated main profile image URL from event:', imageUrl);
+              console.log('🔄 Event data:', { eventUserId, profileImages, mainProfileImageIndex });
               setMainProfileImageUrl(imageUrl);
             } else {
               setMainProfileImageUrl('');
@@ -1287,18 +1292,47 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
     );
   }
 
-  if (!profile || !profile.data || !hasValidProfileData) {
-    // ถ้ายังกำลังโหลด ให้แสดง loading
-    if (profileLoading) {
-      return (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
-          <span className="ml-3 text-gray-600">กำลังโหลดโปรไฟล์...</span>
+  // แสดง loading state เมื่อกำลังโหลดหรือยังไม่มีข้อมูล
+  if (profileLoading || (!profile && !profileError)) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+        <span className="ml-3 text-gray-600">กำลังโหลดโปรไฟล์...</span>
+      </div>
+    );
+  }
+  
+  // แสดง error state เมื่อมี error
+  if (profileError) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-gray-400 mb-2">
+          <User className="h-8 w-8 mx-auto mb-2" />
+          <p className="text-lg font-semibold">เกิดข้อผิดพลาด</p>
         </div>
-      );
-    }
-    
-    // ถ้าไม่มีข้อมูลโปรไฟล์ ให้แสดง error และปุ่มลองใหม่
+        <p className="text-gray-500 mb-4">ไม่สามารถโหลดข้อมูลโปรไฟล์ได้</p>
+        <div className="space-x-2">
+          <Button 
+            onClick={() => refetchProfile()} 
+            variant="outline"
+            className="text-sm"
+          >
+            ลองใหม่
+          </Button>
+          <Button 
+            onClick={() => window.location.reload()} 
+            variant="outline"
+            className="text-sm"
+          >
+            รีเฟรชหน้า
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  // แสดง error เมื่อไม่มีข้อมูลโปรไฟล์ที่ถูกต้อง
+  if (!profile || !profile.data || !hasValidProfileData) {
     return (
       <div className="text-center py-12">
         <div className="text-gray-400 mb-2">
@@ -1322,14 +1356,6 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
             รีเฟรชหน้า
           </Button>
         </div>
-        <div className="mt-4 text-xs text-gray-400">
-          <p>Debug info:</p>
-          <p>Profile exists: {profile ? 'Yes' : 'No'}</p>
-          <p>Profile data exists: {profile?.data ? 'Yes' : 'No'}</p>
-          <p>Profile profile exists: {profile?.data?.profile ? 'Yes' : 'No'}</p>
-          <p>Has valid profile data: {hasValidProfileData ? 'Yes' : 'No'}</p>
-          <p>Profile data keys: {profileData ? Object.keys(profileData).join(', ') : 'None'}</p>
-        </div>
       </div>
     );
   }
@@ -1347,10 +1373,11 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
               <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold overflow-hidden relative">
                 {(() => {
                   // แสดง loading state ถ้ายังไม่มีรูปภาพ
-                  if (profileLoading || !mainProfileImageUrl) {
+                  if (profileLoading || !profileData?.profileImages || profileData.profileImages.length === 0) {
                     return <div className="animate-pulse bg-gray-300 w-full h-full rounded-full"></div>;
                   }
-                  // สร้าง profile image URL ที่ถูกต้อง
+                  
+                  // สร้าง profile image URL ที่ถูกต้องจาก profileData โดยตรง
                   const mainImageIndex = profileData.mainProfileImageIndex || 0;
                   const mainImage = profileData.profileImages?.[mainImageIndex];
                   
@@ -1358,29 +1385,30 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                   const isMainImageBlurred = typeof mainImage === 'object' && mainImage.isBlurred;
 
                   // สร้าง mainImagePath ก่อนที่จะใช้
-                  const mainImagePath = typeof profileData.profileImages[mainImageIndex] === 'string'
-                    ? profileData.profileImages[mainImageIndex]
-                    : profileData.profileImages[mainImageIndex]?.url || '';
+                  const mainImagePath = typeof mainImage === 'string' ? mainImage : mainImage?.url || '';
+                  
+                  // สร้าง URL จาก mainImagePath โดยตรง
+                  const imageUrl = getProfileImageUrl(mainImagePath, userId);
 
                   console.log('🔍 Main profile image debug:', {
                     mainImageIndex,
                     mainImage,
-                    isMainImageBlurred,
-                    mainProfileImageUrl,
                     mainImagePath,
-                    shouldShow: mainProfileImageUrl && !mainImagePath.startsWith('data:image/svg+xml')
+                    imageUrl,
+                    isMainImageBlurred,
+                    hasValidPath: mainImagePath && !mainImagePath.startsWith('data:image/svg+xml')
                   });
 
                   // ตรวจสอบว่ามี URL ที่ถูกต้องหรือไม่
-                  if (!mainProfileImageUrl || mainProfileImageUrl === '' || mainProfileImageUrl.includes('undefined') || mainProfileImageUrl.includes('null')) {
-                    console.warn('🚨 Invalid main profile image URL:', mainProfileImageUrl);
+                  if (!imageUrl || imageUrl === '' || imageUrl.includes('undefined') || imageUrl.includes('null')) {
+                    console.warn('🚨 Invalid main profile image URL:', imageUrl);
                     return null; // ไม่แสดงอะไรถ้า URL ผิดปกติ
                   }
 
-                  return mainProfileImageUrl && !mainImagePath.startsWith('data:image/svg+xml') ? (
+                  return imageUrl && !mainImagePath.startsWith('data:image/svg+xml') ? (
                     <>
                       <img
-                        src={mainProfileImageUrl}
+                        src={imageUrl}
                         alt="Profile"
                         className={`w-full h-full rounded-full object-cover object-center ${isMainImageBlurred ? 'blur-sm filter' : ''}`}
                         style={{ 
@@ -1393,7 +1421,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                           })
                         }}
                         onError={(e) => {
-                          console.error('❌ Profile image failed to load:', mainProfileImageUrl);
+                          console.error('❌ Profile image failed to load:', imageUrl);
                           // ซ่อนรูปภาพที่โหลดไม่สำเร็จ
                           e.target.style.display = 'none';
                           // แสดง fallback icon
@@ -1403,10 +1431,10 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                             fallbackDiv.style.display = 'flex';
                           }
                           // ลองโหลดรูปภาพใหม่ด้วย URL ที่แตกต่าง (fallback)
-                          if (mainImagePath && !mainProfileImageUrl.includes('cloudinary.com')) {
+                          if (mainImagePath && !imageUrl.includes('cloudinary.com')) {
                             // ถ้าเป็นรูปภาพ local ลองใช้ fallback URL
                             const fallbackUrl = getProfileImageUrl(mainImagePath, userId);
-                            if (fallbackUrl && fallbackUrl !== mainProfileImageUrl) {
+                            if (fallbackUrl && fallbackUrl !== imageUrl) {
                               console.log('🔄 Trying fallback URL:', fallbackUrl);
                               e.target.src = fallbackUrl;
                               e.target.style.display = 'block';
@@ -1433,7 +1461,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                   )
                 })()}
                 {/* Fallback avatar - แสดงเมื่อไม่มีรูปภาพหรือโหลดไม่สำเร็จ */}
-                <div className={`absolute inset-0 w-full h-full rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold ${!mainProfileImageUrl ? '' : 'hidden'}`}>
+                <div className={`absolute inset-0 w-full h-full rounded-full bg-gradient-to-r from-pink-500 to-violet-500 flex items-center justify-center text-white text-lg sm:text-2xl font-bold ${!profileData?.profileImages || profileData.profileImages.length === 0 ? '' : 'hidden'}`}>
                   <User className="h-8 w-8 sm:h-10 sm:w-10" />
                 </div>
               </div>

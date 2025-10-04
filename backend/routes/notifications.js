@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const VoteTransaction = require('../models/VoteTransaction');
+const BlurTransaction = require('../models/BlurTransaction');
 
 // GET /api/notifications/:userId - ดึงการแจ้งเตือนของผู้ใช้
 router.get('/:userId', async (req, res) => {
@@ -69,13 +70,13 @@ router.get('/:userId', async (req, res) => {
       });
     });
 
-    // ดึงการแจ้งเตือนการกดหัวใจ (จาก VoteTransaction)
+    // ดึงการแจ้งเตือนการกดหัวใจ (จาก VoteTransaction - popularity votes)
     const likes = await VoteTransaction.find({
       candidate: userId,
       voteType: { $in: ['popularity_male', 'popularity_female'] },
       votedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
     })
-    .populate('voter', 'username displayName firstName lastName')
+    .populate('voter', 'username displayName firstName lastName profileImages mainProfileImageIndex')
     .sort({ votedAt: -1 })
     .limit(10);
 
@@ -85,10 +86,10 @@ router.get('/:userId', async (req, res) => {
       // filter ด้วย clearedNotificationsAt
       if (clearedAt && vote.votedAt <= clearedAt) return;
       notifications.push({
-        _id: `vote_${vote._id}`,
+        _id: `like_${vote._id}`,
         type: 'profile_like',
-        title: 'คุณได้รับโหวด',
-        message: 'คุณได้รับ ❤️',
+        title: 'คุณได้รับไลค์',
+        message: `${vote.voter.displayName || vote.voter.firstName || vote.voter.username || 'Unknown User'} กดหัวใจให้คุณ ❤️`,
         data: {
           voterId: vote.voter._id,
           voterName: vote.voter.displayName || vote.voter.firstName || vote.voter.username || 'Unknown User',
@@ -103,6 +104,159 @@ router.get('/:userId', async (req, res) => {
         isRead: false
       });
     });
+
+    // ดึงการแจ้งเตือนการกดดาวโหวต (จาก VoteTransaction - star votes)
+    const starVotes = await VoteTransaction.find({
+      candidate: userId,
+      voteType: { $in: ['star_male', 'star_female'] },
+      votedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+    })
+    .populate('voter', 'username displayName firstName lastName profileImages mainProfileImageIndex')
+    .sort({ votedAt: -1 })
+    .limit(10);
+
+    // เพิ่มการแจ้งเตือนการกดดาวโหวต
+    starVotes.forEach(vote => {
+      if (!vote.voter) return;
+      // filter ด้วย clearedNotificationsAt
+      if (clearedAt && vote.votedAt <= clearedAt) return;
+      notifications.push({
+        _id: `star_${vote._id}`,
+        type: 'profile_star',
+        title: 'คุณได้รับดาว',
+        message: `${vote.voter.displayName || vote.voter.firstName || vote.voter.username || 'Unknown User'} กดดาวให้คุณ ⭐`,
+        data: {
+          voterId: vote.voter._id,
+          voterName: vote.voter.displayName || vote.voter.firstName || vote.voter.username || 'Unknown User',
+          voterProfileImage: vote.voter.profileImages && vote.voter.profileImages.length > 0 ? 
+            (vote.voter.mainProfileImageIndex !== undefined ? 
+              vote.voter.profileImages[vote.voter.mainProfileImageIndex] : 
+              vote.voter.profileImages[0]) : null,
+          votePoints: vote.votePoints || 1,
+          voteType: vote.voteType
+        },
+        createdAt: vote.votedAt,
+        isRead: false
+      });
+    });
+
+    // ดึงการแจ้งเตือนการตอบกลับในแชทสาธารณะ
+    const publicChatReplies = await Message.find({
+      $and: [
+        { chatRoom: { $ne: null } },
+        { chatRoom: { $not: { $regex: /^private_/ } } }, // ไม่ใช่แชทส่วนตัว
+        { replyTo: { $exists: true, $ne: null } }, // มีการตอบกลับ
+        { sender: { $ne: userId } }, // ไม่ใช่ข้อความของตัวเอง
+        { createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }
+      ]
+    })
+    .populate('sender', 'username displayName firstName lastName profileImages mainProfileImageIndex')
+    .populate('replyTo', 'sender content')
+    .sort({ createdAt: -1 })
+    .limit(10);
+
+    // เพิ่มการแจ้งเตือนการตอบกลับในแชทสาธารณะ
+    publicChatReplies.forEach(message => {
+      if (!message.sender || !message.replyTo) return;
+      // filter ด้วย clearedNotificationsAt
+      if (clearedAt && message.createdAt <= clearedAt) return;
+      
+      // ตรวจสอบว่าเป็นการตอบกลับข้อความของเราเองหรือไม่
+      const originalSenderId = message.replyTo.sender?._id || message.replyTo.sender;
+      if (originalSenderId && originalSenderId.toString() === userId.toString()) {
+        notifications.push({
+          _id: `reply_${message._id}`,
+          type: 'public_chat_reply',
+          title: 'มีคนตอบกลับข้อความคุณ',
+          message: `${message.sender.displayName || message.sender.firstName || message.sender.username || 'Unknown User'} ตอบกลับข้อความของคุณ`,
+          data: {
+            senderId: message.sender._id,
+            senderName: message.sender.displayName || message.sender.firstName || message.sender.username || 'Unknown User',
+            senderProfileImage: message.sender.profileImages && message.sender.profileImages.length > 0 ? 
+              (message.sender.mainProfileImageIndex !== undefined ? 
+                message.sender.profileImages[message.sender.mainProfileImageIndex] : 
+                message.sender.profileImages[0]) : null,
+            messageId: message._id,
+            chatRoom: message.chatRoom,
+            messageContent: message.content || message.text || '',
+            originalMessage: message.replyTo.content || message.replyTo.text || ''
+          },
+          createdAt: message.createdAt,
+          isRead: false
+        });
+      }
+    });
+
+    // ดึงการแจ้งเตือนการได้รับเหรียญจากการดูภาพเบลอ
+    const blurTransactions = await BlurTransaction.find({
+      imageOwner: userId,
+      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+    })
+    .populate('buyer', 'username displayName firstName lastName profileImages mainProfileImageIndex')
+    .sort({ createdAt: -1 })
+    .limit(10);
+
+    // เพิ่มการแจ้งเตือนการได้รับเหรียญจากการดูภาพเบลอ
+    blurTransactions.forEach(transaction => {
+      if (!transaction.buyer) return;
+      // filter ด้วย clearedNotificationsAt
+      if (clearedAt && transaction.createdAt <= clearedAt) return;
+      notifications.push({
+        _id: `blur_${transaction._id}`,
+        type: 'blur_payment',
+        title: 'คุณได้รับเหรียญ',
+        message: `${transaction.buyer.displayName || transaction.buyer.firstName || transaction.buyer.username || 'Unknown User'} จ่ายเหรียญเพื่อดูภาพของคุณ`,
+        data: {
+          buyerId: transaction.buyer._id,
+          buyerName: transaction.buyer.displayName || transaction.buyer.firstName || transaction.buyer.username || 'Unknown User',
+          buyerProfileImage: transaction.buyer.profileImages && transaction.buyer.profileImages.length > 0 ? 
+            (transaction.buyer.mainProfileImageIndex !== undefined ? 
+              transaction.buyer.profileImages[transaction.buyer.mainProfileImageIndex] : 
+              transaction.buyer.profileImages[0]) : null,
+          amount: transaction.amount || 10000,
+          imageId: transaction.imageId
+        },
+        createdAt: transaction.createdAt,
+        isRead: false
+      });
+    });
+
+    // ดึงการแจ้งเตือนรางวัลจากหมุนวงล้อ (จาก User model - wheelSpinHistory)
+    const userWithWheelHistory = await User.findById(userId).select('wheelSpinHistory');
+    if (userWithWheelHistory && userWithWheelHistory.wheelSpinHistory && userWithWheelHistory.wheelSpinHistory.length > 0) {
+      const recentSpins = userWithWheelHistory.wheelSpinHistory
+        .filter(spin => new Date(spin.spunAt) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+        .sort((a, b) => new Date(b.spunAt) - new Date(a.spunAt))
+        .slice(0, 10);
+
+      recentSpins.forEach(spin => {
+        // filter ด้วย clearedNotificationsAt
+        if (clearedAt && new Date(spin.spunAt) <= clearedAt) return;
+        
+        let prizeMessage = '';
+        if (spin.prizeType === 'coins') {
+          prizeMessage = `คุณได้รับ ${spin.amount} เหรียญจากหมุนวงล้อ`;
+        } else if (spin.prizeType === 'votePoints') {
+          prizeMessage = `คุณได้รับ ${spin.amount} โหวตจากหมุนวงล้อ`;
+        } else if (spin.prizeType === 'grand') {
+          prizeMessage = `ยินดีด้วย! คุณได้รับรางวัลใหญ่จากหมุนวงล้อ`;
+        }
+
+        notifications.push({
+          _id: `wheel_${spin._id || Date.now()}`,
+          type: 'wheel_prize',
+          title: 'รางวัลจากหมุนวงล้อ',
+          message: prizeMessage,
+          data: {
+            prizeType: spin.prizeType,
+            amount: spin.amount,
+            spunAt: spin.spunAt
+          },
+          createdAt: new Date(spin.spunAt),
+          isRead: false
+        });
+      });
+    }
 
     notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     unreadCount = notifications.filter(n => !n.isRead).length;

@@ -83,7 +83,10 @@ import {
   Wine,
   Cigarette,
   Church,
-  Baby
+  Baby,
+  Star,
+  Coins,
+  Trophy
 } from 'lucide-react'
 
 type PublicUser = {
@@ -788,8 +791,55 @@ function App() {
         
         // ปิด notifications dropdown
         setShowNotificationDropdown(false)
+      } else if (type === 'public_chat_reply' && data.chatRoom) {
+        // ไปหน้าแชทสาธารณะ
+        setActiveTab('messages')
+        setChatType('public')
+        setSelectedRoomId(data.chatRoom._id)
+        
+        // ปิด notifications dropdown
+        setShowNotificationDropdown(false)
+      } else if (type === 'profile_like' || type === 'profile_star') {
+        // ไปหน้าโปรไฟล์ของผู้ที่กดไลค์/ดาว
+        if (data.voterId) {
+          const profileData = {
+            id: data.voterId,
+            name: data.voterName || 'Unknown User',
+            images: data.voterProfileImage ? [data.voterProfileImage] : [],
+            verified: false,
+            online: false,
+            membershipTier: 'member'
+          }
+          
+          handleViewProfile(profileData)
+        }
+        
+        // ปิด notifications dropdown
+        setShowNotificationDropdown(false)
+      } else if (type === 'blur_payment') {
+        // ไปหน้าโปรไฟล์ของผู้ที่ซื้อภาพ
+        if (data.buyerId) {
+          const profileData = {
+            id: data.buyerId,
+            name: data.buyerName || 'Unknown User',
+            images: data.buyerProfileImage ? [data.buyerProfileImage] : [],
+            verified: false,
+            online: false,
+            membershipTier: 'member'
+          }
+          
+          handleViewProfile(profileData)
+        }
+        
+        // ปิด notifications dropdown
+        setShowNotificationDropdown(false)
+      } else if (type === 'wheel_prize') {
+        // ไปหน้า premium/membership เพื่อดูรางวัล
+        setActiveTab('membership')
+        
+        // ปิด notifications dropdown
+        setShowNotificationDropdown(false)
       }
-      // สำหรับ vote notifications ไม่ต้องทำอะไรพิเศษ
     }
     
     if (type === 'private_message') {
@@ -849,11 +899,142 @@ function App() {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900">{title || 'คุณได้รับโหวด'}</p>
+              <p className="text-sm font-medium text-gray-900">{title || 'คุณได้รับไลค์'}</p>
               <p className="text-xs text-gray-500">{message || 'คุณได้รับ ❤️'}</p>
               <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
             </div>
             {!isRead && <div className="w-2 h-2 bg-pink-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'profile_star') {
+      return (
+        <div 
+          key={notification._id} 
+          onClick={handleNotificationClick}
+          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-yellow-50' : ''}`}
+        >
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+              {data.voterProfileImage && !data.voterProfileImage.startsWith('data:image/svg+xml') ? (
+                <img 
+                  src={getProfileImageUrl(data.voterProfileImage, data.voterId)}
+                  alt={data.voterName}
+                  className="w-10 h-10 object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <Star className="h-5 w-5 text-yellow-600" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">{title || 'คุณได้รับดาว'}</p>
+              <p className="text-xs text-gray-500">{message || 'คุณได้รับ ⭐'}</p>
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'public_chat_reply') {
+      return (
+        <div 
+          key={notification._id} 
+          onClick={handleNotificationClick}
+          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-green-50' : ''}`}
+        >
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+              {data.senderProfileImage && !data.senderProfileImage.startsWith('data:image/svg+xml') ? (
+                <img 
+                  src={getProfileImageUrl(data.senderProfileImage, data.senderId)}
+                  alt={data.senderName}
+                  className="w-10 h-10 object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <MessageCircle className="h-5 w-5 text-green-600" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">{title || 'มีคนตอบกลับข้อความคุณ'}</p>
+              <p className="text-xs text-gray-500">{message || `${data.senderName} ตอบกลับข้อความของคุณ`}</p>
+              {data.messageContent && (
+                <p className="text-xs text-gray-400 mt-1 truncate">{data.messageContent}</p>
+              )}
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-green-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'blur_payment') {
+      return (
+        <div 
+          key={notification._id} 
+          onClick={handleNotificationClick}
+          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-purple-50' : ''}`}
+        >
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+              {data.buyerProfileImage && !data.buyerProfileImage.startsWith('data:image/svg+xml') ? (
+                <img 
+                  src={getProfileImageUrl(data.buyerProfileImage, data.buyerId)}
+                  alt={data.buyerName}
+                  className="w-10 h-10 object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                  <Coins className="h-5 w-5 text-purple-600" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">{title || 'คุณได้รับเหรียญ'}</p>
+              <p className="text-xs text-gray-500">{message || `${data.buyerName} จ่ายเหรียญเพื่อดูภาพของคุณ`}</p>
+              <p className="text-xs text-purple-600 mt-1 font-medium">+{data.amount?.toLocaleString()} เหรียญ</p>
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-purple-500 rounded-full"></div>}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'wheel_prize') {
+      return (
+        <div 
+          key={notification._id} 
+          onClick={handleNotificationClick}
+          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 ${!isRead ? 'bg-orange-50' : ''}`}
+        >
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                <Trophy className="h-5 w-5 text-orange-600" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">{title || 'รางวัลจากหมุนวงล้อ'}</p>
+              <p className="text-xs text-gray-500">{message || 'คุณได้รับรางวัลจากหมุนวงล้อ'}</p>
+              {data.amount && (
+                <p className="text-xs text-orange-600 mt-1 font-medium">
+                  {data.prizeType === 'coins' ? `+${data.amount} เหรียญ` : 
+                   data.prizeType === 'votePoints' ? `+${data.amount} โหวต` : 
+                   'รางวัลใหญ่'}
+                </p>
+              )}
+              <p className="text-xs text-gray-400 mt-1">{formatTimeAgo(createdAt)}</p>
+            </div>
+            {!isRead && <div className="w-2 h-2 bg-orange-500 rounded-full"></div>}
           </div>
         </div>
       )

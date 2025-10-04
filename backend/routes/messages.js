@@ -9,24 +9,11 @@ const path = require('path');
 const fs = require('fs');
 const { auth } = require('../middleware/auth');
 const { getSocketInstance } = require('../socket'); // เพิ่ม Socket.IO
+const { chatFileStorage } = require('../config/cloudinary'); // เพิ่ม Cloudinary storage
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadPath = path.join(__dirname, '../uploads/chat-files');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// ใช้ Cloudinary storage สำหรับการอัพโหลดไฟล์แชท
 const upload = multer({ 
-  storage: storage,
+  storage: chatFileStorage,
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   },
@@ -62,29 +49,28 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       });
     }
 
-    // สร้าง URL สำหรับไฟล์
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? (process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
-      : `${req.protocol}://${req.get('host')}`;
-    const fileUrl = `${baseUrl}/uploads/chat-files/${req.file.filename}`;
+    // ใช้ URL จาก Cloudinary โดยตรง
+    const fileUrl = req.file.path; // Cloudinary จะให้ URL มาพร้อมแล้ว
 
-    console.log('📤 Image uploaded successfully:', {
+    console.log('📤 Image uploaded successfully to Cloudinary:', {
       filename: req.file.filename,
       originalName: req.file.originalname,
       size: req.file.size,
-      url: fileUrl
+      url: fileUrl,
+      cloudinaryUrl: req.file.path
     });
 
     res.json({
       success: true,
-      message: 'File uploaded successfully',
+      message: 'File uploaded successfully to Cloudinary',
       data: {
         filename: req.file.filename,
         originalName: req.file.originalname,
         size: req.file.size,
         url: fileUrl,
         fileUrl: fileUrl, // เพิ่ม fileUrl เพื่อให้ frontend ใช้ได้
-        path: `/uploads/chat-files/${req.file.filename}`
+        path: fileUrl, // ใช้ Cloudinary URL แทน local path
+        cloudinaryUrl: fileUrl
       }
     });
 
