@@ -139,15 +139,17 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   lastModified: true
 }));
 
-// Privacy Policy routes - redirect to frontend
+// Serve privacy policy HTML file directly
+const frontendPublicPath = path.join(__dirname, '../frontend/public');
+app.use('/privacy-policy.html', express.static(path.join(frontendPublicPath, 'privacy-policy.html')));
+
+// Privacy Policy routes - serve HTML file directly
 app.get('/privacy-policy.html', (req, res) => {
-  // Redirect to frontend privacy policy
-  res.redirect(`${FRONTEND_URL}/privacy-policy.html`);
+  res.sendFile(path.join(frontendPublicPath, 'privacy-policy.html'));
 });
 
 app.get('/privacy-policy', (req, res) => {
-  // Redirect to frontend privacy policy
-  res.redirect(`${FRONTEND_URL}/privacy-policy.html`);
+  res.sendFile(path.join(frontendPublicPath, 'privacy-policy.html'));
 });
 
 // Serve frontend static files (production build)
@@ -376,15 +378,17 @@ app.options('*', cors(corsOptions));
 
 // Serve frontend index.html for all non-API routes (SPA routing)
 app.get('*', (req, res, next) => {
-  // Skip API routes, health checks, and static files
-  if (req.path.startsWith('/api') || 
-      req.path.startsWith('/health') || 
+  // Skip API routes, health checks, static files, and privacy policy
+  if (req.path.startsWith('/api') ||
+      req.path.startsWith('/health') ||
       req.path.startsWith('/uploads') ||
       req.path.startsWith('/public') ||
       req.path.startsWith('/assets') ||
       req.path.startsWith('/vite.svg') ||
       req.path.startsWith('/favicon.ico') ||
       req.path.startsWith('/sw-auto-refresh') ||
+      req.path === '/privacy-policy.html' ||
+      req.path === '/privacy-policy' ||
       req.path === '/create-qr' ||
       req.path === '/webhook-endpoint' ||
       req.path === '/api/info') {

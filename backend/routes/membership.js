@@ -330,11 +330,20 @@ router.post('/daily-bonus', async (req, res) => {
       });
     }
 
+    // ตรวจสอบการหมดอายุและจัดการ - แก้ไข: เพิ่มการตรวจสอบเพื่อให้โบนัสอัพเดทตาม tier ที่ถูกต้อง
+    const wasExpired = await user.checkAndHandleExpiration();
+
+    // รีเซ็ตการใช้งานรายวันถ้าจำเป็น - แก้ไข: เพิ่มการรีเซ็ตเพื่อให้สามารถรับโบนัสได้ในวันใหม่
+    user.resetDailyUsage();
+    await user.save();
+
+    console.log(`🔍 Daily Bonus Check - User: ${user.username}, Tier: ${user.membership.tier}, Bonus: ${user.getMembershipLimits().dailyBonus}, Expired: ${wasExpired}`);
+
     // ตรวจสอบว่าสามารถรับโบนัสได้หรือไม่
     if (!user.canClaimDailyBonus()) {
       const timeRemaining = user.getTimeUntilNextDailyBonus();
       const nextAvailableTime = new Date(Date.now() + timeRemaining);
-      
+
       return res.status(400).json({
         success: false,
         message: 'Daily bonus not available yet',
@@ -347,10 +356,13 @@ router.post('/daily-bonus', async (req, res) => {
     const bonusAmount = limits.dailyBonus;
 
     // เพิ่มเหรียญและอัพเดตสถานะ
+    const oldCoins = user.coins;
     user.coins += bonusAmount;
     user.dailyUsage.lastDailyBonusClaim = new Date();
 
     await user.save();
+
+    console.log(`✅ Daily Bonus Success - User: ${user.username}, Added: ${bonusAmount}, Before: ${oldCoins}, After: ${user.coins}`);
 
     res.json({
       success: true,
