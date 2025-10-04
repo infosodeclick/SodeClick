@@ -1569,6 +1569,30 @@ io.on('connection', (socket) => {
   // ส่งข้อความ
   socket.on('send-message', async (data) => {
     try {
+      // เพิ่มการป้องกันการส่งข้อความซ้ำ
+      if (!data.tempId) {
+        console.log('❌ Missing tempId, ignoring message to prevent duplicates');
+        return;
+      }
+
+      // ตรวจสอบว่า tempId นี้ถูกประมวลผลไปแล้วหรือไม่
+      if (!global.processingMessages) {
+        global.processingMessages = new Set();
+      }
+      
+      if (global.processingMessages.has(data.tempId)) {
+        console.log('❌ Message already being processed, ignoring duplicate:', data.tempId);
+        return;
+      }
+      
+      // เพิ่ม tempId เข้าไปใน Set
+      global.processingMessages.add(data.tempId);
+      
+      // ลบ tempId ออกจาก Set หลังจาก 5 วินาที
+      setTimeout(() => {
+        global.processingMessages.delete(data.tempId);
+      }, 5000);
+
       // ลด rate limiting เป็น 50ms เพื่อให้ส่งเร็วขึ้น และไม่ skip การส่ง
       if (!checkSocketRateLimit(socket.id, 'send-message', 50)) {
         console.log(`⏱️ Rate limit: send-message from ${socket.id} - queuing message`);
@@ -1578,6 +1602,8 @@ io.on('connection', (socket) => {
           tempId: data.tempId,
           retryAfter: 50
         });
+        // ลบ tempId ออกจาก Set เมื่อ rate limited
+        global.processingMessages.delete(data.tempId);
         return;
       }
 
@@ -1595,6 +1621,8 @@ io.on('connection', (socket) => {
       if (!sender) {
         console.log('❌ Sender not found:', senderId);
         socket.emit('error', { message: 'Sender not found' });
+        // ลบ tempId ออกจาก Set เมื่อ sender not found
+        global.processingMessages.delete(data.tempId);
         return;
       }
       
@@ -1636,6 +1664,9 @@ io.on('connection', (socket) => {
         const message = new Message(messageData);
         await message.save();
         console.log('💾 Message saved to database:', message._id);
+        
+        // ลบ tempId ออกจาก Set หลังจากบันทึกข้อความสำเร็จ
+        global.processingMessages.delete(data.tempId);
         
         // ส่งการยืนยันกลับไปยังผู้ส่งว่าข้อความถูกบันทึกแล้ว
         socket.emit('message-saved', {
@@ -1834,6 +1865,8 @@ io.on('connection', (socket) => {
       const chatRoom = await ChatRoom.findById(chatRoomId);
       if (!chatRoom || !chatRoom.isMember(senderId)) {
         socket.emit('error', { message: 'Unauthorized to send message' });
+        // ลบ tempId ออกจาก Set เมื่อ unauthorized
+        global.processingMessages.delete(data.tempId);
         return;
       }
 
@@ -1842,6 +1875,8 @@ io.on('connection', (socket) => {
         sender.resetDailyUsage();
         if (!sender.canPerformAction('chat')) {
           socket.emit('error', { message: 'Daily chat limit reached' });
+          // ลบ tempId ออกจาก Set เมื่อถึง limit
+          global.processingMessages.delete(data.tempId);
           return;
         }
       }
@@ -1883,6 +1918,9 @@ io.on('connection', (socket) => {
       sender.dailyUsage.chatCount += 1;
 
       await Promise.all([chatRoom.save(), sender.save()]);
+      
+      // ลบ tempId ออกจาก Set หลังจากบันทึกข้อความสำเร็จ
+      global.processingMessages.delete(data.tempId);
 
       // Populate ข้อมูล
       await message.populate([
@@ -2015,6 +2053,11 @@ io.on('connection', (socket) => {
         tempId: data.tempId,
         retryable: true
       });
+      
+      // ลบ tempId ออกจาก Set เมื่อเกิด error
+      if (data && data.tempId) {
+        global.processingMessages.delete(data.tempId);
+      }
     }
   });
 

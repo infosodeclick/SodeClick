@@ -319,11 +319,25 @@ const ChatRoomList = ({ currentUser, onSelectRoom, onCreatePrivateRoom, showWeba
   };
 
   const handleRoomClick = async (room) => {
+    // ตรวจสอบสิทธิ์ membership ก่อนเข้าห้องส่วนตัว
     if (room.type === 'private' && !canAccessPrivateChat(currentUser.membership?.tier || 'member')) {
       if (showWebappNotification) {
         showWebappNotification('คุณต้องเป็นสมาชิก Gold ขึ้นไปเพื่อเข้าแชทส่วนตัว');
       }
       return;
+    }
+    
+    // ตรวจสอบสิทธิ์สำหรับห้องที่ต้องจ่ายเหรียญ
+    if (room.type === 'private' && room.entryFee > 0) {
+      const userTier = currentUser.membership?.tier || 'member';
+      const needsHigherTier = ['member', 'premium'].includes(userTier);
+      
+      if (needsHigherTier) {
+        if (showWebappNotification) {
+          showWebappNotification('คุณต้องเป็นสมาชิก Gold ขึ้นไปเพื่อเข้าแชทส่วนตัว');
+        }
+        return;
+      }
     }
 
     // อัปเดต selectedRoomId

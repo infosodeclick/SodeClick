@@ -374,19 +374,22 @@ router.post('/', auth, upload.array('attachments', 5), async (req, res) => {
       { path: 'replyTo', select: 'content sender', populate: { path: 'sender', select: 'username displayName' } }
     ]);
 
-    // 🚀 Broadcast ข้อความผ่าน Socket.IO ไปหาทุกคนในห้อง
+    // 🚀 Broadcast ข้อความผ่าน Socket.IO ไปหาทุกคนในห้อง (เฉพาะ private chat)
+    // สำหรับ ChatRoom ปกติ จะ broadcast ผ่าน socket event ใน server.js แล้ว
     try {
       const io = getSocketInstance();
-      if (io) {
-        console.log('📤 [messages.js] Broadcasting message to room:', chatRoomId);
+      if (io && chatRoomId.startsWith('private_')) {
+        console.log('📤 [messages.js] Broadcasting private message to room:', chatRoomId);
         console.log('📤 [messages.js] Message ID:', message._id);
         
-        // ส่งข้อความไปยังทุกคนในห้อง
+        // ส่งข้อความไปยังทุกคนในห้อง (เฉพาะ private chat)
         io.to(chatRoomId).emit('new-message', message);
         
         // Log จำนวนคนที่อยู่ในห้อง
         const roomSize = io.sockets.adapter.rooms.get(chatRoomId)?.size || 0;
-        console.log('✅ [messages.js] Broadcasted to', roomSize, 'client(s) in room', chatRoomId);
+        console.log('✅ [messages.js] Private message broadcasted to', roomSize, 'client(s) in room', chatRoomId);
+      } else if (io && !chatRoomId.startsWith('private_')) {
+        console.log('📤 [messages.js] Skipping broadcast for ChatRoom (handled by socket event)');
       } else {
         console.warn('⚠️ [messages.js] Socket.IO instance not available');
       }

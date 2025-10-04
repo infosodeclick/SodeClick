@@ -423,6 +423,10 @@ const PrivateChat = ({
       // เมื่อ socket reconnect ให้ rejoin room อัตโนมัติ
       socket.on('connect', () => {
         console.log('🔄 PrivateChat Socket reconnected:', socket.id);
+        
+        // ตั้งค่า flag เพื่อป้องกันการแจ้งเตือนซ้ำ
+        window.isAutoReconnecting = true;
+        
         const token = sessionStorage.getItem('token');
         console.log('🚪 Re-joining private chat room after reconnect:', selectedChat.id);
         console.log('🔔 PrivateChat: Joining room for notifications:', {
@@ -439,6 +443,11 @@ const PrivateChat = ({
         });
         
         console.log('🔔 PrivateChat: Join room event emitted');
+        
+        // ลบ flag หลังจาก 3 วินาที
+        setTimeout(() => {
+          window.isAutoReconnecting = false;
+        }, 3000);
       });
 
       // ฟังข้อความใหม่ - ประมวลผลทันที

@@ -270,6 +270,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         console.log('🔄 Socket reconnected:', socket.id);
         setIsConnected(true);
         
+        // ตั้งค่า flag เพื่อป้องกันการแจ้งเตือนซ้ำ
+        window.isAutoReconnecting = true;
+        
         const token = sessionStorage.getItem('token');
         console.log('🚪 Re-joining room after reconnect:', roomId);
         socket.emit('join-room', {
@@ -277,6 +280,11 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           userId: currentUser._id,
           token
         });
+        
+        // ลบ flag หลังจาก 3 วินาที
+        setTimeout(() => {
+          window.isAutoReconnecting = false;
+        }, 3000);
       });
       
       // รับ error จาก server
@@ -290,9 +298,22 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           console.warn('Server warning:', error.message);
         }
         
+        // ป้องกันการแจ้งเตือนซ้ำสำหรับ private room access
         if (error.message === 'Unauthorized to join this private room') {
-          if (showWebappNotification) {
-            showWebappNotification('คุณไม่มีสิทธิ์เข้าห้องแชทส่วนตัวนี้');
+          // ตรวจสอบว่าเป็นห้องที่ต้องจ่ายเหรียญหรือไม่
+          const isPaidRoom = roomId && !roomId.startsWith('private_');
+          
+          // แสดงแจ้งเตือนเฉพาะเมื่อ:
+          // 1. ไม่ใช่การ reconnect อัตโนมัติ
+          // 2. เป็นห้องที่ต้องจ่ายเหรียญ
+          // 3. ผู้ใช้มีสิทธิ์ membership ไม่เพียงพอ
+          const userTier = currentUser?.membership?.tier || 'member';
+          const needsHigherTier = ['member', 'premium'].includes(userTier);
+          
+          if (isPaidRoom && needsHigherTier && !window.isAutoReconnecting) {
+            if (showWebappNotification) {
+              showWebappNotification('คุณต้องเป็นสมาชิก Gold ขึ้นไปเพื่อเข้าแชทส่วนตัว');
+            }
           }
         } else if (error.message === 'Daily chat limit reached') {
           if (showWebappNotification) {
@@ -896,6 +917,14 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       return;
     }
     
+    // เพิ่มการป้องกันการส่งข้อความซ้ำด้วย debounce
+    const now = Date.now();
+    if (window.lastMessageSent && (now - window.lastMessageSent) < 1000) {
+      console.log('❌ Message sent too recently, ignoring duplicate');
+      return;
+    }
+    window.lastMessageSent = now;
+    
     if (!newMessage.trim()) {
       console.log('❌ No message content');
       return;
@@ -940,7 +969,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
       // สร้างข้อความชั่วคราวเพื่อแสดงทันที
       const tempMessage = {
-        _id: `temp-${Date.now()}`,
+        _id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // เพิ่ม random string เพื่อให้ unique มากขึ้น
         content: newMessage,
         sender: {
           _id: currentUser._id,
@@ -972,7 +1001,8 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         senderId: currentUser._id,
         chatRoomId: roomId,
         messageType: 'text',
-        replyToId: replyTo?._id
+        replyToId: replyTo?._id,
+        tempId: tempMessage._id // เพิ่ม tempId เพื่อป้องกันการส่งซ้ำ
       };
       
       console.log('📤 Emitting send-message:', messageData);
