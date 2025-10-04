@@ -425,11 +425,20 @@ const PrivateChat = ({
         console.log('🔄 PrivateChat Socket reconnected:', socket.id);
         const token = sessionStorage.getItem('token');
         console.log('🚪 Re-joining private chat room after reconnect:', selectedChat.id);
+        console.log('🔔 PrivateChat: Joining room for notifications:', {
+          roomId: selectedChat.id,
+          userId: currentUser._id,
+          socketId: socket.id,
+          connected: socket.connected
+        });
+        
         socket.emit('join-room', {
           roomId: selectedChat.id,
           userId: currentUser._id,
           token
         });
+        
+        console.log('🔔 PrivateChat: Join room event emitted');
       });
 
       // ฟังข้อความใหม่ - ประมวลผลทันที
@@ -656,7 +665,9 @@ const PrivateChat = ({
           socketMessage.fileName = 'image.jpg';
         }
 
+        console.log('🔔 PrivateChat: Sending message via socket:', socketMessage);
         window.socketManager.socket.emit('send-message', socketMessage);
+        console.log('🔔 PrivateChat: Send message event emitted');
       } else {
         // ถ้า socket ไม่พร้อม ให้ใช้ HTTP API แทน
         if (onSendMessage) {

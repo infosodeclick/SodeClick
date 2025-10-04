@@ -155,10 +155,16 @@ class SocketManager {
 
     // Listen for notifications and dispatch to window
     this.socket.on('newNotification', (notification) => {
-      console.log('🔔 Received notification:', notification);
+      console.log('🔔 SocketManager: Received notification:', notification);
+      console.log('🔔 SocketManager: Notification type:', notification.type);
+      console.log('🔔 SocketManager: Notification message:', notification.message);
+      console.log('🔔 SocketManager: Dispatching to window event...');
+      
       window.dispatchEvent(new CustomEvent('newNotification', {
         detail: notification
       }));
+      
+      console.log('🔔 SocketManager: Window event dispatched successfully');
     });
 
     // Listen for membership upgrade notifications

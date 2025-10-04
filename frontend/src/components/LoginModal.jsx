@@ -83,6 +83,11 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
     return value.replace(/[^a-zA-Z0-9@._-]/g, '')
   }
 
+  // Function to filter only English characters and numbers for username
+  const filterUsernameOnly = (value) => {
+    return value.replace(/[^a-zA-Z0-9]/g, '')
+  }
+
   // Function to filter and format phone number
   const filterPhoneNumber = (value) => {
     // Remove all non-digit characters
@@ -241,8 +246,8 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
       return
     }
 
-    // ตรวจสอบชื่อผู้ใช้และอีเมลให้เป็นภาษาอังกฤษเท่านั้น
-    const englishOnlyRegex = /^[a-zA-Z0-9@._-]+$/
+    // ตรวจสอบชื่อผู้ใช้: ต้องเป็นภาษาอังกฤษเท่านั้น และมีความยาวไม่ต่ำกว่า 6 ตัวอักษร
+    const englishOnlyRegex = /^[a-zA-Z0-9]+$/
     
     if (!englishOnlyRegex.test(registerForm.username)) {
       setError('ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น')
@@ -250,7 +255,15 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
       return
     }
 
-    if (!englishOnlyRegex.test(registerForm.email)) {
+    if (registerForm.username.length < 6) {
+      setError('ชื่อผู้ใช้ต้องมีความยาวไม่ต่ำกว่า 6 ตัวอักษร')
+      setLoading(false)
+      return
+    }
+
+    // ตรวจสอบอีเมลให้เป็นภาษาอังกฤษเท่านั้น
+    const emailRegex = /^[a-zA-Z0-9@._-]+$/
+    if (!emailRegex.test(registerForm.email)) {
       setError('อีเมลต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น')
       setLoading(false)
       return
@@ -263,8 +276,28 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
       return
     }
 
-    if (registerForm.password.length < 6) {
-      setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
+    // ตรวจสอบรหัสผ่าน: ต้องมี 8 ตัวอักษรขึ้นไป, มีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข, ต้องเป็นภาษาอังกฤษเท่านั้น
+    if (registerForm.password.length < 8) {
+      setError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')
+      setLoading(false)
+      return
+    }
+
+    // ตรวจสอบรหัสผ่านต้องเป็นภาษาอังกฤษเท่านั้น
+    const passwordEnglishRegex = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/
+    if (!passwordEnglishRegex.test(registerForm.password)) {
+      setError('รหัสผ่านต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น')
+      setLoading(false)
+      return
+    }
+
+    // ตรวจสอบรหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข
+    const hasUpperCase = /[A-Z]/.test(registerForm.password)
+    const hasLowerCase = /[a-z]/.test(registerForm.password)
+    const hasNumbers = /\d/.test(registerForm.password)
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      setError('รหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข')
       setLoading(false)
       return
     }
@@ -362,8 +395,28 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
       return
     }
 
-    if (registerForm.password.length < 6) {
-      setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
+    // ตรวจสอบรหัสผ่าน: ต้องมี 8 ตัวอักษรขึ้นไป, มีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข, ต้องเป็นภาษาอังกฤษเท่านั้น
+    if (registerForm.password.length < 8) {
+      setError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')
+      setLoading(false)
+      return
+    }
+
+    // ตรวจสอบรหัสผ่านต้องเป็นภาษาอังกฤษเท่านั้น
+    const passwordEnglishRegex = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/
+    if (!passwordEnglishRegex.test(registerForm.password)) {
+      setError('รหัสผ่านต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น')
+      setLoading(false)
+      return
+    }
+
+    // ตรวจสอบรหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข
+    const hasUpperCase = /[A-Z]/.test(registerForm.password)
+    const hasLowerCase = /[a-z]/.test(registerForm.password)
+    const hasNumbers = /\d/.test(registerForm.password)
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      setError('รหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข')
       setLoading(false)
       return
     }
@@ -683,7 +736,7 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
                         type="text"
                         placeholder="ชื่อผู้ใช้"
                         value={registerForm.username}
-                        onChange={(e) => setRegisterForm(prev => ({ ...prev, username: filterEnglishOnly(e.target.value) }))}
+                        onChange={(e) => setRegisterForm(prev => ({ ...prev, username: filterUsernameOnly(e.target.value) }))}
                         className="h-12 text-base rounded-2xl"
                         autoComplete="username"
                         required

@@ -44,6 +44,51 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    // Validate username: ต้องเป็นภาษาอังกฤษเท่านั้น และมีความยาวไม่ต่ำกว่า 6 ตัวอักษร
+    const usernameRegex = /^[a-zA-Z0-9]+$/
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({
+        success: false,
+        message: 'ชื่อผู้ใช้ต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น'
+      });
+    }
+
+    if (username.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'ชื่อผู้ใช้ต้องมีความยาวไม่ต่ำกว่า 6 ตัวอักษร'
+      });
+    }
+
+    // Validate password: ต้องมี 8 ตัวอักษรขึ้นไป, มีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข, ต้องเป็นภาษาอังกฤษเท่านั้น
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'
+      });
+    }
+
+    // ตรวจสอบรหัสผ่านต้องเป็นภาษาอังกฤษเท่านั้น
+    const passwordEnglishRegex = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/
+    if (!passwordEnglishRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น'
+      });
+    }
+
+    // ตรวจสอบรหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข
+    const hasUpperCase = /[A-Z]/.test(password)
+    const hasLowerCase = /[a-z]/.test(password)
+    const hasNumbers = /\d/.test(password)
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข'
+      });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [
@@ -145,6 +190,7 @@ router.post('/register-phone', async (req, res) => {
   try {
     const { 
       phone, 
+      password,
       firstName, 
       lastName, 
       dateOfBirth, 
@@ -154,10 +200,39 @@ router.post('/register-phone', async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!phone || !firstName || !lastName || !dateOfBirth || !gender || !lookingFor || !location) {
+    if (!phone || !password || !firstName || !lastName || !dateOfBirth || !gender || !lookingFor || !location) {
       return res.status(400).json({
         success: false,
         message: 'กรุณากรอกข้อมูลให้ครบถ้วน'
+      });
+    }
+
+    // Validate password: ต้องมี 8 ตัวอักษรขึ้นไป, มีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข, ต้องเป็นภาษาอังกฤษเท่านั้น
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'
+      });
+    }
+
+    // ตรวจสอบรหัสผ่านต้องเป็นภาษาอังกฤษเท่านั้น
+    const passwordEnglishRegex = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/
+    if (!passwordEnglishRegex.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องเป็นภาษาอังกฤษและตัวเลขเท่านั้น'
+      });
+    }
+
+    // ตรวจสอบรหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข
+    const hasUpperCase = /[A-Z]/.test(password)
+    const hasLowerCase = /[a-z]/.test(password)
+    const hasNumbers = /\d/.test(password)
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      return res.status(400).json({
+        success: false,
+        message: 'รหัสผ่านต้องมีตัวอักษรใหญ่ ตัวเล็ก และตัวเลข'
       });
     }
 
@@ -178,6 +253,7 @@ router.post('/register-phone', async (req, res) => {
     const newUser = new User({
       username,
       email: `${username}@temp.com`, // Generate temporary email
+      password,
       phone,
       firstName,
       lastName,

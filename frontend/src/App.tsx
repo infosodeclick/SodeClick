@@ -332,7 +332,30 @@ function App() {
   });
 
   useRealTimeUpdate('newNotification', (notification) => {
-    console.log('New notification received:', notification);
+    console.log('🔔 App: New notification received:', notification);
+    console.log('🔔 App: Notification type:', notification.type);
+    console.log('🔔 App: Notification message:', notification.message);
+    
+    // ตรวจสอบว่าเป็น notification สำหรับผู้ใช้ปัจจุบันหรือไม่
+    if (notification.recipientId && notification.recipientId !== user?._id) {
+      console.log('⏭️ Notification not for current user, ignoring');
+      return;
+    }
+    
+    // อัปเดต notifications state
+    setNotifications(prev => {
+      const newNotifications = [notification, ...prev];
+      console.log('🔔 App: Updated notifications count:', newNotifications.length);
+      return newNotifications;
+    });
+    
+    // อัปเดต unread count
+    setUnreadCount(prev => {
+      const newCount = prev + 1;
+      console.log('🔔 App: Updated unread count:', newCount);
+      return newCount;
+    });
+    
     updateNotification(notification);
     // แสดง toast notification
     success(notification.message || 'มีการแจ้งเตือนใหม่');
@@ -725,6 +748,30 @@ function App() {
     };
   }, [])
 
+  // Listen for navigation messages from privacy policy page
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'navigate') {
+        console.log('🔗 Received navigation message from privacy policy:', event.data);
+        
+        // กลับไปหน้าหลัก (ค้นหา)
+        if (event.data.tab === 'discover') {
+          setActiveTab('discover');
+          handleTabChange('discover');
+        } else if (event.data.route === '/') {
+          setActiveTab('discover');
+          handleTabChange('discover');
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [])
+
   // Start auto refresh for notifications when user is logged in
   useEffect(() => {
     if (!user?._id) return;
@@ -815,10 +862,13 @@ function App() {
             const existingChat = privateChats.find(chat => chat.id === data.chatRoom)
             
             if (existingChat) {
-              // ถ้าพบแชท ให้เลือกแชทนั้น
+              // ถ้าพบแชท ให้เลือกแชทนั้นและโหลดประวัติการแชท
               console.log('✅ Found existing chat by ID:', existingChat.id)
               setSelectedPrivateChat(existingChat)
               setPrivateChatView('chat')
+              
+              // โหลดประวัติการแชททันที
+              loadChatHistoryAndUpdateState(data.chatRoom, existingChat)
             } else {
               // ถ้าไม่พบแชท ให้ลองค้นหาด้วย sender ID (fallback)
               console.log('❌ Chat not found by ID, trying by sender ID')
@@ -828,6 +878,9 @@ function App() {
                 console.log('✅ Found fallback chat:', fallbackChat.id)
                 setSelectedPrivateChat(fallbackChat)
                 setPrivateChatView('chat')
+                
+                // โหลดประวัติการแชทสำหรับ fallback chat
+                loadChatHistoryAndUpdateState(fallbackChat.id, fallbackChat)
               } else {
                 // ถ้าไม่พบเลย ให้เริ่มแชทใหม่
                 console.log('❌ No chat found, creating new one')
@@ -2772,9 +2825,12 @@ function App() {
             const existingChat = findExistingChat(otherUser);
             
             if (existingChat) {
-              // ถ้ามีแล้ว ให้เปิดแชทที่มีอยู่
+              // ถ้ามีแล้ว ให้เปิดแชทที่มีอยู่และโหลดประวัติการแชท
               console.log('✅ Using existing chat:', existingChat.id);
               setSelectedPrivateChat(existingChat);
+              
+              // โหลดประวัติการแชททันที
+              await loadChatHistoryAndUpdateState(existingChat.id, existingChat);
             } else {
               // สร้างแชทใหม่ผ่าน API
               console.log('🆕 Creating new chat via API for user:', otherUser.name || otherUser.displayName);
@@ -2831,6 +2887,44 @@ function App() {
     }, 1000);
   };
 
+  // ฟังก์ชันเสริมสำหรับโหลดประวัติการแชทและอัปเดต state
+  const loadChatHistoryAndUpdateState = async (chatId: string, chatData: any = null) => {
+    try {
+      console.log('🔄 Loading chat history for:', chatId);
+      const messages = await fetchMessages(chatId);
+      
+      if (messages.length > 0) {
+        console.log('✅ Loaded chat history:', messages.length);
+        
+        // อัปเดต selectedPrivateChat
+        setSelectedPrivateChat((prev: any) => ({
+          ...prev,
+          ...chatData,
+          messages: messages
+        }));
+        
+        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
+        setPrivateChats(prev => {
+          const updatedChats = prev.map(c => 
+            c.id === chatId 
+              ? { ...c, messages: messages }
+              : c
+          );
+          saveChatsToStorage(updatedChats);
+          return updatedChats;
+        });
+        
+        return messages;
+      } else {
+        console.log('📭 No chat history found');
+        return [];
+      }
+    } catch (error) {
+      console.error('❌ Error loading chat history:', error);
+      return [];
+    }
+  };
+
   const handleSelectPrivateChat = async (chat: any) => {
     console.log('📱 Selecting private chat:', chat);
     setSelectedPrivateChat(chat);
@@ -2838,29 +2932,7 @@ function App() {
     
     // ดึงข้อความจาก API เมื่อเลือกแชท
     if (chat.id) {
-      console.log('🔄 Loading messages for chat:', chat.id);
-      const messages = await fetchMessages(chat.id);
-      
-      if (messages.length > 0) {
-        console.log('✅ Loaded messages:', messages.length);
-        setSelectedPrivateChat((prev: any) => ({
-          ...prev,
-          messages: messages
-        }));
-        
-        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
-        setPrivateChats(prev => {
-          const updatedChats = prev.map(c => 
-            c.id === chat.id 
-              ? { ...c, messages: messages }
-              : c
-          );
-          saveChatsToStorage(updatedChats);
-          return updatedChats;
-        });
-      } else {
-        console.log('📭 No messages found for this chat');
-      }
+      await loadChatHistoryAndUpdateState(chat.id, chat);
     }
   };
 
@@ -4328,6 +4400,8 @@ function App() {
                                 <p>User ID: {user?._id || 'N/A'}</p>
                                 <p>Notifications: {notifications.length}</p>
                                 <p>Unread: {unreadCount}</p>
+                                <p>Socket: {window.socketManager?.socket?.connected ? 'Connected' : 'Disconnected'}</p>
+                                <p>Socket ID: {window.socketManager?.socket?.id || 'N/A'}</p>
                               </div>
                             </div>
                           )}
@@ -5884,18 +5958,32 @@ function App() {
       {/* Footer */}
       <footer className="bg-gradient-to-r from-pink-100 via-violet-100 to-pink-100 border-t border-pink-300/30 py-4">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-center space-x-3">
-            <div className="w-5 h-5 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full flex items-center justify-center shadow-lg">
-              <Heart className="h-3 w-3 text-white" fill="white" />
+          <div className="flex flex-col items-center justify-center space-y-2">
+            <div className="flex items-center justify-center space-x-3">
+              <div className="w-5 h-5 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full flex items-center justify-center shadow-lg">
+                <Heart className="h-3 w-3 text-white" fill="white" />
+              </div>
+              <a 
+                href="https://devnid.xyz/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-base font-bold bg-gradient-to-r from-pink-600 via-violet-600 to-pink-600 bg-clip-text text-transparent hover:from-pink-700 hover:via-violet-700 hover:to-pink-700 transition-all duration-300 cursor-pointer transform hover:scale-105"
+              >
+                Power By DevKao & DevMax © {new Date().getFullYear()}
+              </a>
             </div>
-            <a 
-              href="https://devnid.xyz/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-base font-bold bg-gradient-to-r from-pink-600 via-violet-600 to-pink-600 bg-clip-text text-transparent hover:from-pink-700 hover:via-violet-700 hover:to-pink-700 transition-all duration-300 cursor-pointer transform hover:scale-105"
-            >
-              Power By DevKao & DevMax © {new Date().getFullYear()}
-            </a>
+            
+            {/* Privacy Policy Link */}
+            <div>
+              <a 
+                href="/privacy-policy.html" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-gray-600 hover:text-purple-600 transition-colors duration-300 underline hover:no-underline"
+              >
+                Privacy Policy
+              </a>
+            </div>
           </div>
         </div>
       </footer>

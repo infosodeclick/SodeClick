@@ -139,6 +139,17 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   lastModified: true
 }));
 
+// Privacy Policy routes - redirect to frontend
+app.get('/privacy-policy.html', (req, res) => {
+  // Redirect to frontend privacy policy
+  res.redirect(`${FRONTEND_URL}/privacy-policy.html`);
+});
+
+app.get('/privacy-policy', (req, res) => {
+  // Redirect to frontend privacy policy
+  res.redirect(`${FRONTEND_URL}/privacy-policy.html`);
+});
+
 // Serve frontend static files (production build)
 const frontendDistPath = path.join(__dirname, '../frontend/dist');
 app.use('/assets', express.static(path.join(frontendDistPath, 'assets'), {
@@ -1757,6 +1768,7 @@ io.on('connection', (socket) => {
               type: 'private_message',
               title: 'ข้อความใหม่',
               message: `${sender.displayName || sender.firstName || sender.username || 'Unknown User'} ส่งข้อความมา`,
+              recipientId: receiverId, // เพิ่ม recipientId เพื่อให้ frontend ตรวจสอบได้
               data: {
                 senderId: sender._id,
                 senderName: sender.displayName || sender.firstName || sender.username || 'Unknown User',
@@ -1941,7 +1953,7 @@ io.on('connection', (socket) => {
                 
                 console.log('🔔 Sending reply notification for message:', message._id);
                 
-                io.emit('public-chat-reply-notification', {
+                io.to(`user_${originalMessage.sender.toString()}`).emit('public-chat-reply-notification', {
                   messageId: message._id,
                   userId: senderId,
                   originalMessageOwnerId: originalMessage.sender.toString(),
@@ -2060,7 +2072,7 @@ io.on('connection', (socket) => {
 
       // ส่ง notification ไปยังเจ้าของข้อความเมื่อมีคนกดหัวใจ
       if (finalAction === 'added' && reactionType === 'heart') {
-        io.emit('heart-notification', {
+        io.to(`user_${message.sender.toString()}`).emit('heart-notification', {
           messageId: message._id,
           userId,
           messageOwnerId: message.sender.toString()
@@ -2316,7 +2328,7 @@ io.on('connection', (socket) => {
         console.log('🎯 Sending chat list update to recipient:', recipientId);
         
         // ส่ง event ไปยังผู้รับเพื่อให้รีเฟรชรายการแชท
-        io.emit('refresh-private-chat-list', {
+        io.to(`user_${recipientId}`).emit('refresh-private-chat-list', {
           recipientId,
           chatId,
           message,
@@ -2375,7 +2387,7 @@ io.on('connection', (socket) => {
       };
 
       // ส่ง notification ไปยังผู้ที่ถูกโหวต
-      io.emit('newNotification', {
+      io.to(`user_${candidateId}`).emit('newNotification', {
         ...notification,
         recipientId: candidateId
       });
