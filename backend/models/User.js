@@ -24,9 +24,15 @@ const userSchema = new mongoose.Schema({
     sparse: true, // Allow null values
     trim: true
   },
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true, // Allow null values
+    trim: true
+  },
   password: { 
     type: String, 
-    required: function() { return !this.phone; }, // Required only if not phone login
+    required: function() { return !this.phone && !this.googleId; }, // Required only if not phone login and not Google OAuth
     minlength: 6
   },
   
