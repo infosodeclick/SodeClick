@@ -6,6 +6,7 @@ import App from './App.tsx'
 import AdminDashboard from './components/AdminDashboard'
 import HealthCheck from './components/HealthCheck'
 import JoinChatRoom from './components/JoinChatRoom'
+import PrivacyPolicy from './components/PrivacyPolicy'
 import { ToastProvider, useToast } from './components/ui/toast'
 import { AuthProvider } from './contexts/AuthContext'
 
@@ -51,6 +52,7 @@ const AppWrapper = () => {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/health" element={<HealthCheck />} />
         <Route path="/join/:inviteCode" element={<JoinChatRoom />} />
+        <Route path="/privacy-policy.html" element={<PrivacyPolicy />} />
       </Routes>
       <ToastContainer />
     </>

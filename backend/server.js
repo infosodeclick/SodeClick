@@ -378,7 +378,7 @@ app.options('*', cors(corsOptions));
 
 // Serve frontend index.html for all non-API routes (SPA routing)
 app.get('*', (req, res, next) => {
-  // Skip API routes, health checks, static files, and privacy policy
+  // Skip API routes, health checks, static files, privacy policy, and service workers
   if (req.path.startsWith('/api') ||
       req.path.startsWith('/health') ||
       req.path.startsWith('/uploads') ||
