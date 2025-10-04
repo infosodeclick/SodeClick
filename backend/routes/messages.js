@@ -765,8 +765,9 @@ router.get('/private-chats/:userId', async (req, res) => {
       chatRoom: { $regex: /^private_.*_/ }, // หา private chat IDs
       $or: [
         { sender: userId }, // ข้อความที่ผู้ใช้ส่ง
-        { chatRoom: { $regex: new RegExp(`private_.*_${userId}_.*`) } }, // private chat ที่มี userId
-        { chatRoom: { $regex: new RegExp(`private_${userId}_.*_.*`) } } // private chat ที่เริ่มต้นด้วย userId
+        { chatRoom: { $regex: new RegExp(`^private_.*_${userId}$`) } }, // private_xxx_userId format
+        { chatRoom: { $regex: new RegExp(`^private_${userId}_.*$`) } }, // private_userId_xxx format
+        { chatRoom: { $regex: new RegExp(`^private_.*_${userId}_.*$`) } } // private_xxx_userId_xxx format (fallback)
       ]
     })
     .populate('sender', 'username displayName firstName lastName membership membershipTier profileImages isOnline')
