@@ -302,22 +302,14 @@ router.post('/:userId/mark-read', async (req, res) => {
       });
     }
 
-    // อัปเดตสถานะ isRead หรือลบแจ้งเตือน
+    // อัปเดตสถานะ isRead สำหรับทุกประเภทการแจ้งเตือน
     if (notificationIds && notificationIds.length > 0) {
-      if (notificationType === 'private_message') {
-        // ถ้าเป็นแชทข้อความ ให้ลบออกจาก memory
-        console.log('🗑️ Removing chat notification:', notificationIds[0]);
-        global.notifications = global.notifications?.filter(n => 
-          !notificationIds.includes(n._id)
-        ) || [];
-      } else {
-        // ถ้าเป็นแจ้งเตือนอื่นๆ ให้ mark เป็น read
-        console.log('✅ Marking notification as read:', notificationIds[0]);
-        global.notifications = global.notifications?.map(n => {
-          const shouldUpdate = notificationIds.includes(n._id);
-          return shouldUpdate ? { ...n, isRead: true } : n;
-        }) || [];
-      }
+      // สำหรับทุกประเภทการแจ้งเตือน ให้ mark เป็น read (ไม่ลบออก)
+      console.log('✅ Marking notification as read:', notificationIds[0]);
+      global.notifications = global.notifications?.map(n => {
+        const shouldUpdate = notificationIds.includes(n._id);
+        return shouldUpdate ? { ...n, isRead: true } : n;
+      }) || [];
     }
     
     res.json({

@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [idleTimer, setIdleTimer] = useState(null);
   const [warningTimer, setWarningTimer] = useState(null);
   const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
 
   // Auto sign out after 15 minutes of inactivity
   const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -45,7 +46,8 @@ export const AuthProvider = ({ children }) => {
     const warningTimerId = setTimeout(() => {
       // Use functional update to get current state
       setShowIdleWarning(prevShow => {
-        if (!prevShow) {
+        // ตรวจสอบว่าไม่ใช่ช่วงที่กำลัง dismiss และ modal ยังไม่ได้แสดงอยู่
+        if (!prevShow && !isDismissing) {
           console.log('⚠️ Idle warning: 1 minute left before auto sign out');
           return true;
         }
@@ -314,6 +316,9 @@ export const AuthProvider = ({ children }) => {
     console.log('✅ User dismissed idle warning, resetting timer');
     console.log('🔍 Current timers before clearing - idleTimer:', idleTimer, 'warningTimer:', warningTimer);
     
+    // ตั้ง flag เพื่อป้องกันไม่ให้ warning เด้งขึ้นซ้ำ
+    setIsDismissing(true);
+    
     // Clear all existing timers first
     if (idleTimer) {
       console.log('🗑️ Clearing idle timer:', idleTimer);
@@ -330,32 +335,16 @@ export const AuthProvider = ({ children }) => {
     console.log('👁️ Hiding warning modal');
     setShowIdleWarning(false);
     
-    // Reset the idle timer to start fresh
+    // Reset the idle timer to start fresh - ใช้ resetIdleTimer แทนการตั้ง timer ใหม่เอง
     console.log('🔄 Restarting idle timer after user confirmation');
+    resetIdleTimer();
     
-    // Set warning timer (14 minutes)
-    const warningTimerId = setTimeout(() => {
-      console.log('⏰ Warning timer triggered after 14 minutes');
-      // Check current user state instead of closure
-      setShowIdleWarning(prevShow => {
-        // Only show warning if modal is not already showing
-        if (!prevShow) {
-          console.log('⚠️ Idle warning: 1 minute left before auto sign out');
-          return true;
-        }
-        return prevShow;
-      });
-    }, WARNING_TIME);
-
-    // Set auto sign out timer (15 minutes)
-    const timerId = setTimeout(() => {
-      console.log('⏰ Idle timer triggered after 15 minutes - logging out');
-      logout();
-    }, IDLE_TIMEOUT);
-
-    console.log('🆔 Setting new timers - warningTimerId:', warningTimerId, 'timerId:', timerId);
-    setWarningTimer(warningTimerId);
-    setIdleTimer(timerId);
+    // รีเซ็ต flag หลังจากการตั้ง timer ใหม่แล้ว
+    setTimeout(() => {
+      setIsDismissing(false);
+      console.log('✅ Dismissing flag reset');
+    }, 2000);
+    
     console.log('✅ Timers reset complete');
   };
 

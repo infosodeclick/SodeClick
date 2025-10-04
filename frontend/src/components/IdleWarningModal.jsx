@@ -46,7 +46,10 @@ const IdleWarningModal = ({ isOpen, onDismiss, onLogout }) => {
     } catch (error) {
       console.error('❌ Error dismissing idle warning:', error);
     } finally {
-      setIsProcessing(false);
+      // ใช้ setTimeout เพื่อให้ modal มีเวลาปิดก่อนที่จะ reset isProcessing
+      setTimeout(() => {
+        setIsProcessing(false);
+      }, 1000);
     }
   };
 

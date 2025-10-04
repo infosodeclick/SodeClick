@@ -823,17 +823,11 @@ function App() {
           })
           
           if (response.ok) {
-            // สำหรับแชทข้อความ ให้ลบออกจากรายการเลย
-            if (type === 'private_message') {
-              setNotifications(prev => prev.filter(n => n._id !== notification._id))
-              setUnreadCount(prev => Math.max(0, prev - 1))
-            } else {
-              // สำหรับการแจ้งเตือนอื่นๆ ให้ mark เป็น read
-              setNotifications(prev => prev.map(n => 
-                n._id === notification._id ? { ...n, isRead: true } : n
-              ))
-              setUnreadCount(prev => Math.max(0, prev - 1))
-            }
+            // สำหรับทุกประเภทการแจ้งเตือน ให้ mark เป็น read (ไม่ลบออก)
+            setNotifications(prev => prev.map(n => 
+              n._id === notification._id ? { ...n, isRead: true } : n
+            ))
+            setUnreadCount(prev => Math.max(0, prev - 1))
           }
         } catch (error) {
           console.error('Error marking notification as read:', error)
