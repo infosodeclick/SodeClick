@@ -17,6 +17,7 @@ import { DataCacheProvider } from './hooks/useGlobalCache'
 import { useRealTimeUpdate, useNotificationUpdates } from './hooks/useRealTimeUpdates'
 import { getProfileImageUrl, getMainProfileImage } from './utils/profileImageUtils'
 import socketManager from './services/socketManager'
+import autoRefreshManager from './services/autoRefreshManager'
 
 // Lazy load heavy components with type assertions
 const MembershipDashboard = lazy(() => import('./components/MembershipDashboard.jsx')) as any
@@ -586,7 +587,10 @@ function App() {
   
   // Fetch notifications from backend
   const fetchNotifications = async () => {
-    if (!user?._id) return
+    if (!user?._id) {
+      console.log('🔔 No user ID, skipping notification fetch');
+      return;
+    }
     
     try {
       setIsLoadingNotifications(true)
@@ -594,12 +598,21 @@ function App() {
       
       // ใช้ VITE_API_BASE_URL แทน VITE_API_URL
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-      const response = await fetch(`${apiUrl}/api/notifications/${user._id}`, {
+      const url = `${apiUrl}/api/notifications/${user._id}`
+      
+      console.log('🔔 Fetching notifications from:', url);
+      console.log('🔔 User ID:', user._id);
+      console.log('🔔 Token exists:', !!token);
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
+      
+      console.log('🔔 Response status:', response.status);
+      console.log('🔔 Response headers:', Object.fromEntries(response.headers.entries()));
       
       // เพิ่มการตรวจสอบ response type
       const contentType = response.headers.get('content-type')
@@ -611,9 +624,21 @@ function App() {
       
       if (response.ok) {
         const data = await response.json()
+        console.log('🔔 Notifications API response:', data);
+        
         if (data.success) {
-          setNotifications(data.data.notifications || [])
-          setUnreadCount(data.data.unreadCount || 0)
+          const notifications = data.data.notifications || [];
+          const unreadCount = data.data.unreadCount || 0;
+          
+          console.log('🔔 Setting notifications:', notifications.length, 'items');
+          console.log('🔔 Setting unread count:', unreadCount);
+          
+          setNotifications(notifications)
+          setUnreadCount(unreadCount)
+        } else {
+          console.error('❌ API returned success: false:', data.message);
+          setNotifications([])
+          setUnreadCount(0)
         }
       } else {
         console.error('❌ Notifications API error:', response.status, response.statusText)
@@ -622,7 +647,7 @@ function App() {
         setUnreadCount(0)
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error)
+      console.error('❌ Error fetching notifications:', error)
       // ไม่ให้ notifications error รบกวนการทำงานของระบบ
       setNotifications([])
       setUnreadCount(0)
@@ -678,6 +703,43 @@ function App() {
     const interval = setInterval(fetchNotifications, 30000)
     
     return () => clearInterval(interval)
+  }, [user?._id])
+
+  // Listen for real-time notification updates from auto refresh
+  useEffect(() => {
+    const handleNotificationsUpdated = (event: CustomEvent) => {
+      const { notifications } = event.detail;
+      console.log('🔄 App: Received notifications update from auto refresh:', notifications);
+      
+      if (notifications && Array.isArray(notifications)) {
+        setNotifications(notifications);
+        const unreadCount = notifications.filter(n => !n.isRead).length;
+        setUnreadCount(unreadCount);
+      }
+    };
+
+    window.addEventListener('notificationsUpdated', handleNotificationsUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('notificationsUpdated', handleNotificationsUpdated as EventListener);
+    };
+  }, [])
+
+  // Start auto refresh for notifications when user is logged in
+  useEffect(() => {
+    if (!user?._id) return;
+
+    console.log('🚀 App: Starting notification auto refresh for user:', user._id);
+    
+    // Start notification refresh only (not full chat refresh)
+    autoRefreshManager.startRefresh('notifications', () => {
+      autoRefreshManager.refreshNotifications(user._id);
+    }, 'normal');
+
+    return () => {
+      // Stop notification refresh when component unmounts
+      autoRefreshManager.stopRefresh('notifications');
+    };
   }, [user?._id])
   
   // Format time ago
@@ -4261,6 +4323,12 @@ function App() {
                                 <FontAwesomeIcon icon={faBell} className="h-6 w-6 text-gray-400" />
                               </div>
                               <p className="text-sm text-gray-500">ยังไม่มีการแจ้งเตือน</p>
+                              {/* Debug info */}
+                              <div className="mt-2 text-xs text-gray-400">
+                                <p>User ID: {user?._id || 'N/A'}</p>
+                                <p>Notifications: {notifications.length}</p>
+                                <p>Unread: {unreadCount}</p>
+                              </div>
                             </div>
                           )}
                           

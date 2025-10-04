@@ -117,6 +117,11 @@ declare module './services/membershipAPI' {
   export const membershipAPI: any;
 }
 
+declare module './services/autoRefreshManager' {
+  const autoRefreshManager: any;
+  export default autoRefreshManager;
+}
+
 // Extend Window interface to include socketManager and custom properties
 declare global {
   interface Window {

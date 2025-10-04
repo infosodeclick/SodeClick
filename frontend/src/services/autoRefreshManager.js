@@ -229,6 +229,18 @@ class AutoRefreshManager {
     }, this.getFrequencyForType(type, frequency));
 
     this.intervals.set(type, interval);
+    console.log(`🚀 Started refresh for type: ${type} with frequency: ${frequency}`);
+  }
+
+  /**
+   * หยุดการรีเฟรชสำหรับประเภทข้อมูลที่กำหนด
+   */
+  stopRefresh(type) {
+    if (this.intervals.has(type)) {
+      clearInterval(this.intervals.get(type));
+      this.intervals.delete(type);
+      console.log(`⏹️ Stopped refresh for type: ${type}`);
+    }
   }
 
   /**
@@ -375,34 +387,49 @@ class AutoRefreshManager {
     this.stats.totalRefreshes++;
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/notifications/${userId}?limit=5`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
+      const url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/notifications/${userId}?limit=5`;
+      const token = localStorage.getItem('token');
+      
+      console.log('🔄 Auto refresh: Fetching notifications from:', url);
+      console.log('🔄 Auto refresh: User ID:', userId);
+      console.log('🔄 Auto refresh: Token exists:', !!token);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Authorization': `Bearer ${token}`
         }
-      );
+      });
+
+      console.log('🔄 Auto refresh: Response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
+        console.log('🔄 Auto refresh: Notifications response:', data);
+        
         if (data.success) {
           this.stats.successfulRefreshes++;
           this.stats.lastRefreshTime = Date.now();
 
+          const notifications = data.data.notifications || [];
+          console.log('🔄 Auto refresh: Dispatching notifications update:', notifications.length, 'items');
+
           window.dispatchEvent(new CustomEvent('notificationsUpdated', {
-            detail: { notifications: data.data.notifications, source: 'main-thread' }
+            detail: { notifications, source: 'auto-refresh' }
           }));
+        } else {
+          console.error('🔄 Auto refresh: API returned success: false:', data.message);
+          this.stats.failedRefreshes++;
         }
       } else {
+        console.error('🔄 Auto refresh: API error:', response.status, response.statusText);
         this.stats.failedRefreshes++;
       }
     } catch (error) {
       this.stats.failedRefreshes++;
-      console.error('Error refreshing notifications:', error);
+      console.error('🔄 Auto refresh: Error refreshing notifications:', error);
     }
   }
 
