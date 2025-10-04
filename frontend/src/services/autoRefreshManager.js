@@ -376,12 +376,13 @@ class AutoRefreshManager {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/notifications?userId=${userId}&limit=5`,
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/notifications/${userId}?limit=5`,
         {
           method: 'GET',
           credentials: 'include',
           headers: {
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         }
       );

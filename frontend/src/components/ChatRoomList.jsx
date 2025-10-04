@@ -377,7 +377,8 @@ const ChatRoomList = ({ currentUser, onSelectRoom, onCreatePrivateRoom, showWeba
           setSelectedRoomId(room.id);
           setShowChatView(true);
         } else {
-          alert(data.message);
+          // Note: This should use proper notification system
+          console.error('Error joining room:', data.message);
         }
       } catch (error) {
         console.error('Error joining room:', error);

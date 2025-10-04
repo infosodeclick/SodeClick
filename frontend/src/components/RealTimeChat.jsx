@@ -104,13 +104,17 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           
           // ตรวจสอบขนาดไฟล์ (จำกัด 5MB)
           if (file.size > 5 * 1024 * 1024) {
-            alert('รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB');
+            if (showWebappNotification) {
+              showWebappNotification('รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB', 'error');
+            }
             return;
           }
           
           // ตรวจสอบประเภทไฟล์
           if (!file.type.startsWith('image/')) {
-            alert('กรุณาวางเฉพาะรูปภาพเท่านั้น');
+            if (showWebappNotification) {
+              showWebappNotification('กรุณาวางเฉพาะรูปภาพเท่านั้น', 'error');
+            }
             return;
           }
           
@@ -1215,7 +1219,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             : msg
         ));
       } else {
-        alert(data.message);
+        if (showWebappNotification) {
+          showWebappNotification(data.message, 'error');
+        }
       }
     } catch (error) {
       console.error('Error editing message:', error);
@@ -1354,11 +1360,15 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         }
       } else {
         console.error('❌ Image upload failed:', data.message);
-        alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + (data.message || 'ไม่ทราบสาเหตุ'));
+        if (showWebappNotification) {
+          showWebappNotification('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: ' + (data.message || 'ไม่ทราบสาเหตุ'), 'error');
+        }
       }
     } catch (error) {
       console.error('❌ Error uploading image:', error);
-      alert('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ');
+      if (showWebappNotification) {
+        showWebappNotification('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ', 'error');
+      }
     } finally {
       setUploadingImage(false);
       setIsSendingMessage(false);
@@ -1388,7 +1398,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       const timeDiff = (currentTime - messageTime) / 1000; // วินาที
       
       if (timeDiff > 3) {
-        alert('ไม่สามารถลบรูปภาพได้หลังจาก 3 วินาที');
+        if (showWebappNotification) {
+          showWebappNotification('ไม่สามารถลบรูปภาพได้หลังจาก 3 วินาที', 'warning');
+        }
         return;
       }
     } else {
@@ -1414,7 +1426,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       if (data.success) {
         setMessages(prev => prev.filter(msg => msg._id !== messageId));
       } else {
-        alert(data.message);
+        if (showWebappNotification) {
+          showWebappNotification(data.message, 'error');
+        }
       }
     } catch (error) {
       console.error('Error deleting message:', error);

@@ -89,13 +89,25 @@ const PrivateChat = ({
           
           // ตรวจสอบขนาดไฟล์ (จำกัด 5MB)
           if (file.size > 5 * 1024 * 1024) {
-            alert('รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB');
+            if (onSendMessage && typeof onSendMessage === 'function') {
+              onSendMessage('notification', {
+                type: 'error',
+                title: 'ไฟล์ใหญ่เกินไป',
+                message: 'รูปภาพใหญ่เกินไป กรุณาเลือกรูปที่เล็กกว่า 5MB'
+              });
+            }
             return;
           }
           
           // ตรวจสอบประเภทไฟล์
           if (!file.type.startsWith('image/')) {
-            alert('กรุณาวางเฉพาะรูปภาพเท่านั้น');
+            if (onSendMessage && typeof onSendMessage === 'function') {
+              onSendMessage('notification', {
+                type: 'error',
+                title: 'ประเภทไฟล์ไม่ถูกต้อง',
+                message: 'กรุณาวางเฉพาะรูปภาพเท่านั้น'
+              });
+            }
             return;
           }
           
@@ -671,8 +683,12 @@ const PrivateChat = ({
       }));
       
       // แสดงข้อผิดพลาดให้ผู้ใช้
-      if (window.alert) {
-        window.alert('ไม่สามารถส่งข้อความได้ กรุณาลองใหม่อีกครั้ง');
+      if (onSendMessage && typeof onSendMessage === 'function') {
+        onSendMessage('notification', {
+          type: 'error',
+          title: 'ส่งข้อความไม่สำเร็จ',
+          message: 'ไม่สามารถส่งข้อความได้ กรุณาลองใหม่อีกครั้ง'
+        });
       }
     }
   };

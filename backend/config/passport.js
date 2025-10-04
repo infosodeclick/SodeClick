@@ -11,7 +11,24 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         callbackURL: process.env.GOOGLE_CALLBACK_URL || "/api/auth/google/callback"
     }, async (accessToken, refreshToken, profile, done) => {
         try {
-            console.log('🔍 Google OAuth Profile:', profile);
+            console.log('🔍 Google OAuth Profile received:', {
+                id: profile.id,
+                displayName: profile.displayName,
+                emails: profile.emails,
+                name: profile.name,
+                photos: profile.photos
+            });
+
+            // Validate profile data
+            if (!profile.id) {
+                console.error('❌ Google OAuth: No profile ID received');
+                return done(new Error('No profile ID received from Google'), null);
+            }
+
+            if (!profile.emails || !profile.emails[0] || !profile.emails[0].value) {
+                console.error('❌ Google OAuth: No email received');
+                return done(new Error('No email received from Google'), null);
+            }
 
             // Check if user already exists with this Google ID
             let user = await User.findOne({ googleId: profile.id });
@@ -50,6 +67,14 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             const lastName = profile.name.familyName || '';
             const displayName = `${firstName} ${lastName}`.trim();
             
+            console.log('🆕 Creating new Google user with data:', {
+                googleId: profile.id,
+                email: profile.emails[0].value,
+                firstName,
+                lastName,
+                displayName
+            });
+            
             const newUser = new User({
                 googleId: profile.id,
                 email: profile.emails[0].value,
@@ -71,11 +96,16 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             });
 
             await newUser.save();
-            console.log('✅ New Google user created:', newUser._id);
+            console.log('✅ New Google user created successfully:', newUser._id);
             return done(null, newUser);
 
         } catch (error) {
-            console.error('❌ Google OAuth Error:', error);
+            console.error('❌ Google OAuth Strategy Error:', error);
+            console.error('❌ Error details:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+            });
             return done(error, null);
         }
     }));

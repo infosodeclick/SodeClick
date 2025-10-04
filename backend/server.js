@@ -152,25 +152,93 @@ app.use('/vite.svg', express.static(path.join(frontendDistPath, 'vite.svg')));
 app.use('/favicon.ico', express.static(path.join(frontendDistPath, 'vite.svg')));
 
 // Serve Service Worker files with correct MIME type
-app.use('/sw-auto-refresh.js', express.static(path.join(frontendDistPath, 'sw-auto-refresh.js'), {
-  maxAge: '1h', // Cache for 1 hour
-  etag: true,
-  lastModified: true,
-  setHeaders: (res, path) => {
-    res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Service-Worker-Allowed', '/');
+app.get('/sw-auto-refresh.js', (req, res) => {
+  // Try multiple possible locations for Service Worker
+  const possiblePaths = [
+    path.join(frontendDistPath, 'sw-auto-refresh.js'),
+    path.join(__dirname, '../public/sw-auto-refresh.js'),
+    path.join(__dirname, '../frontend/public/sw-auto-refresh.js')
+  ];
+  
+  let swPath = null;
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      swPath = testPath;
+      break;
+    }
   }
-}));
+  
+  if (!swPath) {
+    console.error('❌ Service Worker file not found in any location');
+    return res.status(404).json({ 
+      error: 'Service Worker not found',
+      searched: possiblePaths.map(p => path.relative(__dirname, p))
+    });
+  }
+  
+  console.log('🔍 Serving Service Worker from:', path.relative(__dirname, swPath));
+  
+  // Set proper headers for Service Worker
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+  res.setHeader('ETag', true);
+  res.setHeader('Last-Modified', true);
+  
+  // Send the file
+  res.sendFile(swPath, (err) => {
+    if (err) {
+      console.error('❌ Error serving Service Worker:', err);
+      res.status(500).json({ error: 'Failed to serve Service Worker' });
+    } else {
+      console.log('✅ Service Worker served successfully from:', path.relative(__dirname, swPath));
+    }
+  });
+});
 
-app.use('/sw-auto-refresh-dev.js', express.static(path.join(frontendDistPath, 'sw-auto-refresh-dev.js'), {
-  maxAge: '1h', // Cache for 1 hour
-  etag: true,
-  lastModified: true,
-  setHeaders: (res, path) => {
-    res.setHeader('Content-Type', 'application/javascript');
-    res.setHeader('Service-Worker-Allowed', '/');
+app.get('/sw-auto-refresh-dev.js', (req, res) => {
+  // Try multiple possible locations for Service Worker (dev)
+  const possiblePaths = [
+    path.join(frontendDistPath, 'sw-auto-refresh-dev.js'),
+    path.join(__dirname, '../public/sw-auto-refresh-dev.js'),
+    path.join(__dirname, '../frontend/public/sw-auto-refresh-dev.js')
+  ];
+  
+  let swPath = null;
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      swPath = testPath;
+      break;
+    }
   }
-}));
+  
+  if (!swPath) {
+    console.error('❌ Service Worker (dev) file not found in any location');
+    return res.status(404).json({ 
+      error: 'Service Worker (dev) not found',
+      searched: possiblePaths.map(p => path.relative(__dirname, p))
+    });
+  }
+  
+  console.log('🔍 Serving Service Worker (dev) from:', path.relative(__dirname, swPath));
+  
+  // Set proper headers for Service Worker
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+  res.setHeader('ETag', true);
+  res.setHeader('Last-Modified', true);
+  
+  // Send the file
+  res.sendFile(swPath, (err) => {
+    if (err) {
+      console.error('❌ Error serving Service Worker (dev):', err);
+      res.status(500).json({ error: 'Failed to serve Service Worker (dev)' });
+    } else {
+      console.log('✅ Service Worker (dev) served successfully from:', path.relative(__dirname, swPath));
+    }
+  });
+});
 
 // Admin privileges middleware
 const { bypassMembershipRestrictions } = require('./middleware/adminPrivileges');
@@ -362,6 +430,41 @@ app.get('/health', (req, res) => {
   res.status(statusCode).json(healthData);
 });
 
+// Service Worker Health Check
+app.get('/health/service-worker', (req, res) => {
+  const possiblePaths = [
+    path.join(frontendDistPath, 'sw-auto-refresh.js'),
+    path.join(__dirname, '../public/sw-auto-refresh.js'),
+    path.join(__dirname, '../frontend/public/sw-auto-refresh.js')
+  ];
+  
+  const swStatus = {
+    status: 'healthy',
+    message: 'Service Worker files are available',
+    timestamp: new Date().toISOString(),
+    files: {}
+  };
+  
+  possiblePaths.forEach((testPath, index) => {
+    const exists = fs.existsSync(testPath);
+    swStatus.files[`location_${index + 1}`] = {
+      path: path.relative(__dirname, testPath),
+      exists: exists,
+      size: exists ? fs.statSync(testPath).size : 0
+    };
+  });
+  
+  // Check if at least one Service Worker file exists
+  const hasValidSw = Object.values(swStatus.files).some(file => file.exists);
+  if (!hasValidSw) {
+    swStatus.status = 'unhealthy';
+    swStatus.message = 'No Service Worker files found';
+  }
+  
+  const statusCode = swStatus.status === 'healthy' ? 200 : 503;
+  res.status(statusCode).json(swStatus);
+});
+
 // Database Health Check
 app.get('/health/database', async (req, res) => {
   try {
@@ -495,6 +598,7 @@ app.get('/api/info', (req, res) => {
       database_health: '/health/database',
       rabbit_health: '/health/rabbit',
       socketio_health: '/health/socketio',
+      service_worker_health: '/health/service-worker',
       auth: '/api/auth',
       profile: '/api/profile',
       membership: '/api/membership',
@@ -507,6 +611,8 @@ app.get('/api/info', (req, res) => {
       create_qr: '/create-qr',
       webhook_endpoint: '/webhook-endpoint',
       check_status: '/api/payment/check-status/:paymentId',
+      service_worker: '/sw-auto-refresh.js',
+      service_worker_dev: '/sw-auto-refresh-dev.js',
       root: '/'
     },
     timestamp: new Date().toISOString()

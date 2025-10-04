@@ -542,7 +542,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                         window.updateAuthContext(resetUser)
                       }
                       console.log('🔄 Reset user coins and vote points to 0')
-                      alert('รีเซ็ตเหรียญและโหวตเรียบร้อยแล้ว!')
+                      // Note: This is a dev function, no notification needed
                     }
                   }}
                   className="text-xs bg-red-500 text-white hover:bg-red-600"
@@ -601,7 +601,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                           window.updateAuthContext(testUser)
                         }
                         console.log('🧪 Manual test: Added 1000 coins and 100 vote points')
-                        alert('เพิ่มเหรียญทดสอบแล้ว! ตรวจสอบใน console')
+                        // Note: This is a dev function, no notification needed
                       }}
                       className="text-xs"
                     >
@@ -613,7 +613,7 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                       onClick={() => {
                         const currentUserData = localStorage.getItem('user')
                         console.log('🔍 Current localStorage user data:', currentUserData ? JSON.parse(currentUserData) : 'No data')
-                        alert('ตรวจสอบข้อมูลใน console แล้ว!')
+                        // Note: This is a dev function, no notification needed
                       }}
                       className="text-xs"
                     >

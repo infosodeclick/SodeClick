@@ -725,18 +725,32 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
   // Google OAuth - Callback handler
   router.get('/google/callback', 
-    passport.authenticate('google', { session: false }),
+    passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=auth_failed&reason=passport_failed` }),
     async (req, res) => {
       try {
+        console.log('🔍 Google OAuth callback received');
+        console.log('🔍 Request user:', req.user);
+        console.log('🔍 Request query:', req.query);
+        console.log('🔍 Request body:', req.body);
+        
         const user = req.user;
         
         if (!user) {
-          console.log('❌ Google OAuth: No user returned');
-          return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=auth_failed`);
+          console.log('❌ Google OAuth: No user returned from passport');
+          console.log('❌ This usually means the Google OAuth strategy failed');
+          return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=auth_failed&reason=no_user`);
         }
+
+        console.log('✅ Google OAuth user found:', {
+          id: user._id,
+          email: user.email,
+          googleId: user.googleId,
+          username: user.username
+        });
 
         // Generate JWT token
         const token = generateToken(user);
+        console.log('✅ JWT token generated:', !!token);
 
         // Update login history
         if (!user.loginHistory) {
@@ -757,11 +771,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
         // Redirect to frontend with token
         const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}?token=${token}&login_success=true`;
+        console.log('🔄 Redirecting to:', redirectUrl);
         res.redirect(redirectUrl);
 
       } catch (error) {
         console.error('❌ Google OAuth callback error:', error);
-        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=auth_failed`;
+        console.error('❌ Error stack:', error.stack);
+        const errorUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=auth_failed&reason=callback_error&message=${encodeURIComponent(error.message)}`;
         res.redirect(errorUrl);
       }
     }

@@ -1203,7 +1203,7 @@ const AIMatchingSystem = ({ currentUser }) => {
                   window.openProfileModal(profileData);
                 } else {
                   console.log('Profile data:', profileData);
-                  alert(`ดูโปรไฟล์: ${profileData.name}`);
+                  // Note: This is a fallback, should not happen in normal usage
                 }
               }}
             >
@@ -1378,7 +1378,7 @@ const AIMatchingSystem = ({ currentUser }) => {
                                 window.openProfileModal(profileData, true);
                 } else {
                   console.log('Profile data:', profileData);
-                  alert(`ดูโปรไฟล์: ${profileData.name}`);
+                  // Note: This is a fallback, should not happen in normal usage
                 }
                               
                             } catch (error) {

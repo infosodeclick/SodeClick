@@ -103,15 +103,16 @@ const JoinChatRoom = () => {
 
       if (res.ok) {
         const data = await res.json();
-        alert('เข้าร่วมห้องแชทสำเร็จ!');
+        // Note: This should use proper notification system
+        console.log('เข้าร่วมห้องแชทสำเร็จ!');
         navigate(`/chat/${data.chatRoom.id}`);
       } else {
         const errorData = await res.json();
-        alert(errorData.message || 'ไม่สามารถเข้าร่วมห้องได้');
+        console.error('ไม่สามารถเข้าร่วมห้องได้:', errorData.message);
       }
     } catch (error) {
       console.error('Error joining room:', error);
-      alert('เกิดข้อผิดพลาดในการเข้าร่วมห้อง');
+      console.error('เกิดข้อผิดพลาดในการเข้าร่วมห้อง');
     } finally {
       setJoining(false);
     }

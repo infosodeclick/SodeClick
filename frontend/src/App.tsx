@@ -1334,7 +1334,7 @@ function App() {
     if (code === 'DEV2024LOVE') {
       setHasDevAccess(true);
       localStorage.setItem('devAccess', 'true');
-      alert('เข้าสู่ระบบในโหมด Developer สำเร็จ! คุณสามารถเข้าถึงระบบได้แล้ว แต่หน้า Maintenance Mode ยังคงแสดงอยู่');
+      showWebappNotification('เข้าสู่ระบบในโหมด Developer สำเร็จ! คุณสามารถเข้าถึงระบบได้แล้ว แต่หน้า Maintenance Mode ยังคงแสดงอยู่', 'success');
     }
   };
 
@@ -4676,17 +4676,17 @@ function App() {
                                 
                                 // Show success message
                                 if (allowedLen > 0) {
-                                  alert(`✅ พบผู้ใช้ ${allowedLen} คนที่ตรงกับเงื่อนไขของคุณ!`)
+                                  showWebappNotification(`✅ พบผู้ใช้ ${allowedLen} คนที่ตรงกับเงื่อนไขของคุณ!`, 'success')
                                 } else {
-                                  alert('❌ ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข กรุณาลองปรับตัวกรองใหม่')
+                                  showWebappNotification('❌ ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข กรุณาลองปรับตัวกรองใหม่', 'warning')
                                 }
                               } else {
                                 console.error('❌ Search failed:', data.message)
-                                alert(`❌ การค้นหาล้มเหลว: ${data.message}`)
+                                showWebappNotification(`❌ การค้นหาล้มเหลว: ${data.message}`, 'error')
                               }
                             } catch (error: any) {
                               console.error('❌ Search error:', error)
-                              alert(`❌ เกิดข้อผิดพลาดในการค้นหา: ${error.message}`)
+                              showWebappNotification(`❌ เกิดข้อผิดพลาดในการค้นหา: ${error.message}`, 'error')
                             } finally {
                               setIsLoadingAllUsers(false)
                             }
@@ -4761,14 +4761,14 @@ function App() {
                                 setVisibleCount(allowedLen)
                                 setHasMoreUsers(allowedLen > 8)
                                 
-                                alert(`✅ รีเซ็ตตัวกรองเรียบร้อย! แสดงผู้ใช้ ${allowedLen} คน`)
+                                showWebappNotification(`✅ รีเซ็ตตัวกรองเรียบร้อย! แสดงผู้ใช้ ${allowedLen} คน`, 'success')
                               } else {
                                 console.error('❌ Reset failed:', data.message)
-                                alert(`❌ การรีเซ็ตล้มเหลว: ${data.message}`)
+                                showWebappNotification(`❌ การรีเซ็ตล้มเหลว: ${data.message}`, 'error')
                               }
                             } catch (error: any) {
                               console.error('❌ Reset error:', error)
-                              alert(`❌ เกิดข้อผิดพลาดในการรีเซ็ต: ${error.message}`)
+                              showWebappNotification(`❌ เกิดข้อผิดพลาดในการรีเซ็ต: ${error.message}`, 'error')
                             } finally {
                               setIsLoadingAllUsers(false)
                             }

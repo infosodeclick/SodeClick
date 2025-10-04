@@ -196,13 +196,14 @@ const AdminDashboard = () => {
       if (res.ok) {
         const data = await res.json();
         setMaintenanceMode(data.data.isMaintenanceMode);
-        alert(data.data.isMaintenanceMode ? 'เปิด Maintenance Mode แล้ว' : 'ปิด Maintenance Mode แล้ว');
+        // Note: Admin functions should use proper notification system
+        console.log(data.data.isMaintenanceMode ? 'เปิด Maintenance Mode แล้ว' : 'ปิด Maintenance Mode แล้ว');
       } else {
-        alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ Maintenance Mode');
+        console.error('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ Maintenance Mode');
       }
     } catch (error) {
       console.error('Error toggling maintenance mode:', error);
-      alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ Maintenance Mode');
+      console.error('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ Maintenance Mode');
     }
   };
 
