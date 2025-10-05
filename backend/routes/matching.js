@@ -210,9 +210,13 @@ router.get('/ai-matches', auth, async (req, res) => {
       // กรองตามอายุ
       if (match.dateOfBirth) {
         const age = Math.floor((new Date() - new Date(match.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000));
+        // เพิ่มฟิลด์ age ลงใน match object
+        match.age = age;
         if (age < parseInt(minAge) || age > parseInt(maxAge)) {
           return false;
         }
+      } else {
+        match.age = null;
       }
 
       // กรองตามเพศ (ถ้ามีการตั้งค่า)

@@ -262,12 +262,22 @@ router.get('/search', async (req, res) => {
     const finalMatch = geoFilter ? { ...query, ...geoFilter } : query;
 
     const users = await User.find(finalMatch)
-      .select('firstName lastName username nickname age gender location profileImages bio interests lifestyle membership')
+      .select('firstName lastName username nickname dateOfBirth age gender location profileImages bio interests lifestyle membership')
       .skip(skip)
       .limit(parseInt(limit))
       .sort({ lastActive: -1 });
 
-    const filteredUsers = users.filter(user => {
+    // Calculate age for each user and filter by age range
+    const usersWithAge = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        age: userObj.age || (userObj.dateOfBirth ? 
+          Math.floor((new Date() - new Date(userObj.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000)) : null)
+      };
+    });
+
+    const filteredUsers = usersWithAge.filter(user => {
       const userAge = user.age;
       return userAge >= ageMin && userAge <= ageMax;
     });
@@ -363,7 +373,6 @@ router.get('/premium', async (req, res) => {
           lastActive: 1,
           gender: 1,
           dateOfBirth: 1,
-          age: 1,
           bio: 1,
           interests: 1,
           isOnline: 1
@@ -371,7 +380,17 @@ router.get('/premium', async (req, res) => {
       }
     ])
 
-    res.json({ success: true, data: { users } })
+    // Calculate age for each user using virtual field or manual calculation
+    const usersWithAge = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        age: userObj.age || (userObj.dateOfBirth ? 
+          Math.floor((new Date() - new Date(userObj.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000)) : null)
+      };
+    });
+
+    res.json({ success: true, data: { users: usersWithAge } })
   } catch (error) {
     console.error('Error fetching premium profiles:', error)
     res.status(500).json({ success: false, message: 'ไม่สามารถดึงรายชื่อพรีเมียมได้', error: error.message })
@@ -465,16 +484,25 @@ router.get('/discover', async (req, res) => {
           gender: 1,
           dateOfBirth: 1,
           isOnline: 1,
-          age: 1,
           bio: 1,
           interests: 1
         }
       }
     ]);
 
+    // Calculate age for each user using virtual field or manual calculation
+    const usersWithAge = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        age: userObj.age || (userObj.dateOfBirth ? 
+          Math.floor((new Date() - new Date(userObj.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000)) : null)
+      };
+    });
+
     // Debug: ตรวจสอบว่าผลลัพธ์มีผู้ใช้ปัจจุบันรวมอยู่หรือไม่
     if (currentUserId) {
-      const currentUserInResults = users.find(user => user._id.toString() === currentUserId);
+      const currentUserInResults = usersWithAge.find(user => user._id.toString() === currentUserId);
       if (currentUserInResults) {
         console.log('⚠️ Discover API - Current user found in results:', currentUserInResults.username);
       } else {
@@ -484,14 +512,14 @@ router.get('/discover', async (req, res) => {
 
     // Debug: แสดงจำนวน user ในแต่ละ tier
     const tierCounts = {};
-    users.forEach(user => {
+    usersWithAge.forEach(user => {
       const tier = user.membershipTier || 'no-tier';
       tierCounts[tier] = (tierCounts[tier] || 0) + 1;
     });
     console.log('📊 Discover API - User counts by tier:', tierCounts);
-    console.log('📊 Discover API - Total users found:', users.length);
+    console.log('📊 Discover API - Total users found:', usersWithAge.length);
 
-    res.json({ success: true, data: { users } })
+    res.json({ success: true, data: { users: usersWithAge } })
   } catch (error) {
     console.error('Error fetching discover profiles:', error)
     res.status(500).json({ success: false, message: 'ไม่สามารถดึงรายชื่อสำหรับหน้า Discover ได้', error: error.message })
@@ -556,7 +584,6 @@ router.get('/members', async (req, res) => {
           lastActive: 1,
           gender: 1,
           dateOfBirth: 1,
-          age: 1,
           bio: 1,
           interests: 1,
           lifestyle: 1,
@@ -572,13 +599,23 @@ router.get('/members', async (req, res) => {
     // แบ่งตาม pagination
     const users = shuffledUsers.slice(skip, skip + limit)
 
+    // Calculate age for each user using virtual field or manual calculation
+    const usersWithAge = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        age: userObj.age || (userObj.dateOfBirth ? 
+          Math.floor((new Date() - new Date(userObj.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000)) : null)
+      };
+    });
+
     // นับจำนวนผู้ใช้ทั้งหมด
     const totalUsers = allMatchingUsers.length
 
     res.json({ 
       success: true, 
       data: { 
-        users,
+        users: usersWithAge,
         pagination: {
           page,
           limit,
@@ -667,7 +704,6 @@ router.get('/members-with-likes', async (req, res) => {
           lastActive: 1,
           gender: 1,
           dateOfBirth: 1,
-          age: 1,
           bio: 1,
           interests: 1,
           lifestyle: 1,
@@ -763,7 +799,6 @@ router.get('/all', async (req, res) => {
           lastActive: 1,
           gender: 1,
           dateOfBirth: 1,
-          age: 1,
           bio: 1,
           interests: 1,
           lifestyle: 1,
@@ -779,13 +814,23 @@ router.get('/all', async (req, res) => {
     // แบ่งตาม pagination
     const users = shuffledUsers.slice(skip, skip + limit)
 
+    // Calculate age for each user using virtual field or manual calculation
+    const usersWithAge = users.map(user => {
+      const userObj = user.toObject ? user.toObject() : user;
+      return {
+        ...userObj,
+        age: userObj.age || (userObj.dateOfBirth ? 
+          Math.floor((new Date() - new Date(userObj.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000)) : null)
+      };
+    });
+
     // นับจำนวนผู้ใช้ทั้งหมด
     const totalUsers = allMatchingUsers.length
 
     res.json({ 
       success: true, 
       data: { 
-        users,
+        users: usersWithAge,
         pagination: {
           page,
           limit,
