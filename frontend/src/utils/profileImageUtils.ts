@@ -125,8 +125,13 @@ export const getProfileImageUrl = (imagePath: string, userId?: string, baseUrl?:
     return imagePath;
   }
   
-  // If already a full URL or data URL, fix and return
+  // If already a full URL or data URL, return as is (including Google profile images)
   if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+    // For Google profile images, return as is without any processing
+    if (imagePath.includes('googleusercontent.com') || imagePath.includes('google.com')) {
+      console.log('🔍 Google profile image detected, returning as is:', imagePath);
+      return imagePath;
+    }
     return fixBrokenUrl(imagePath);
   }
   
@@ -201,6 +206,12 @@ export const getMainProfileImage = (profileImages: string[], mainProfileImageInd
   
   if (!imagePath || imagePath.startsWith('data:image/svg+xml')) {
     return '';
+  }
+  
+  // For Google profile images, return as is without processing
+  if (imagePath.includes('googleusercontent.com') || imagePath.includes('google.com')) {
+    console.log('🔍 Google profile image detected in getMainProfileImage, returning as is:', imagePath);
+    return imagePath;
   }
   
   const imageUrl = getProfileImageUrl(imagePath, userId);

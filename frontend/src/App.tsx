@@ -273,6 +273,80 @@ function App() {
   const [selectedVoteUser, setSelectedVoteUser] = useState<any>(null)
   const [showVoteUserProfile, setShowVoteUserProfile] = useState(false)
   
+  // Handle Google OAuth callback URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const loginSuccess = urlParams.get('login_success');
+    const authError = urlParams.get('error');
+    
+    console.log('🔍 URL Parameters:', { token, loginSuccess, authError });
+    
+    if (token && loginSuccess === 'true') {
+      console.log('🎉 Google OAuth callback detected with token');
+      
+      // Decode JWT token to get user info
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        console.log('🔍 Token payload:', payload);
+        
+        // Create user object from token payload
+        const userData = {
+          _id: payload.id,
+          email: payload.email,
+          username: payload.username,
+          token: token
+        };
+        
+        console.log('✅ Processing Google login with user data:', userData);
+        
+        // Store token and user data
+        sessionStorage.setItem('token', token);
+        sessionStorage.setItem('user', JSON.stringify(userData));
+        
+        // Call login function
+        login(userData);
+        setIsAuthenticated(true);
+        
+        // Show success message
+        success('เข้าสู่ระบบด้วย Google สำเร็จ!');
+        
+        // Clear URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Refresh user data
+        setTimeout(() => {
+          fetchLikedUsers();
+          fetchPrivateChats();
+          if (activeTab === 'discover') {
+            window.dispatchEvent(new CustomEvent('refreshUserData'));
+          }
+          window.dispatchEvent(new CustomEvent('refreshPremiumUsers'));
+        }, 100);
+        
+      } catch (err) {
+        console.error('❌ Error processing Google OAuth token:', err);
+        error('เกิดข้อผิดพลาดในการประมวลผลข้อมูลการเข้าสู่ระบบ');
+      }
+    } else if (authError) {
+      console.error('❌ Google OAuth error:', authError);
+      const reason = urlParams.get('reason');
+      
+      if (authError === 'auth_failed') {
+        if (reason === 'callback_error') {
+          error('เกิดข้อผิดพลาดในการเข้าสู่ระบบด้วย Google');
+        } else {
+          error('การเข้าสู่ระบบด้วย Google ล้มเหลว');
+        }
+      } else {
+        error('เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
+      }
+      
+      // Clear URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   // Real-time event handlers
   useRealTimeUpdate('userLoggedIn', (data) => {
     console.log('User logged in:', data);
@@ -4389,14 +4463,6 @@ function App() {
                                 <FontAwesomeIcon icon={faBell} className="h-6 w-6 text-gray-400" />
                               </div>
                               <p className="text-sm text-gray-500">ยังไม่มีการแจ้งเตือน</p>
-                              {/* Debug info */}
-                              <div className="mt-2 text-xs text-gray-400">
-                                <p>User ID: {user?._id || 'N/A'}</p>
-                                <p>Notifications: {notifications.length}</p>
-                                <p>Unread: {unreadCount}</p>
-                                <p>Socket: {window.socketManager?.socket?.connected ? 'Connected' : 'Disconnected'}</p>
-                                <p>Socket ID: {window.socketManager?.socket?.id || 'N/A'}</p>
-                              </div>
                             </div>
                           )}
                           
@@ -5332,12 +5398,17 @@ function App() {
                               alt={displayName} 
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                               onError={(e) => {
-                                console.error('❌ Homepage image failed to load:', {
-                                  imageUrl: profileImage,
-                                  userId: user._id || (user as any).id,
-                                  username: (user as any).username,
-                                  originalImageName: user.profileImages?.[(user as any).mainProfileImageIndex || 0]
-                                });
+                                // Only log error if it's not a Google profile image (which should work)
+                                if (!profileImage.includes('googleusercontent.com') && !profileImage.includes('google.com')) {
+                                  console.error('❌ Homepage image failed to load:', {
+                                    imageUrl: profileImage,
+                                    userId: user._id || (user as any).id,
+                                    username: (user as any).username,
+                                    originalImageName: user.profileImages?.[(user as any).mainProfileImageIndex || 0]
+                                  });
+                                } else {
+                                  console.warn('⚠️ Google profile image failed to load, this might be a temporary issue:', profileImage);
+                                }
                                 
                                 // ซ่อนรูปและแสดง fallback ทันที
                                 (e.target as HTMLImageElement).style.display = 'none';

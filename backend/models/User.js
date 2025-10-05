@@ -303,7 +303,7 @@ const userSchema = new mongoose.Schema({
   },
   loginHistory: [{
     timestamp: { type: Date, default: Date.now },
-    method: { type: String, enum: ['email', 'phone'] },
+    method: { type: String, enum: ['email', 'phone', 'google'] },
     ip: String,
     userAgent: String
   }],
