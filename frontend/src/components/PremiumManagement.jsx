@@ -107,7 +107,7 @@ const PremiumManagement = () => {
 
   const fetchPremiumUsers = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: currentPage,
         limit: 10,
@@ -137,7 +137,7 @@ const PremiumManagement = () => {
 
   const fetchStats = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/premium/stats`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -156,7 +156,7 @@ const PremiumManagement = () => {
 
   const handleBanUser = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}/ban-duration`, {
         method: 'PATCH',
         headers: {
@@ -184,7 +184,7 @@ const PremiumManagement = () => {
 
   const handleEditUser = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}`, {
         method: 'PUT',
         headers: {
@@ -227,7 +227,7 @@ const PremiumManagement = () => {
         return;
       }
 
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const userData = {
         ...createForm,
         dateOfBirth: new Date(createForm.dateOfBirth).toISOString(),
@@ -317,7 +317,7 @@ const PremiumManagement = () => {
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${selectedUser._id}/reset-password`, {
         method: 'PATCH',
         headers: {
@@ -351,7 +351,7 @@ const PremiumManagement = () => {
     if (!window.confirm(`คุณแน่ใจหรือไม่ที่จะลบผู้ใช้ "${userName}"?`)) return;
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
@@ -376,7 +376,7 @@ const PremiumManagement = () => {
 
   const handleViewProfile = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,

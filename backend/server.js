@@ -1333,12 +1333,15 @@ io.on('connection', (socket) => {
   socket.on('join-room', async (data) => {
     // ลด rate limiting สำหรับการ join room เพื่อให้เร็วขึ้น
     const isPrivateChat = data.roomId && data.roomId.startsWith('private_');
-    const rateLimit = isPrivateChat ? 100 : 200; // Private chat ใช้ 100ms, ห้องปกติ 200ms
+    const rateLimit = isPrivateChat ? 50 : 100; // ลด rate limit ให้ต่ำลง
+    
+    // ตรวจสอบว่าเป็นการเปลี่ยนห้องหรือไม่ (ถ้า socket มี currentRoom อยู่แล้ว)
+    const isRoomSwitch = socket.currentRoom && socket.currentRoom !== data.roomId;
     
     if (!checkSocketRateLimit(socket.id, 'join-room', rateLimit)) {
       console.warn(`⚠️ Rate limit exceeded for socket ${socket.id}, room: ${data.roomId}`);
-      // ไม่ส่ง error สำหรับ private chat เพื่อไม่ให้รบกวน UX
-      if (!isPrivateChat) {
+      // ไม่ส่ง error สำหรับ private chat หรือการเปลี่ยนห้อง เพื่อไม่ให้รบกวน UX
+      if (!isPrivateChat && !isRoomSwitch) {
         socket.emit('error', { message: 'Rate limit: Please wait before joining another room' });
       }
       return;
@@ -1351,6 +1354,33 @@ io.on('connection', (socket) => {
       transport: socket.conn.transport.name,
       readyState: socket.conn.readyState
     });
+    
+    // ถ้าเป็นการเปลี่ยนห้อง ให้ leave ห้องเก่าก่อน
+    if (socket.currentRoom && socket.currentRoom !== data.roomId) {
+      console.log(`🔄 Room switch detected: leaving ${socket.currentRoom}, joining ${data.roomId}`);
+      socket.leave(socket.currentRoom);
+      
+      // ลบผู้ใช้ออกจากรายการออนไลน์ของห้องเก่า
+      if (roomUsers.has(socket.currentRoom)) {
+        roomUsers.get(socket.currentRoom).delete(socket.userId);
+        const onlineCount = roomUsers.get(socket.currentRoom).size;
+        const roomOnlineUsers = Array.from(roomUsers.get(socket.currentRoom)).map(uid => {
+          const onlineUser = onlineUsers.get(uid);
+          return {
+            userId: uid,
+            username: onlineUser?.username || 'Unknown',
+            lastActive: onlineUser?.lastActive
+          };
+        });
+        
+        io.to(socket.currentRoom).emit('online-count-updated', {
+          roomId: socket.currentRoom,
+          onlineCount,
+          onlineUsers: roomOnlineUsers
+        });
+      }
+    }
+    
     try {
       const { roomId, userId, token } = data;
 
@@ -1477,13 +1507,22 @@ io.on('connection', (socket) => {
         }
       } else if (chatRoom.type === 'private' && !chatRoom.isMember(userId)) {
         // SuperAdmin สามารถเข้าร่วมห้องส่วนตัวได้โดยไม่ต้องเป็นสมาชิกก่อน
-        if (!user.isSuperAdmin()) {
-          socket.emit('error', { message: 'Unauthorized to join this private room' });
-          return;
-        } else {
+        if (user.isSuperAdmin()) {
           // SuperAdmin เข้าร่วมห้องส่วนตัวโดยอัตโนมัติ
           chatRoom.addMember(userId);
           await chatRoom.save();
+        } else {
+          // สำหรับ Community chat rooms ที่มี entry fee - อนุญาตให้เข้าได้
+          // (การตรวจสอบการจ่ายเงินจะทำใน frontend หรือ API อื่น)
+          if (chatRoom.entryFee > 0) {
+            // Community chat room - อนุญาตให้เข้าได้
+            chatRoom.addMember(userId);
+            await chatRoom.save();
+          } else {
+            // Private room ที่ไม่มี entry fee - ต้องเป็นสมาชิกก่อน
+            socket.emit('error', { message: 'Unauthorized to join this private room' });
+            return;
+          }
         }
       }
 
@@ -1614,7 +1653,15 @@ io.on('connection', (socket) => {
         transport: socket.conn.transport.name,
         readyState: socket.conn.readyState
       });
-      const { content, senderId, chatRoomId, messageType = 'text', replyToId, fileUrl, fileName, fileSize, fileType } = data;
+      const { content, senderId, chatRoomId, messageType = 'text', replyToId, fileUrl, fileName, fileSize, fileType, tempId } = data;
+      
+      console.log('📤 Message details:', {
+        content: content?.substring(0, 50),
+        senderId,
+        chatRoomId,
+        messageType,
+        tempId
+      });
       
       // ตรวจสอบสิทธิ์
       const sender = await User.findById(senderId);
@@ -1723,6 +1770,12 @@ io.on('connection', (socket) => {
         
         io.to(chatRoomId).emit('new-message', broadcastPayload);
         console.log('✅ [server.js] Private message broadcasted immediately to', roomSize, 'client(s)');
+        console.log('✅ [server.js] Broadcast payload:', {
+          _id: broadcastPayload._id,
+          content: broadcastPayload.content,
+          chatRoom: broadcastPayload.chatRoom,
+          messageType: broadcastPayload.messageType
+        });
         
         // ทำ unread count และ notification แบบ async (ไม่บล็อก broadcast)
         // ใช้ setTimeout แทน setImmediate เพื่อให้ broadcast เสร็จก่อน
@@ -2652,4 +2705,5 @@ const socketManager = require('./socket');
 socketManager.initializeSocket(io);
 
 // No need to export getSocketInstance from server.js anymore
+// Routes should import from socket.js instead
 // Routes should import from socket.js instead

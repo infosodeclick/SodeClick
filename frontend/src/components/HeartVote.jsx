@@ -19,7 +19,7 @@ const HeartVote = ({
   const voteType = voteHelpers.getVoteTypeByGender(candidateGender);
   
   // ดึงข้อมูล user ปัจจุบัน
-  const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const voterId = currentUser.id;
   const isLoggedIn = !!voterId;
 

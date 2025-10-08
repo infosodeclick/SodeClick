@@ -46,7 +46,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) {
           // No token found, redirecting to home
           window.location.href = '/';
@@ -99,7 +99,7 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       // Fetch dashboard statistics
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/stats`, {
@@ -129,7 +129,7 @@ const AdminDashboard = () => {
   // ฟังก์ชันดึงข้อมูลกิจกรรมล่าสุด
   const fetchRecentActivities = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/activities`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -176,7 +176,7 @@ const AdminDashboard = () => {
   // ฟังก์ชันเปิด/ปิด Maintenance Mode
   const toggleMaintenanceMode = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const estimatedHours = maintenanceMode ? null : 2; // 2 hours if enabling
       const message = maintenanceMode ? 'ระบบกลับมาใช้งานได้แล้ว' : 'ระบบกำลังบำรุงรักษา กรุณารอสักครู่';
       
@@ -328,7 +328,7 @@ const AdminDashboard = () => {
     const fetchAnalyticsData = async () => {
       try {
         setIsLoading(true);
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/analytics?period=${selectedPeriod}`, {
           headers: {
             'Authorization': `Bearer ${token}`,

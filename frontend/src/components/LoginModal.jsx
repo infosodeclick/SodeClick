@@ -150,8 +150,8 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 
       if (data.success) {
         setSuccess('เข้าสู่ระบบสำเร็จ!')
-        sessionStorage.setItem('token', data.data.token)
-        sessionStorage.setItem('user', JSON.stringify(data.data.user))
+        localStorage.setItem('token', data.data.token)
+        localStorage.setItem('user', JSON.stringify(data.data.user))
         
         // Blur all input fields to dismiss keyboard on mobile
         const activeElement = document.activeElement
@@ -204,8 +204,8 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 
       if (data.success) {
         setSuccess('เข้าสู่ระบบสำเร็จ!')
-        sessionStorage.setItem('token', data.data.token)
-        sessionStorage.setItem('user', JSON.stringify(data.data.user))
+        localStorage.setItem('token', data.data.token)
+        localStorage.setItem('user', JSON.stringify(data.data.user))
         
         // Blur all input fields to dismiss keyboard on mobile
         const activeElement = document.activeElement
@@ -333,8 +333,8 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 
       if (data.success) {
         setSuccess('ลงทะเบียนสำเร็จ!')
-        sessionStorage.setItem('token', data.data.token)
-        sessionStorage.setItem('user', JSON.stringify(data.data.user))
+        localStorage.setItem('token', data.data.token)
+        localStorage.setItem('user', JSON.stringify(data.data.user))
         
         // Blur all input fields to dismiss keyboard on mobile
         const activeElement = document.activeElement
@@ -451,8 +451,8 @@ const LoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 
       if (data.success) {
         setSuccess('ลงทะเบียนสำเร็จ!')
-        sessionStorage.setItem('token', data.token)
-        sessionStorage.setItem('user', JSON.stringify(data.user))
+        localStorage.setItem('token', data.token)
+        localStorage.setItem('user', JSON.stringify(data.user))
         
         // Blur all input fields to dismiss keyboard on mobile
         const activeElement = document.activeElement

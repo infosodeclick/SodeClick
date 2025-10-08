@@ -10,11 +10,11 @@ import PrivacyPolicy from './components/PrivacyPolicy'
 import { ToastProvider, useToast } from './components/ui/toast'
 import { AuthProvider } from './contexts/AuthContext'
 
-// ลงทะเบียน Service Worker สำหรับ Auto Refresh
-if ('serviceWorker' in navigator) {
+// ลงทะเบียน Service Worker สำหรับ Auto Refresh (เฉพาะใน production)
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    // เลือกไฟล์ Service Worker ที่เหมาะสมกับ environment
-    const swFile = import.meta.env.PROD ? '/sw-auto-refresh.js' : '/sw-auto-refresh-dev.js';
+    // ใช้ Service Worker เฉพาะใน production
+    const swFile = '/sw-auto-refresh.js';
 
     navigator.serviceWorker.register(swFile)
       .then((registration) => {
@@ -39,6 +39,8 @@ if ('serviceWorker' in navigator) {
         console.log('🔧 Falling back to polling-based auto refresh');
       });
   });
+} else {
+  console.log('🔧 Service Worker disabled in development mode');
 }
 
 // Wrapper component to include ToastContainer

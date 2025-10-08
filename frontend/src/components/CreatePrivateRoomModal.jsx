@@ -32,7 +32,7 @@ const CreatePrivateRoomModal = ({ isOpen, onClose, onCreateRoom, currentUser }) 
 
     setLoading(true);
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const headers = {
         'Content-Type': 'application/json'
       };

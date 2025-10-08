@@ -236,7 +236,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
     
     const updateOnlineStatus = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) return;
 
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/users/online-status`, {
@@ -295,7 +295,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
     loading: membershipLoading
   } = useLazyData(
     useCallback(async () => {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const headers = {
         'Content-Type': 'application/json'
       };
@@ -346,7 +346,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
       console.log('Current profile:', profile);
       
       // ตรวจสอบ token ก่อน
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         showError('กรุณาเข้าสู่ระบบใหม่');
         // Redirect ไปหน้า login
@@ -418,9 +418,9 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
         setEditData(updatedProfile);
         setPetsInput(formatPetsForInput(updatedProfile?.pets));
         
-        // ถ้าเป็นโปรไฟล์ของตัวเอง ให้อัปเดต sessionStorage ด้วย
+        // ถ้าเป็นโปรไฟล์ของตัวเอง ให้อัปเดต localStorage ด้วย
         if (isOwnProfile) {
-          const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+          const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
           const updatedUser = {
             ...currentUser,
             displayName: updatedProfile.displayName || currentUser.displayName,
@@ -432,8 +432,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
             profileImages: updatedProfile.profileImages || currentUser.profileImages,
             mainProfileImageIndex: updatedProfile.mainProfileImageIndex ?? currentUser.mainProfileImageIndex
           };
-          sessionStorage.setItem('user', JSON.stringify(updatedUser));
-          console.log('✅ Updated sessionStorage user data:', updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          console.log('✅ Updated localStorage user data:', updatedUser);
           
           // ส่ง event เพื่อบอกให้ components อื่นๆ รู้ว่าข้อมูลผู้ใช้ถูกอัปเดต
           window.dispatchEvent(new CustomEvent('userProfileUpdated', { 
@@ -458,8 +458,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
       if (err.message.includes('Session expired') || err.message.includes('Authentication token not found') || err.message.includes('Token ไม่ถูกต้อง')) {
         showError('Token ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่');
         // ล้างข้อมูลและ redirect ไปหน้า login
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         setTimeout(() => {
           window.location.href = '/';
         }, 2000);
@@ -817,7 +817,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
   // ดูรูปเบลอของผู้ใช้
   const loadBlurredImages = async () => {
     try {
-      const currentUserId = JSON.parse(sessionStorage.getItem('user'))?.id;
+      const currentUserId = JSON.parse(localStorage.getItem('user'))?.id;
       const response = await blurAPI.getBlurredImages(userId, currentUserId);
       
       if (response.success) {
@@ -832,7 +832,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
   // ซื้อรูปเบลอ
   const purchaseBlurredImage = async (imageId, imageOwnerId) => {
     try {
-      const currentUserId = JSON.parse(sessionStorage.getItem('user'))?.id;
+      const currentUserId = JSON.parse(localStorage.getItem('user'))?.id;
       if (!currentUserId) {
         showError('กรุณาเข้าสู่ระบบก่อน');
         return;
@@ -854,8 +854,8 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           )
         );
         
-        // อัพเดท sessionStorage เพื่อบันทึกการซื้อรูปเฉพาะ
-        const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+        // อัพเดท localStorage เพื่อบันทึกการซื้อรูปเฉพาะ
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
         const purchasedImage = {
           profileId: imageOwnerId,
           imageId: imageId,
@@ -866,7 +866,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           ...currentUser,
           purchasedImages: [...(currentUser.purchasedImages || []), purchasedImage]
         };
-        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+        localStorage.setItem('user', JSON.stringify(updatedUser));
       }
     } catch (error) {
       showError('ไม่สามารถซื้อรูปได้: ' + error.message);
@@ -989,7 +989,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
   // ตรวจสอบสิทธิ์การเบลอรูป
   const canBlurImages = () => {
     // ตรวจสอบว่าเป็น superadmin หรือไม่
-    const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
     const isSuperAdmin = currentUser.role === 'superadmin';
     
     // ถ้าเป็น superadmin สามารถเบลอได้เสมอ
@@ -1030,7 +1030,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
       userRole: currentUser.role,
       canBlur,
       isOwnProfile,
-      hasToken: !!sessionStorage.getItem('token')
+      hasToken: !!localStorage.getItem('token')
     });
     
     return canBlur;
@@ -1494,7 +1494,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           
           <div className="flex flex-col sm:flex-row gap-2">
             {/* ปุ่มสำหรับเจ้าของโปรไฟล์ */}
-            {isOwnProfile && sessionStorage.getItem('token') && (
+            {isOwnProfile && localStorage.getItem('token') && (
               <Button
                 onClick={startEdit}
                 variant="outline"
@@ -1508,7 +1508,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
             )}
             
             {/* ปุ่มดูรูปเบลอ (สำหรับคนอื่น) */}
-            {!isOwnProfile && sessionStorage.getItem('token') && (
+            {!isOwnProfile && localStorage.getItem('token') && (
               <Button
                 onClick={loadBlurredImages}
                 variant="outline"
@@ -1523,7 +1523,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           </div>
 
           {/* ปุ่มสำหรับเจ้าของโปรไฟล์ */}
-          {isOwnProfile && sessionStorage.getItem('token') && (
+          {isOwnProfile && localStorage.getItem('token') && (
             <div className="flex flex-col sm:flex-row gap-2">
               
               {/* ปุ่มทดสอบเบลอรูปหลัก */}
@@ -1604,7 +1604,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                 </span>
               )}
             </h3>
-            {isOwnProfile && sessionStorage.getItem('token') && (
+            {isOwnProfile && localStorage.getItem('token') && (
               <div className="relative w-full sm:w-auto flex flex-col gap-2">
                 <input
                   type="file"
@@ -1632,7 +1632,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           </div>
 
           {/* คำแนะนำการเลือกรูปหลัก */}
-          {isOwnProfile && sessionStorage.getItem('token') && (() => {
+          {isOwnProfile && localStorage.getItem('token') && (() => {
             const hasRealImages = profileData?.profileImages?.some(img => {
               const imagePath = typeof img === 'string' ? img : img?.url || '';
               return !imagePath.startsWith('data:image/svg+xml');
@@ -1659,11 +1659,11 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
           
           {/* Image Selection Controls */}
           {(() => {
-            const showControls = isOwnProfile && sessionStorage.getItem('token') && canBlurImages();
-            const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+            const showControls = isOwnProfile && localStorage.getItem('token') && canBlurImages();
+            const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
             console.log('🔍 Image Selection Controls Debug:', {
               isOwnProfile,
-              hasToken: !!sessionStorage.getItem('token'),
+              hasToken: !!localStorage.getItem('token'),
               canBlur: canBlurImages(),
               showControls,
               membershipTier: profileData?.membership?.tier,
@@ -1708,7 +1708,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                       ).length;
                       
                       // ตรวจสอบว่าเป็น superadmin หรือไม่
-                      const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+                      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
                       const isSuperAdmin = currentUser.role === 'superadmin';
                       
                       if (isSuperAdmin) {
@@ -1853,10 +1853,10 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                   {/* Checkbox สำหรับเลือกรูป */}
                   {(() => {
                     const isMainImage = originalIndex === (profileData.mainProfileImageIndex || 0);
-                    const showCheckbox = isOwnProfile && sessionStorage.getItem('token') && canBlurImages() && !isPreviewImage && !isMainImage;
+                    const showCheckbox = isOwnProfile && localStorage.getItem('token') && canBlurImages() && !isPreviewImage && !isMainImage;
                     console.log('🔍 Checkbox Debug for image', originalIndex, ':', {
                       isOwnProfile,
-                      hasToken: !!sessionStorage.getItem('token'),
+                      hasToken: !!localStorage.getItem('token'),
                       canBlur: canBlurImages(),
                       isPreviewImage,
                       isMainImage,
@@ -1912,7 +1912,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                     } transition-all duration-300 ${isPreviewImage ? 'opacity-75' : ''} ${selectedImages.includes(originalIndex) ? 'ring-4 ring-blue-500 ring-opacity-75' : ''}`}
                     onClick={(e) => {
                       // ป้องกันการคลิกที่รูปเมื่อมี checkbox
-                      if (isOwnProfile && sessionStorage.getItem('token') && canBlurImages() && !isPreviewImage) {
+                      if (isOwnProfile && localStorage.getItem('token') && canBlurImages() && !isPreviewImage) {
                         const isMainImage = originalIndex === (profileData.mainProfileImageIndex || 0);
                         if (!isMainImage) {
                           e.preventDefault();
@@ -1923,7 +1923,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                       }
                     }}
                     style={{ 
-                      cursor: isOwnProfile && sessionStorage.getItem('token') && canBlurImages() && !isPreviewImage && originalIndex !== (profileData.mainProfileImageIndex || 0) ? 'pointer' : 'default',
+                      cursor: isOwnProfile && localStorage.getItem('token') && canBlurImages() && !isPreviewImage && originalIndex !== (profileData.mainProfileImageIndex || 0) ? 'pointer' : 'default',
                       position: 'relative'
                     }}
                   >
@@ -1996,7 +1996,7 @@ const UserProfile = ({ userId, isOwnProfile = false }) => {
                       </div>
                     )}
                   </div>
-                  {isOwnProfile && sessionStorage.getItem('token') && !isPreviewImage && (
+                  {isOwnProfile && localStorage.getItem('token') && !isPreviewImage && (
                     <div className="absolute top-1 right-1 sm:top-2 sm:right-2 flex space-x-1">
                       {/* ปุ่มตั้งรูปโปรไฟล์หลัก */}
                       <button

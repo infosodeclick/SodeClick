@@ -36,11 +36,11 @@ export const AuthProvider = ({ children }) => {
     
     // Hide warning modal if it's showing
     if (showIdleWarning) {
-      console.log('✅ Hiding idle warning during timer reset');
+      // console.log('✅ Hiding idle warning during timer reset');
       setShowIdleWarning(false);
     }
 
-    console.log('🔄 Resetting idle timer - fresh 15 minutes');
+    // console.log('🔄 Resetting idle timer - fresh 15 minutes');
     
     // Set warning timer (14 minutes)
     const warningTimerId = setTimeout(() => {
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }) => {
       setShowIdleWarning(prevShow => {
         // ตรวจสอบว่าไม่ใช่ช่วงที่กำลัง dismiss และ modal ยังไม่ได้แสดงอยู่
         if (!prevShow && !isDismissing) {
-          console.log('⚠️ Idle warning: 1 minute left before auto sign out');
+          // console.log('⚠️ Idle warning: 1 minute left before auto sign out');
           return true;
         }
         return prevShow;
@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }) => {
 
     // Set auto sign out timer (15 minutes)
     const timerId = setTimeout(() => {
-      console.log('🚪 Auto sign out due to inactivity');
+      // console.log('🚪 Auto sign out due to inactivity');
       logout();
     }, IDLE_TIMEOUT);
 
@@ -75,10 +75,10 @@ export const AuthProvider = ({ children }) => {
       }
       
       activityTimeout = setTimeout(() => {
-        console.log('🔄 User activity detected, resetting idle timer');
+        // console.log('🔄 User activity detected, resetting idle timer');
         // Hide warning modal immediately when user is active
         if (showIdleWarning) {
-          console.log('✅ Hiding idle warning due to user activity');
+          // console.log('✅ Hiding idle warning due to user activity');
           setShowIdleWarning(false);
         }
         resetIdleTimer();
@@ -88,8 +88,8 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Check if user is logged in on app start
-    const token = sessionStorage.getItem('token');
-    const userData = sessionStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
     
     if (token && userData) {
       try {
@@ -106,24 +106,49 @@ export const AuthProvider = ({ children }) => {
         ];
         
         if (invalidUserIds.includes(parsedUser._id)) {
-          console.log('🚨 Invalid user ID detected, clearing session:', parsedUser._id);
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
+          // console.log('🚨 Invalid user ID detected, clearing session:', parsedUser._id);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
           setUser(null);
         } else {
           setUser(parsedUser);
         }
       } catch (error) {
         console.error('Error parsing user data:', error);
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
       }
     }
     setLoading(false);
     
+    // Handle storage changes from other tabs (sync login/logout across tabs)
+    const handleStorageChange = (e) => {
+      if (e.key === 'token' || e.key === 'user') {
+        // ถ้ามีการเปลี่ยนแปลง token หรือ user จาก tab อื่น
+        const newToken = localStorage.getItem('token');
+        const newUserData = localStorage.getItem('user');
+        
+        if (newToken && newUserData) {
+          // มีการ login ใน tab อื่น - อัปเดต state
+          try {
+            const parsedUser = JSON.parse(newUserData);
+            setUser(parsedUser);
+            console.log('🔄 Synced login from another tab');
+          } catch (error) {
+            console.error('Error parsing user data from storage event:', error);
+          }
+        } else {
+          // มีการ logout ใน tab อื่น - logout tab นี้ด้วย
+          setUser(null);
+          console.log('🔄 Synced logout from another tab');
+          window.location.reload();
+        }
+      }
+    };
+    
     // Handle browser close/refresh - update online status to false
     const handleBeforeUnload = (event) => {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (token) {
         // ใช้ fetch with keepalive แทน sendBeacon เพื่อส่ง headers ได้ถูกต้อง
         fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/logout`, {
@@ -137,25 +162,27 @@ export const AuthProvider = ({ children }) => {
         }).catch(err => {
           console.error('❌ Failed to logout on beforeunload:', err);
         });
-        console.log('🔴 Browser closing: Sending logout request');
+        // console.log('🔴 Browser closing: Sending logout request');
       }
     };
     
     // เพิ่ม handler สำหรับ visibility change เพื่อตรวจจับเมื่อปิด tab
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (token) {
           // เมื่อ tab ถูกซ่อน (อาจจะปิด) ให้อัพเดทสถานะ lastActive
-          console.log('📴 Tab hidden, updating lastActive');
+          // console.log('📴 Tab hidden, updating lastActive');
         }
       }
     };
     
+    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
+      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -231,8 +258,8 @@ export const AuthProvider = ({ children }) => {
     console.log('🔍 User ID in userToSet:', userToSet._id || userToSet.id || userToSet.userId);
     
     setUser(userToSet);
-    sessionStorage.setItem('token', userData.token || userData.data?.token);
-    sessionStorage.setItem('user', JSON.stringify(userToSet));
+    localStorage.setItem('token', userData.token || userData.data?.token);
+    localStorage.setItem('user', JSON.stringify(userToSet));
     
     // Send login event
     window.dispatchEvent(new CustomEvent('userLoggedIn', { 
@@ -247,7 +274,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     console.log('🚪 Logging out...');
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     
     // อัพเดท online status เป็น false
     if (token) {
@@ -266,8 +293,8 @@ export const AuthProvider = ({ children }) => {
     
     // ล้างข้อมูลและส่ง event
     setUser(null);
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.dispatchEvent(new CustomEvent('userLoggedOut'));
     
     // รีเฟรชหน้าเว็บอัตโนมัติเมื่อล็อกเอาต์
@@ -279,7 +306,7 @@ export const AuthProvider = ({ children }) => {
 
   // Function to validate current user and force logout if invalid
   const validateUser = async () => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token || !user) return true;
 
     try {

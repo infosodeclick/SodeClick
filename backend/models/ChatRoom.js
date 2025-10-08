@@ -177,6 +177,11 @@ const chatRoomSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // ห้องสาธารณะหลัก
+  isMainPublicRoom: {
+    type: Boolean,
+    default: false
+  },
   // ข้อมูลการสร้าง
   createdAt: {
     type: Date,
@@ -194,6 +199,7 @@ const chatRoomSchema = new mongoose.Schema({
 chatRoomSchema.index({ owner: 1 });
 chatRoomSchema.index({ type: 1 });
 chatRoomSchema.index({ isActive: 1 });
+chatRoomSchema.index({ isMainPublicRoom: 1 });
 chatRoomSchema.index({ 'members.user': 1 });
 chatRoomSchema.index({ lastActivity: -1 });
 

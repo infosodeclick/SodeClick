@@ -16,8 +16,8 @@ const VoteRankingMini = ({
   const [imageErrors, setImageErrors] = useState(new Set()); // Track failed images
   const { warning } = useToast();
   
-  // Check if user is logged in using sessionStorage (same as HeartVote component)
-  const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+  // Check if user is logged in using localStorage (same as HeartVote component)
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isLoggedIn = !!currentUser.id;
 
   // สร้างสี avatar ตามชื่อผู้ใช้

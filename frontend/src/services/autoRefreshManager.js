@@ -34,11 +34,11 @@ class AutoRefreshManager {
 
       if (this.isVisible) {
         // เมื่อกลับมาที่หน้าเว็บ ให้รีเฟรชข้อมูลทันที
-        console.log('🔄 Tab became visible, refreshing data...');
+        // console.log('🔄 Tab became visible, refreshing data...');
         this.forceRefresh('immediate');
       } else {
         // เมื่อออกจากหน้าเว็บ ให้ลดความถี่การรีเฟรช
-        console.log('😴 Tab became hidden, reducing refresh frequency');
+        // console.log('😴 Tab became hidden, reducing refresh frequency');
         this.adjustRefreshFrequency('slow');
       }
     });
@@ -66,7 +66,7 @@ class AutoRefreshManager {
       const isIdle = (now - this.lastActivity) > this.idleThreshold;
 
       if (isIdle && this.isActive) {
-        console.log('😴 User idle detected, reducing refresh frequency');
+        // console.log('😴 User idle detected, reducing refresh frequency');
         this.adjustRefreshFrequency('slow');
       } else if (!isIdle && this.isActive) {
         this.adjustRefreshFrequency('normal');
@@ -83,11 +83,19 @@ class AutoRefreshManager {
         // เลือกไฟล์ Service Worker ที่เหมาะสมกับ environment
         const swFile = import.meta.env.PROD ? '/sw-auto-refresh.js' : '/sw-auto-refresh-dev.js';
 
-        console.log('🔧 Setting up Service Worker for auto refresh...');
-        console.log('📁 Service Worker file:', swFile);
+        // console.log('🔧 Setting up Service Worker for auto refresh...');
+        // console.log('📁 Service Worker file:', swFile);
+
+        // ตรวจสอบว่าไฟล์ Service Worker มีอยู่จริงหรือไม่
+        const response = await fetch(swFile, { method: 'HEAD' });
+        if (!response.ok) {
+          console.warn('⚠️ Service Worker file not found, using main thread refresh only');
+          this.serviceWorker = null;
+          return;
+        }
 
         this.serviceWorker = await navigator.serviceWorker.register(swFile);
-        console.log('✅ Service Worker registered successfully');
+        // console.log('✅ Service Worker registered successfully');
 
         // ฟังข้อความจาก Service Worker
         navigator.serviceWorker.addEventListener('message', (event) => {
@@ -96,15 +104,15 @@ class AutoRefreshManager {
 
         // รอให้ Service Worker พร้อมทำงาน
         await navigator.serviceWorker.ready;
-        console.log('🔧 Service Worker is ready');
+        // console.log('🔧 Service Worker is ready');
 
       } catch (error) {
-        console.error('❌ Service Worker registration failed:', error);
-        console.log('🔧 Will use main thread refresh only');
+        console.warn('⚠️ Service Worker registration failed:', error.message);
+        // console.log('🔧 Will use main thread refresh only');
         this.serviceWorker = null;
       }
     } else {
-      console.log('ℹ️ Service Worker not supported in this browser');
+      // console.log('ℹ️ Service Worker not supported in this browser');
     }
   }
 
@@ -162,7 +170,7 @@ class AutoRefreshManager {
    * เริ่มระบบ auto refresh สำหรับแชท
    */
   async startChatRefresh(roomId, userId) {
-    console.log('🚀 Starting auto refresh for chat:', roomId);
+    // console.log('🚀 Starting auto refresh for chat:', roomId);
 
     this.isActive = true;
     this.adjustRefreshFrequency('normal');
@@ -186,9 +194,9 @@ class AutoRefreshManager {
         userId,
         roomId
       });
-      console.log('🚀 Started Service Worker background refresh');
+      // console.log('🚀 Started Service Worker background refresh');
     } else {
-      console.log('🔧 Service Worker not available, using main thread refresh only');
+      // console.log('🔧 Service Worker not available, using main thread refresh only');
     }
   }
 
@@ -196,7 +204,7 @@ class AutoRefreshManager {
    * หยุดระบบ auto refresh
    */
   stopChatRefresh() {
-    console.log('⏹️ Stopping auto refresh');
+    // console.log('⏹️ Stopping auto refresh');
 
     this.isActive = false;
     this.adjustRefreshFrequency('stop');
@@ -210,7 +218,7 @@ class AutoRefreshManager {
       this.serviceWorker.active.postMessage({
         type: 'STOP_AUTO_REFRESH'
       });
-      console.log('⏹️ Stopped Service Worker background refresh');
+      // console.log('⏹️ Stopped Service Worker background refresh');
     }
   }
 

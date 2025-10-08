@@ -36,7 +36,7 @@ const BannedUsers = () => {
   const fetchBannedUsers = async () => {
     try {
       setLoading(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: currentPage,
         limit: 10,
@@ -71,7 +71,7 @@ const BannedUsers = () => {
   const handleUnban = async (userId) => {
     try {
       setUnbanLoading(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}/ban`, {
         method: 'PATCH',

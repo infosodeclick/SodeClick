@@ -16,11 +16,14 @@ import {
   AlertTriangle,
   Eye,
   Globe,
-  Lock
+  Lock,
+  Star,
+  MessageSquare
 } from 'lucide-react';
 
 const AdminChatManagement = () => {
-  const [activeTab, setActiveTab] = useState('chatrooms');
+  const [activeTab, setActiveTab] = useState('public-chatrooms');
+  const [publicChatRooms, setPublicChatRooms] = useState([]);
   const [chatRooms, setChatRooms] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,19 +33,119 @@ const AdminChatManagement = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteType, setDeleteType] = useState('');
+  const [mainPublicRoomId, setMainPublicRoomId] = useState(null);
+  const [showMessagesModal, setShowMessagesModal] = useState(false);
+  const [selectedRoomMessages, setSelectedRoomMessages] = useState([]);
+  const [selectedRoomInfo, setSelectedRoomInfo] = useState(null);
 
   useEffect(() => {
-    if (activeTab === 'chatrooms') {
+    if (activeTab === 'public-chatrooms') {
+      fetchPublicChatRooms();
+    } else if (activeTab === 'chatrooms') {
       fetchChatRooms();
     } else if (activeTab === 'messages') {
       fetchMessages();
     }
   }, [activeTab, currentPage, searchTerm]);
 
+  const handleViewRoomMessages = async (room) => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/messages?roomId=${room._id}&limit=100`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedRoomMessages(data.messages || []);
+        setSelectedRoomInfo(room);
+        setShowMessagesModal(true);
+      } else {
+        const error = await res.json();
+        console.error('Failed to fetch room messages:', error.message);
+      }
+    } catch (error) {
+      console.error('Error fetching room messages:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSetMainPublicRoom = async (roomId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/chatrooms/${roomId}/set-main`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (res.ok) {
+        setMainPublicRoomId(roomId);
+        await fetchPublicChatRooms(); // รีเฟรชข้อมูล
+        console.log('ห้องสาธารณะหลักถูกตั้งเรียบร้อยแล้ว');
+      } else {
+        const error = await res.json();
+        console.error('Failed to set main public room:', error.message);
+      }
+    } catch (error) {
+      console.error('Error setting main public room:', error);
+    }
+  };
+
+  const fetchPublicChatRooms = async () => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams({
+        page: currentPage,
+        limit: 10,
+        search: searchTerm,
+        sort: '-createdAt',
+        type: 'public' // ดึงเฉพาะห้องแชทที่มีสถานะ public
+      });
+
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/chatrooms?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // กรองเฉพาะห้องแชทที่สร้างโดย admin หรือ superadmin
+        const adminPublicRooms = data.chatRooms.filter(room => 
+          room.type === 'public' && 
+          (room.owner?.role === 'admin' || room.owner?.role === 'superadmin')
+        );
+        setPublicChatRooms(adminPublicRooms);
+        
+        // หาห้องหลัก
+        const mainRoom = adminPublicRooms.find(room => room.isMainPublicRoom);
+        if (mainRoom) {
+          setMainPublicRoomId(mainRoom._id);
+        }
+        
+        setTotalPages(data.pagination.pages);
+      }
+    } catch (error) {
+      console.error('Error fetching public chat rooms:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const fetchChatRooms = async () => {
     try {
       setIsLoading(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: currentPage,
         limit: 10,
@@ -59,7 +162,12 @@ const AdminChatManagement = () => {
 
       if (res.ok) {
         const data = await res.json();
-        setChatRooms(data.chatRooms);
+        // กรองเฉพาะห้องแชทที่สร้างโดย user (ไม่ใช่ admin) - ทุกประเภท
+        const userRooms = data.chatRooms.filter(room => 
+          room.owner?.role !== 'admin' && 
+          room.owner?.role !== 'superadmin'
+        );
+        setChatRooms(userRooms);
         setTotalPages(data.pagination.pages);
       }
     } catch (error) {
@@ -72,7 +180,7 @@ const AdminChatManagement = () => {
   const fetchMessages = async () => {
     try {
       setIsLoading(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: currentPage,
         limit: 20,
@@ -101,7 +209,7 @@ const AdminChatManagement = () => {
 
   const handleDeleteChatRoom = async (roomId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/chatrooms/${roomId}`, {
         method: 'DELETE',
         headers: {
@@ -133,7 +241,7 @@ const AdminChatManagement = () => {
       }
 
       console.log('Deleting message with ID:', messageId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       if (!token) {
         console.error('No authentication token found');
@@ -170,7 +278,7 @@ const AdminChatManagement = () => {
 
   const handleDeleteAllMessages = async (roomId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/messages/room/${roomId}`, {
         method: 'DELETE',
         headers: {
@@ -195,7 +303,7 @@ const AdminChatManagement = () => {
 
   const handleDeleteAllImages = async (roomId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/images/room/${roomId}`, {
         method: 'DELETE',
         headers: {
@@ -291,7 +399,11 @@ const AdminChatManagement = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="public-chatrooms" className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            ห้องแชทสาธารณะ
+          </TabsTrigger>
           <TabsTrigger value="chatrooms" className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
             ห้องแชท
@@ -302,18 +414,107 @@ const AdminChatManagement = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="chatrooms" className="space-y-4">
+        <TabsContent value="public-chatrooms" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5" />
-                รายการห้องแชท
+                <Globe className="h-5 w-5" />
+                ห้องแชทสาธารณะ (สร้างโดย Admin)
               </CardTitle>
               <div className="flex items-center gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="ค้นหาห้องแชท..."
+                    placeholder="ค้นหาห้องแชทสาธารณะ (Admin)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {publicChatRooms.map((room) => (
+                  <div key={room._id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold">{room.name}</h3>
+                        <Badge variant="default" className="bg-green-100 text-green-800">
+                          <Globe className="h-3 w-3 mr-1" />
+                          สาธารณะ
+                        </Badge>
+                        {mainPublicRoomId === room._id && (
+                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                            <Star className="h-3 w-3 mr-1" />
+                            ห้องหลัก
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        {room.description || 'ไม่มีคำอธิบาย'}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>เจ้าของ: {room.owner?.displayName || room.owner?.username}</span>
+                        <span>สมาชิก: {room.stats?.totalMembers || 0}</span>
+                        <span>ข้อความ: {room.stats?.totalMessages || 0}</span>
+                        <span>สร้างเมื่อ: {formatDate(room.createdAt)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSetMainPublicRoom(room._id)}
+                        className={`${mainPublicRoomId === room._id ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : 'text-blue-600 hover:text-blue-700'}`}
+                      >
+                        <Star className="h-4 w-4 mr-1" />
+                        {mainPublicRoomId === room._id ? 'ห้องหลัก' : 'หลัก'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewRoomMessages(room)}
+                        className="text-green-600 hover:text-green-700"
+                      >
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        ข้อความ
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => confirmDelete(room, 'chatroom')}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        ลบห้อง
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {publicChatRooms.length === 0 && !isLoading && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Globe className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>ยังไม่มีห้องแชทสาธารณะที่สร้างโดย Admin</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="chatrooms" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                ห้องแชท (สร้างโดย User)
+              </CardTitle>
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="ค้นหาห้องแชท (User)..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -356,6 +557,15 @@ const AdminChatManagement = () => {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => handleViewRoomMessages(room)}
+                        className="text-green-600 hover:text-green-700"
+                      >
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        ข้อความ
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => confirmDelete(room, 'chatroom')}
                         className="text-red-600 hover:text-red-700"
                       >
@@ -365,6 +575,12 @@ const AdminChatManagement = () => {
                     </div>
                   </div>
                 ))}
+                {chatRooms.length === 0 && !isLoading && (
+                  <div className="text-center py-8 text-gray-500">
+                    <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>ยังไม่มีห้องแชทที่สร้างโดย User</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -435,6 +651,77 @@ const AdminChatManagement = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Messages Modal */}
+      <Dialog open={showMessagesModal} onOpenChange={setShowMessagesModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              ข้อความในห้อง: {selectedRoomInfo?.name}
+            </DialogTitle>
+            <DialogDescription>
+              จัดการข้อความและรูปภาพในห้องแชทนี้
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto max-h-[60vh]">
+            {selectedRoomMessages.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>ยังไม่มีข้อความในห้องนี้</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {selectedRoomMessages.map((message) => (
+                  <div key={message._id} className="flex items-start justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-medium">
+                          {message.sender?.displayName || message.sender?.username}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {message.messageType}
+                        </Badge>
+                        {message.messageType === 'image' && (
+                          <Image className="h-4 w-4 text-blue-500" />
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-700 mb-2">
+                        {message.messageType === 'image' ? (
+                          <span className="text-blue-600">รูปภาพ: {message.fileName}</span>
+                        ) : (
+                          message.content
+                        )}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>ส่งเมื่อ: {formatDate(message.createdAt)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => confirmDelete(message, 'message')}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        ลบ
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setShowMessagesModal(false)}>
+              ปิด
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>

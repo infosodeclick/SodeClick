@@ -85,7 +85,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // GET /api/messages/:roomId - ดึงข้อความในห้องแชท
-router.get('/:roomId', async (req, res) => {
+router.get('/:roomId', auth, async (req, res) => {
   try {
   const { roomId } = req.params;
   const { page = 1, limit = 30, userId } = req.query; // limit default 30 เพื่อความเร็ว
@@ -352,7 +352,7 @@ router.post('/', auth, upload.array('attachments', 5), async (req, res) => {
     await message.save();
 
     // อัปเดต lastActive ของผู้ส่งข้อความ
-    await User.findByIdAndUpdate(userId, {
+    await User.findByIdAndUpdate(senderId, {
       lastActive: new Date()
     });
 
@@ -763,30 +763,23 @@ router.get('/private-chats/:userId', async (req, res) => {
     .sort({ lastActivity: -1 })
     .lean();
 
-    // ดึง private chats ที่ใช้ string format จาก Message collection
-    const privateChatMessages = await Message.find({
-      chatRoom: { $regex: /^private_.*_/ }, // หา private chat IDs
-      $or: [
-        { sender: userId }, // ข้อความที่ผู้ใช้ส่ง
-        { chatRoom: { $regex: new RegExp(`^private_.*_${userId}$`) } }, // private_xxx_userId format
-        { chatRoom: { $regex: new RegExp(`^private_${userId}_.*$`) } }, // private_userId_xxx format
-        { chatRoom: { $regex: new RegExp(`^private_.*_${userId}_.*$`) } } // private_xxx_userId_xxx format (fallback)
-      ]
-    })
-    .populate('sender', 'username displayName firstName lastName membership membershipTier profileImages isOnline')
-    .sort({ createdAt: -1 })
-    .lean();
-
-    // สร้าง unique private chat IDs
+    // ดึง private chats จาก User.privateChats array (ไม่รวมแชทที่ถูกลบ)
+    const userPrivateChats = user.privateChats || [];
+    console.log('🔍 Found private chats in user.privateChats:', userPrivateChats.length);
+    
+    // กรองแชทที่ถูกลบออก (isDeleted: true)
+    const activePrivateChats = userPrivateChats.filter(chat => !chat.isDeleted);
+    console.log('🔍 Active private chats:', activePrivateChats.length);
+    
+    // สร้าง unique private chat IDs จาก active chats
     const privateChatIds = new Set();
-    console.log('🔍 Found private chat messages:', privateChatMessages.length);
-    privateChatMessages.forEach(msg => {
-      if (msg.chatRoom && msg.chatRoom.startsWith('private_')) {
-        privateChatIds.add(msg.chatRoom);
-        console.log('📝 Private chat ID:', msg.chatRoom);
+    activePrivateChats.forEach(chat => {
+      if (chat.chatId && chat.chatId.startsWith('private_')) {
+        privateChatIds.add(chat.chatId);
+        console.log('📝 Active private chat ID:', chat.chatId);
       }
     });
-    console.log('📊 Unique private chat IDs:', Array.from(privateChatIds));
+    console.log('📊 Unique active private chat IDs:', Array.from(privateChatIds));
 
     // ประมวลผลข้อมูลแชทส่วนตัวจาก ChatRoom
     const chatRoomChats = await Promise.all(
@@ -1136,16 +1129,20 @@ router.post('/update-recipient-chat-list', async (req, res) => {
   }
 });
 
-// DELETE /api/messages/private-chat/:chatId - ลบแชทส่วนตัว (Soft Delete)
+// DELETE /api/messages/private-chat/:chatId - ลบแชทส่วนตัว (Hard Delete แต่คงประวัติ)
 router.delete('/private-chat/:chatId', auth, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
-    console.log('🗑️ Soft deleting private chat:', chatId, 'for user:', userId);
+    console.log('🗑️ Hard deleting private chat:', chatId, 'for user:', userId);
+    console.log('🗑️ Chat ID type:', typeof chatId);
+    console.log('🗑️ Chat ID length:', chatId?.length);
+    console.log('🗑️ Chat ID includes private_:', chatId?.includes('private_'));
 
     // ตรวจสอบว่า chatId เป็น private chat ID หรือไม่
     if (!chatId.includes('private_')) {
+      console.log('❌ Invalid private chat ID format:', chatId);
       return res.status(400).json({
         success: false,
         message: 'Invalid private chat ID'
@@ -1154,7 +1151,10 @@ router.delete('/private-chat/:chatId', auth, async (req, res) => {
 
     // แยก chat ID เพื่อหา user IDs
     const parts = chatId.replace('private_', '').split('_');
+    console.log('🔍 Chat ID parts:', parts);
+    
     if (parts.length !== 2) {
+      console.log('❌ Invalid private chat ID format - parts length:', parts.length);
       return res.status(400).json({
         success: false,
         message: 'Invalid private chat ID format'
@@ -1164,7 +1164,15 @@ router.delete('/private-chat/:chatId', auth, async (req, res) => {
     const [user1Id, user2Id] = parts;
 
     // ตรวจสอบว่าผู้ใช้เป็นส่วนหนึ่งของแชทนี้หรือไม่
-    if (user1Id !== userId && user2Id !== userId) {
+    const userIdStr = userId.toString();
+    console.log('🔍 User ID comparison:', {
+      user1Id,
+      user2Id,
+      currentUserId: userIdStr
+    });
+    
+    if (user1Id !== userIdStr && user2Id !== userIdStr) {
+      console.log('❌ User not authorized to delete this chat');
       return res.status(403).json({
         success: false,
         message: 'You are not authorized to delete this chat'
@@ -1172,52 +1180,47 @@ router.delete('/private-chat/:chatId', auth, async (req, res) => {
     }
 
     // หาผู้ใช้ที่ลบและผู้ใช้อีกฝั่ง
-    const deleterId = userId;
-    const otherUserId = user1Id === userId ? user2Id : user1Id;
+    const deleterId = userIdStr;
+    const otherUserId = user1Id === userIdStr ? user2Id : user1Id;
 
-    // สร้าง chat ID ใหม่สำหรับผู้ที่ลบ (สลับลำดับ user IDs)
-    const newChatId = `private_${deleterId}_${otherUserId}`;
+    console.log('🗑️ Deleting chat for user:', deleterId, 'with user:', otherUserId);
 
-    console.log('🔄 Creating new chat ID for deleter:', newChatId);
-    console.log('📋 Old chat ID remains for other user:', chatId);
-
-    // อัปเดต privateChats ของผู้ใช้ที่ลบให้ใช้ chat ID ใหม่
-    await User.findByIdAndUpdate(
-      deleterId,
-      { 
-        $pull: { privateChats: { chatId: chatId } },
-        $push: { 
-          privateChats: { 
-            chatId: newChatId,
-            otherUserId: otherUserId,
-            lastMessage: null,
-            lastMessageTime: null,
-            isDeleted: true // เพิ่ม flag เพื่อระบุว่าเป็น chat ที่ถูก soft delete
-          }
+    // ลบ private chat ออกจาก User collection (ลบจริงๆ)
+    // ตรวจสอบว่า User มี privateChats array หรือไม่
+    const user = await User.findById(deleterId);
+    if (user && user.privateChats && user.privateChats.length > 0) {
+      await User.findByIdAndUpdate(
+        deleterId,
+        { 
+          $pull: { privateChats: { chatId: chatId } }
         }
-      }
-    );
+      );
+      console.log('✅ Removed chat from User.privateChats array');
+    } else {
+      console.log('ℹ️ User has no privateChats array or it is empty');
+    }
 
-    // ผู้ใช้อีกฝั่งยังใช้ chat ID เดิม (ไม่ต้องอัปเดตอะไร)
+    // เก็บประวัติแชทไว้ใน Message collection (ไม่ลบ messages)
+    // เพียงแค่ลบออกจาก privateChats array ของผู้ใช้ที่ลบ
 
-    console.log('✅ Private chat soft deleted successfully');
-    console.log('📝 User', deleterId, 'now uses chat ID:', newChatId);
-    console.log('📝 User', otherUserId, 'still uses chat ID:', chatId);
+    console.log('✅ Private chat hard deleted successfully');
+    console.log('📝 Chat removed from user', deleterId, 'privateChats array');
+    console.log('📝 Messages preserved in database');
 
     res.json({
       success: true,
-      message: 'Private chat deleted successfully (soft delete)',
+      message: 'Private chat deleted successfully',
       data: {
-        oldChatId: chatId,
-        newChatId: newChatId,
+        deletedChatId: chatId,
         deleterId: deleterId,
         otherUserId: otherUserId,
-        messagesPreserved: true
+        messagesPreserved: true,
+        chatRemovedFromList: true
       }
     });
 
   } catch (error) {
-    console.error('Error soft deleting private chat:', error);
+    console.error('Error deleting private chat:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -1230,7 +1233,7 @@ router.delete('/private-chat/:chatId', auth, async (req, res) => {
 router.post('/mark-as-read', auth, async (req, res) => {
   try {
     const { chatRoomId, userId } = req.body;
-    const currentUserId = req.user.id;
+    const currentUserId = req.user._id;
 
     if (!chatRoomId || !userId) {
       return res.status(400).json({
@@ -1303,10 +1306,14 @@ router.post('/mark-as-read', auth, async (req, res) => {
 router.get('/unread-count/:userId', auth, async (req, res) => {
   try {
     const { userId } = req.params;
-    const currentUserId = req.user.id;
+    const currentUserId = req.user._id;
 
     // ตรวจสอบสิทธิ์
-    if (currentUserId !== userId) {
+    if (currentUserId.toString() !== userId) {
+      console.log('❌ Access denied - User ID mismatch:', {
+        currentUserId: currentUserId.toString(),
+        requestedUserId: userId
+      });
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -1403,10 +1410,14 @@ router.get('/unread-count/:userId', auth, async (req, res) => {
 router.get('/private-chats-unread/:userId', auth, async (req, res) => {
   try {
     const { userId } = req.params;
-    const currentUserId = req.user.id;
+    const currentUserId = req.user._id;
 
     // ตรวจสอบสิทธิ์
-    if (currentUserId !== userId) {
+    if (currentUserId.toString() !== userId) {
+      console.log('❌ Access denied - User ID mismatch:', {
+        currentUserId: currentUserId.toString(),
+        requestedUserId: userId
+      });
       return res.status(403).json({
         success: false,
         message: 'Access denied'

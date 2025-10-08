@@ -1121,20 +1121,34 @@ router.get('/chatrooms', requireAdmin, async (req, res) => {
     const skip = (page - 1) * limit;
     
     const chatRooms = await ChatRoom.find(query)
-      .populate('owner', 'username displayName membershipTier')
+      .populate('owner', 'username displayName membershipTier role')
       .sort(sort)
       .skip(skip)
       .limit(limit);
 
+    // กรองตาม role ของ owner ตาม type ที่ส่งมา
+    let filteredChatRooms = chatRooms;
+    if (type === 'public') {
+      // สำหรับ public chatrooms - แสดงเฉพาะที่สร้างโดย admin/superadmin
+      filteredChatRooms = chatRooms.filter(room => 
+        room.owner?.role === 'admin' || room.owner?.role === 'superadmin'
+      );
+    } else if (!type) {
+      // สำหรับ chatrooms (user rooms) - แสดงเฉพาะที่สร้างโดย user (ไม่ใช่ admin)
+      filteredChatRooms = chatRooms.filter(room => 
+        room.owner?.role !== 'admin' && room.owner?.role !== 'superadmin'
+      );
+    }
+
     const total = await ChatRoom.countDocuments(query);
 
     res.json({
-      chatRooms,
+      chatRooms: filteredChatRooms,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit)
+        total: filteredChatRooms.length,
+        pages: Math.ceil(filteredChatRooms.length / limit)
       }
     });
   } catch (error) {
@@ -1161,6 +1175,44 @@ router.delete('/chatrooms/:roomId', requireAdmin, async (req, res) => {
     res.json({ 
       message: 'Chat room deleted successfully',
       deletedRoom: {
+        id: chatRoom._id,
+        name: chatRoom.name,
+        type: chatRoom.type
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// POST /api/admin/chatrooms/:roomId/set-main - ตั้งห้องสาธารณะหลัก
+router.post('/chatrooms/:roomId/set-main', requireAdmin, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    
+    const chatRoom = await ChatRoom.findById(roomId);
+    if (!chatRoom) {
+      return res.status(404).json({ message: 'Chat room not found' });
+    }
+
+    // ตรวจสอบว่าเป็นห้องสาธารณะหรือไม่
+    if (chatRoom.type !== 'public') {
+      return res.status(400).json({ message: 'Only public chat rooms can be set as main' });
+    }
+
+    // รีเซ็ตห้องหลักเดิม (ถ้ามี)
+    await ChatRoom.updateMany(
+      { type: 'public', isMainPublicRoom: true },
+      { $unset: { isMainPublicRoom: 1 } }
+    );
+
+    // ตั้งห้องใหม่เป็นห้องหลัก
+    chatRoom.isMainPublicRoom = true;
+    await chatRoom.save();
+
+    res.json({ 
+      message: 'Main public room set successfully',
+      mainRoom: {
         id: chatRoom._id,
         name: chatRoom.name,
         type: chatRoom.type

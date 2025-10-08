@@ -44,7 +44,7 @@ class BlurAPI {
         imageId
       });
       
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('ไม่พบ token สำหรับการยืนยันตัวตน');
       }
@@ -84,7 +84,7 @@ class BlurAPI {
     try {
       console.log('📊 BlurAPI: Getting blur transactions for user:', userId, 'type:', type);
       
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('ไม่พบ token สำหรับการยืนยันตัวตน');
       }

@@ -250,6 +250,21 @@ const userSchema = new mongoose.Schema({
     planId: { type: mongoose.Schema.Types.ObjectId, ref: 'MembershipPlan' }
   },
   coins: { type: Number, default: 0 },
+  // ติดตามการจ่ายเหรียญเข้าห้องแชท
+  paidRooms: [{
+    roomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ChatRoom'
+    },
+    paidAt: {
+      type: Date,
+      default: Date.now
+    },
+    amount: {
+      type: Number,
+      required: true
+    }
+  }],
   votePoints: { type: Number, default: 0 },
   dailyUsage: {
     chatCount: { type: Number, default: 0 },
@@ -691,6 +706,43 @@ userSchema.methods.canClaimDailyBonus = function() {
 // Method to check if spin wheel is available
 userSchema.methods.canSpinWheel = function() {
   return this.canPerformAction('spinWheel');
+};
+
+// Method to check if user has paid for a room
+userSchema.methods.hasPaidForRoom = function(roomId) {
+  console.log('🔍 hasPaidForRoom check:', {
+    roomId: roomId.toString(),
+    paidRooms: this.paidRooms.map(p => ({
+      roomId: p.roomId?.toString(),
+      amount: p.amount,
+      paidAt: p.paidAt
+    }))
+  });
+  
+  const result = this.paidRooms.some(payment => 
+    payment.roomId && payment.roomId.toString() === roomId.toString()
+  );
+  
+  console.log('🔍 hasPaidForRoom result:', result);
+  return result;
+};
+
+// Method to add payment record for a room
+userSchema.methods.addRoomPayment = function(roomId, amount) {
+  console.log('💰 Adding room payment:', {
+    roomId: roomId.toString(),
+    amount,
+    currentPaidRooms: this.paidRooms.length
+  });
+  
+  this.paidRooms.push({
+    roomId: roomId,
+    amount: amount,
+    paidAt: new Date()
+  });
+  
+  console.log('💰 Room payment added. New paidRooms count:', this.paidRooms.length);
+  return this.save();
 };
 
 // Method to get time until next daily bonus

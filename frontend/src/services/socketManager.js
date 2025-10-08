@@ -22,11 +22,11 @@ class SocketManager {
    */
   async connect(baseURL) {
     if (this.socket && this.socket.connected) {
-      console.log('🔌 Socket already connected:', this.socket.id);
+      // console.log('🔌 Socket already connected:', this.socket.id);
       return this.socket;
     }
 
-    console.log('🔌 Creating new Socket.IO connection to:', baseURL);
+    // console.log('🔌 Creating new Socket.IO connection to:', baseURL);
     
     // ตรวจสอบ backend connection ก่อน
     try {
@@ -38,22 +38,22 @@ class SocketManager {
       if (!response.ok) {
         console.warn('⚠️ Backend health check failed, but proceeding with socket connection');
       } else {
-        console.log('✅ Backend health check passed');
+        // console.log('✅ Backend health check passed');
       }
     } catch (error) {
       console.warn('⚠️ Backend health check error:', error.message);
-      console.log('🔄 Proceeding with socket connection anyway...');
+      // console.log('🔄 Proceeding with socket connection anyway...');
     }
     
     // ปิดการเชื่อมต่อเก่าหากมี
     if (this.socket) {
-      console.log('🔌 Closing existing socket connection...');
+      // console.log('🔌 Closing existing socket connection...');
       this.socket.disconnect();
     }
     
-    // ดึง token จาก sessionStorage
-    const token = sessionStorage.getItem('token');
-    console.log('🔑 Connecting with token:', token ? 'available' : 'not available');
+    // ดึง token จาก localStorage
+    const token = localStorage.getItem('token');
+    // console.log('🔑 Connecting with token:', token ? 'available' : 'not available');
 
     this.socket = io(baseURL, {
       withCredentials: true,
@@ -88,7 +88,7 @@ class SocketManager {
     });
 
     this.socket.on('connect', () => {
-      console.log('🔌 Socket connected:', this.socket.id);
+      // console.log('🔌 Socket connected:', this.socket.id);
       this.isConnected = true;
       
       // ตั้งค่า connection timeout
@@ -97,7 +97,7 @@ class SocketManager {
       }
       this.connectionTimeout = setTimeout(() => {
         if (this.isConnected && this.socket?.connected) {
-          console.log('✅ Connection established successfully');
+          // console.log('✅ Connection established successfully');
         }
       }, 1000);
       
@@ -108,14 +108,14 @@ class SocketManager {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('🔌 Socket disconnected:', reason);
+      // console.log('🔌 Socket disconnected:', reason);
       this.isConnected = false;
       
       // ลบการเรียก logout API ออก เพราะ:
       // 1. Server จะจัดการ offline status เมื่อ socket disconnect โดยอัตโนมัติ
       // 2. ถ้าเรียก logout ที่นี่ จะทำให้ offline ทันทีแม้ user เปิด tabs อื่นอยู่
       // 3. beforeunload event ใน AuthContext จะจัดการ logout เมื่อปิด browser
-      console.log('🔴 Socket disconnected, server will handle offline status');
+      // console.log('🔴 Socket disconnected, server will handle offline status');
       
       // Clear connection timeout
       if (this.connectionTimeout) {
@@ -125,7 +125,7 @@ class SocketManager {
       
       // ถ้า disconnect เนื่องจาก server restart หรือ network issues ให้ลอง reconnect
       if (reason === 'io server disconnect' || reason === 'io client disconnect') {
-        console.log('🔄 Server/client disconnect, attempting reconnection...');
+        // console.log('🔄 Server/client disconnect, attempting reconnection...');
         setTimeout(() => {
           if (this.socket && !this.socket.connected) {
             this.socket.connect();
@@ -136,12 +136,12 @@ class SocketManager {
 
     // Listen for reconnect events
     this.socket.on('reconnect', (attemptNumber) => {
-      console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+      // console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
       this.isConnected = true;
     });
 
     this.socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log('🔄 Reconnection attempt', attemptNumber);
+      // console.log('🔄 Reconnection attempt', attemptNumber);
     });
 
     this.socket.on('reconnect_error', (error) => {
@@ -198,6 +198,8 @@ class SocketManager {
     this.socket.on('new-message', (message) => {
       console.log('📨 [SocketManager] New message received:', message);
       console.log('📨 [SocketManager] Message for room:', message.chatRoom);
+      console.log('📨 [SocketManager] Message content:', message.content?.substring(0, 50));
+      console.log('📨 [SocketManager] Message type:', message.messageType);
     });
 
     this.socket.on('connect_error', (error) => {

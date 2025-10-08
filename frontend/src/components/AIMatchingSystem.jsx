@@ -82,7 +82,7 @@ const AIMatchingSystem = ({ currentUser }) => {
   // Function to handle profile like
   const handleProfileLike = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         warning('กรุณาเข้าสู่ระบบก่อน');
         return;
@@ -122,7 +122,7 @@ const AIMatchingSystem = ({ currentUser }) => {
 
   // Function to send message
   const sendMessage = (userId) => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       warning('กรุณาเข้าสู่ระบบก่อน');
       return;
@@ -184,8 +184,8 @@ const AIMatchingSystem = ({ currentUser }) => {
 
   // Check authentication
   useEffect(() => {
-    const token = sessionStorage.getItem('token');
-    const user = sessionStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
     console.log('Token exists:', !!token);
     console.log('User exists:', !!user);
     if (!token || !user) {
@@ -248,7 +248,7 @@ const AIMatchingSystem = ({ currentUser }) => {
   const fetchMatches = async (pageNum = 1, append = false, refreshMode = false) => {
     if (!userLocation) return;
 
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       console.error('No authentication token found');
       // showError('กรุณาเข้าสู่ระบบก่อน'); // ลบการแจ้งเตือน
@@ -379,7 +379,7 @@ const AIMatchingSystem = ({ currentUser }) => {
 
   // ฟังก์ชันดึงข้อมูล likeCount สำหรับ matches
   const fetchLikeCounts = async (userIds) => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token || !userIds.length) return {};
 
     try {
@@ -417,7 +417,7 @@ const AIMatchingSystem = ({ currentUser }) => {
     }
   };
   const fetchLikedStatus = async () => {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) return;
 
     try {
@@ -465,7 +465,7 @@ const AIMatchingSystem = ({ currentUser }) => {
   const likeMatch = async (userId) => {
     console.log('🔍 likeMatch called with userId:', userId);
     
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       // showError('กรุณาเข้าสู่ระบบก่อน'); // ลบการแจ้งเตือน
       console.error('❌ ไม่มี token - กรุณาเข้าสู่ระบบก่อน');
@@ -571,7 +571,7 @@ const AIMatchingSystem = ({ currentUser }) => {
     // อัปเดตทันทีเมื่อ component mount
     const updateOnlineStatus = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) {
           console.log('⚠️ No token found, skipping online status update');
           return;
@@ -687,8 +687,8 @@ const AIMatchingSystem = ({ currentUser }) => {
   }, []);
 
   // Check if user is authenticated
-  const token = sessionStorage.getItem('token');
-  const user = sessionStorage.getItem('user');
+  const token = localStorage.getItem('token');
+  const user = localStorage.getItem('user');
 
   if (!token || !user) {
     return (
@@ -1170,7 +1170,7 @@ const AIMatchingSystem = ({ currentUser }) => {
               onClick={() => {
                   console.log('🖱️ AI Matching card clicked:', displayName);
                   
-                  const token = sessionStorage.getItem('token');
+                  const token = localStorage.getItem('token');
                   if (!token) {
                     warning('กรุณาเข้าสู่ระบบก่อน');
                     return;
@@ -1299,7 +1299,7 @@ const AIMatchingSystem = ({ currentUser }) => {
                             e.preventDefault();
                             e.stopPropagation();
                             
-                            const token = sessionStorage.getItem('token');
+                            const token = localStorage.getItem('token');
                             if (!token) {
                               warning('กรุณาเข้าสู่ระบบก่อน');
                               return;
@@ -1403,7 +1403,7 @@ const AIMatchingSystem = ({ currentUser }) => {
                     e.preventDefault();
                     e.stopPropagation();
                             
-                            const token = sessionStorage.getItem('token');
+                            const token = localStorage.getItem('token');
                             if (!token) {
                               warning('กรุณาเข้าสู่ระบบก่อน');
                               return;

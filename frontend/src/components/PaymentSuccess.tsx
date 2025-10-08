@@ -162,7 +162,7 @@ const PaymentSuccess = ({ transactionData, plan, onContinue }: PaymentSuccessPro
       console.log('🔄 Syncing user data with server...')
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/profile/user/${currentUser._id}`, {
         headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         }
       })

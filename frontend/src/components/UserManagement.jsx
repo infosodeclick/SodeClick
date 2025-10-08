@@ -87,7 +87,7 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: currentPage,
         limit: 10,
@@ -117,7 +117,7 @@ const UserManagement = () => {
 
   const handleBanUser = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}/ban-duration`, {
         method: 'PATCH',
         headers: {
@@ -146,7 +146,7 @@ const UserManagement = () => {
 
   const handleEditUser = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       // แปลง profileImages จาก URL กลับเป็น path สำหรับส่งไป backend
       const formData = {
@@ -266,7 +266,7 @@ const UserManagement = () => {
     setUploadingImage(true);
     
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('profileImage', selectedFile);
 
@@ -372,7 +372,7 @@ const UserManagement = () => {
 
   const createUser = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       // สร้างข้อมูลที่ส่งไปยัง backend
       const userData = {
@@ -475,7 +475,7 @@ const UserManagement = () => {
   const deleteUser = async (userId) => {
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
@@ -502,7 +502,7 @@ const UserManagement = () => {
 
     const handleViewProfile = async (userId) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${userId}/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -547,7 +547,7 @@ const UserManagement = () => {
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/users/${selectedUser._id}/reset-password`, {
         method: 'PATCH',
         headers: {
@@ -576,7 +576,7 @@ const UserManagement = () => {
     
     try {
       setIsLoading(true);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/reset-spin-wheel`, {
         method: 'POST',

@@ -29,7 +29,9 @@ import {
   Gem,
   Shield,
   Award,
-  Zap
+  Zap,
+  MessageCircle,
+  Users
 } from 'lucide-react';
 
 const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) => {
@@ -100,7 +102,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         
         const file = item.getAsFile();
         if (file) {
-          console.log('📋 Image pasted from clipboard:', file.name || 'clipboard-image');
+          // console.log('📋 Image pasted from clipboard:', file.name || 'clipboard-image');
           
           // ตรวจสอบขนาดไฟล์ (จำกัด 5MB)
           if (file.size > 5 * 1024 * 1024) {
@@ -161,28 +163,28 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   // Event handlers สำหรับ auto refresh (ต้องอยู่ข้างนอก useEffect เพื่อให้เข้าถึงได้ใน cleanup)
   const handleChatMessagesUpdated = (event) => {
-    console.log('📨 RealTimeChat: Received chat messages update event:', event.detail);
+    // console.log('📨 RealTimeChat: Received chat messages update event:', event.detail);
     const { roomId: updatedRoomId, messages: newMessages } = event.detail;
     if (updatedRoomId === roomId) {
-      console.log('🔄 Auto refresh: Chat messages updated for current room');
+      // console.log('🔄 Auto refresh: Chat messages updated for current room');
       setMessages(prev => {
         const existingIds = prev.map(msg => msg._id);
         const newUniqueMessages = newMessages.filter(msg => !existingIds.includes(msg._id));
         if (newUniqueMessages.length > 0) {
-          console.log(`➕ Auto refresh added ${newUniqueMessages.length} new messages`);
+          // console.log(`➕ Auto refresh added ${newUniqueMessages.length} new messages`);
           return [...prev, ...newUniqueMessages];
         }
         return prev;
       });
     } else {
-      console.log('🔄 Auto refresh: Chat messages for different room, ignoring');
+      // console.log('🔄 Auto refresh: Chat messages for different room, ignoring');
     }
   };
 
   const handleOnlineUsersUpdated = (event) => {
     const { roomId: updatedRoomId, onlineUsers, onlineCount } = event.detail;
     if (updatedRoomId === roomId) {
-      console.log('🔄 Auto refresh: Online users updated');
+      // console.log('🔄 Auto refresh: Online users updated');
       setOnlineUsers(onlineUsers);
       setOnlineCount(onlineCount);
     }
@@ -190,7 +192,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   const handleNotificationsUpdated = (event) => {
     const { notifications } = event.detail;
-    console.log('🔄 Auto refresh: Notifications updated');
+    // console.log('🔄 Auto refresh: Notifications updated');
     window.dispatchEvent(new CustomEvent('globalNotificationsUpdated', {
       detail: { notifications }
     }));
@@ -198,41 +200,51 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   // ใช้ global SocketManager และ AutoRefreshManager แทนการสร้าง connection ใหม่
   useEffect(() => {
-    console.log('🔌 RealTimeChat useEffect - Starting setup for room:', roomId);
+    // console.log('🔌 RealTimeChat useEffect - Starting setup for room:', roomId);
 
     let retryIntervalId = null;
     let hasSetupListeners = false;
     let refreshCleanup = null;
     
     const setupSocketAndJoinRoom = () => {
-      console.log('🔌 RealTimeChat: Checking socket manager...');
+      // console.log('🔌 RealTimeChat: Checking socket manager...');
 
       if (!window.socketManager?.socket) {
-        console.log('⚠️ RealTimeChat: Socket manager not available yet');
+        // console.log('⚠️ RealTimeChat: Socket manager not available yet');
         return false;
       }
 
       const socket = window.socketManager.socket;
-      console.log('🔌 RealTimeChat: Socket state:', {
-        id: socket.id,
-        connected: socket.connected,
-        roomId
-      });
+      // console.log('🔌 RealTimeChat: Socket state:', {
+      //   id: socket.id,
+      //   connected: socket.connected,
+      //   roomId
+      // });
 
       // ถ้า socket ไม่เชื่อมต่อ ให้ reconnect
       if (!socket.connected) {
-        console.log('🔄 RealTimeChat: Socket not connected, attempting to connect...');
+        // console.log('🔄 RealTimeChat: Socket not connected, attempting to connect...');
         socket.connect();
         return false; // รอให้เชื่อมต่อก่อน
       }
 
-      console.log('✅ RealTimeChat: Socket is connected, proceeding with setup');
+      // console.log('✅ RealTimeChat: Socket is connected, proceeding with setup');
       setIsConnected(socket.connected);
       setSocket(socket);
 
       // Join room ทันทีเมื่อ socket พร้อม
-      const token = sessionStorage.getItem('token');
-      console.log('🚪 RealTimeChat: Joining room:', roomId, 'with userId:', currentUser._id);
+      const token = localStorage.getItem('token');
+      
+      // ถ้า socket มี currentRoom อยู่แล้ว ให้ leave ก่อน
+      if (socket.currentRoom && socket.currentRoom !== roomId) {
+        console.log('🔄 Leaving previous room:', socket.currentRoom);
+        socket.emit('leave-room', { 
+          roomId: socket.currentRoom, 
+          userId: currentUser._id 
+        });
+      }
+      
+      // console.log('🚪 RealTimeChat: Joining room:', roomId, 'with userId:', currentUser._id);
       socket.emit('join-room', {
         roomId,
         userId: currentUser._id,
@@ -250,15 +262,15 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       const socket = window.socketManager.socket;
 
       // เริ่มระบบ auto refresh สำหรับข้อมูลที่อาจหลุดหายไปจาก Socket.IO
-      console.log('🚀 RealTimeChat: Starting auto refresh for room:', roomId);
+      // console.log('🚀 RealTimeChat: Starting auto refresh for room:', roomId);
       try {
         autoRefreshManager.startChatRefresh(roomId, currentUser._id);
         refreshCleanup = () => autoRefreshManager.stopChatRefresh();
-        console.log('✅ RealTimeChat: Auto refresh started successfully');
+        // console.log('✅ RealTimeChat: Auto refresh started successfully');
 
         // แสดง stats ของ auto refresh manager สำหรับ debugging
         setTimeout(() => {
-          console.log('📊 RealTimeChat: Auto refresh stats:', autoRefreshManager.getStats());
+          // console.log('📊 RealTimeChat: Auto refresh stats:', autoRefreshManager.getStats());
         }, 1000);
 
       } catch (error) {
@@ -267,13 +279,23 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
       // เมื่อ socket reconnect ให้ rejoin room อัตโนมัติ
       socket.on('connect', () => {
-        console.log('🔄 Socket reconnected:', socket.id);
+        // console.log('🔄 Socket reconnected:', socket.id);
         setIsConnected(true);
         
         // ตั้งค่า flag เพื่อป้องกันการแจ้งเตือนซ้ำ
         window.isAutoReconnecting = true;
         
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
+        
+        // ถ้า socket มี currentRoom อยู่แล้ว ให้ leave ก่อน
+        if (socket.currentRoom && socket.currentRoom !== roomId) {
+          console.log('🔄 Leaving previous room after reconnect:', socket.currentRoom);
+          socket.emit('leave-room', { 
+            roomId: socket.currentRoom, 
+            userId: currentUser._id 
+          });
+        }
+        
         console.log('🚪 Re-joining room after reconnect:', roomId);
         socket.emit('join-room', {
           roomId,
@@ -331,11 +353,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         console.warn('⚠️ Message rate limited:', data);
         // แสดงข้อความเตือนให้ผู้ใช้
         if (showWebappNotification) {
-          showWebappNotification({
-            type: 'warning',
-            title: 'ส่งข้อความเร็วเกินไป',
-            message: data.message || 'กรุณารอสักครู่แล้วลองใหม่'
-          });
+          showWebappNotification('ส่งข้อความเร็วเกินไป กรุณารอสักครู่แล้วลองใหม่', 'warning');
         }
       });
 
@@ -344,11 +362,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         console.error('❌ Message send failed:', data);
         // แสดงข้อความเตือนให้ผู้ใช้
         if (showWebappNotification) {
-          showWebappNotification({
-            type: 'error',
-            title: 'ส่งข้อความไม่สำเร็จ',
-            message: data.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่'
-          });
+          showWebappNotification('ส่งข้อความไม่สำเร็จ กรุณาลองใหม่', 'error');
         }
         
         // ถ้าสามารถ retry ได้ ให้แสดงปุ่มลองใหม่
@@ -365,8 +379,8 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
       // รับข้อความใหม่
       socket.on('new-message', (message) => {
-        console.log('📨 New message received:', message);
-        console.log('🔍 Message details:', {
+        console.log('📨 RealTimeChat - New message received:', message);
+        console.log('🔍 RealTimeChat - Message details:', {
           content: message.content,
           sender: message.sender?._id,
           roomId: message.chatRoom,
@@ -375,6 +389,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           fileUrl: message.fileUrl,
           imageUrl: message.imageUrl
         });
+        console.log('🔍 RealTimeChat - Is private chat?', message.chatRoom?.startsWith('private_'));
         
         // ประมวลผลข้อความทันที - ไม่มี delay
         // เพิ่มผู้ส่งข้อความลงในรายการ active chatters
@@ -658,30 +673,48 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   // โหลดข้อความเก่า
   useEffect(() => {
+    // ไม่เรียก API ถ้า roomId เป็น null หรือ undefined หรือเป็น 'null'
+    if (!roomId || roomId === 'null') {
+      console.log('🏠 Skipping message fetch - invalid roomId:', roomId);
+      setMessages([]);
+      return;
+    }
+
     const fetchMessages = async () => {
       try {
+        const token = localStorage.getItem('token');
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const response = await fetch(
           `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${roomId}?userId=${currentUser._id}`,
           {
             method: 'GET',
             credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json'
-            }
+            headers
           }
         );
 
         if (!response.ok) {
+          if (response.status === 403) {
+            console.error('❌ Access denied to chat room messages');
+            setMessages([]);
+            return;
+          }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
-        
+
         if (data.success) {
           console.log('🔍 Messages loaded:', data.data.messages.length);
           console.log('🔍 isInitialLoadRef.current:', isInitialLoadRef.current);
           setMessages(data.data.messages);
-          
+
           // Scroll ไปยังข้อความล่าสุดเมื่อเข้าห้องแชทครั้งแรก
           if (isInitialLoadRef.current) {
             console.log('🔍 Initial load detected, scheduling scroll');
@@ -779,12 +812,19 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     }
   }, [messagesContainerRef.current, messages.length]);
 
+
   // โหลดข้อมูลห้องแชท
   useEffect(() => {
+    // ไม่เรียก API ถ้า roomId เป็น null หรือ undefined
+    if (!roomId || roomId === 'null') {
+      console.log('🏠 Skipping room info fetch - invalid roomId:', roomId);
+      return;
+    }
+
     const fetchRoomInfo = async () => {
       try {
         console.log(`🔍 RealTimeChat: Fetching room info for: ${roomId}`);
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         const headers = {
           'Content-Type': 'application/json'
         };
@@ -799,9 +839,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             headers
           }
         );
-        
+
         console.log(`📊 RealTimeChat: Room info response status: ${response.status}`);
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
@@ -809,6 +849,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
           }
         } else if (response.status === 401) {
           console.error('❌ Authentication failed for room info - user may need to re-login');
+        } else if (response.status === 403) {
+          console.error('❌ Access denied to chat room info');
+          setRoomInfo(null);
         }
       } catch (error) {
         console.error('Error fetching room info:', error);
@@ -820,27 +863,51 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   // โหลดข้อมูลคนใช้งาน
   useEffect(() => {
+    // ไม่เรียก API ถ้า roomId เป็น null หรือ undefined หรือเป็น 'null'
+    if (!roomId || roomId === 'null') {
+      console.log('👥 Skipping online users fetch - invalid roomId:', roomId);
+      setOnlineUsers([]);
+      setOnlineCount(0);
+      return;
+    }
+
     const fetchOnlineUsers = async () => {
       try {
         console.log(`🔍 RealTimeChat: Fetching online users for room: ${roomId}`);
-        
+
+        const token = localStorage.getItem('token');
+        const headers = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const response = await fetch(
           `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/chatroom/${roomId}/online-users?userId=${currentUser._id}`,
           {
-            credentials: 'include'
-            // ไม่ส่ง Authorization header เพราะ endpoint นี้ไม่ต้องการ auth
+            credentials: 'include',
+            headers
           }
         );
-        
+
         console.log(`📊 RealTimeChat: Online users response status: ${response.status}`);
-        const data = await response.json();
         
+        if (!response.ok) {
+          if (response.status === 403) {
+            console.error('❌ Access denied to online users info');
+            setOnlineUsers([]);
+            setOnlineCount(0);
+            return;
+          }
+        }
+
+        const data = await response.json();
+
         if (data.success) {
           setOnlineUsers(data.data.onlineUsers);
           setOnlineCount(data.data.onlineCount);
         }
       } catch (error) {
-        console.error('Error fetching active users:', error);
+        console.error('❌ Error fetching online users:', error);
         // ถ้าไม่สามารถดึงข้อมูลได้ ให้เริ่มต้นด้วย 0
         setOnlineUsers([]);
         setOnlineCount(0);
@@ -911,12 +978,13 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       socketId: socket?.id,
       isSendingMessage
     });
-    
+
+
     if (isSendingMessage) {
       console.log('❌ Already sending message, ignoring duplicate click');
       return;
     }
-    
+
     // เพิ่มการป้องกันการส่งข้อความซ้ำด้วย debounce
     const now = Date.now();
     if (window.lastMessageSent && (now - window.lastMessageSent) < 1000) {
@@ -1226,13 +1294,19 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
   const handleEditMessage = async (messageId, newContent) => {
     try {
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${messageId}`,
         {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers,
           credentials: 'include',
           body: JSON.stringify({
             content: newContent,
@@ -1281,6 +1355,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
       isSendingMessage
     });
 
+
     if (uploadingImage || isSendingMessage) {
       console.log('❌ Already uploading or sending, ignoring duplicate click');
       return;
@@ -1310,11 +1385,18 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     });
 
     try {
+      const token = localStorage.getItem('token');
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/upload`,
         {
           method: 'POST',
           credentials: 'include',
+          headers,
           body: formData
         }
       );
@@ -1438,13 +1520,19 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
     }
 
     try {
+      const token = localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/${messageId}`,
         {
           method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers,
           credentials: 'include',
           body: JSON.stringify({
             userId: currentUser._id
@@ -1805,255 +1893,190 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
     return (
     <>
-      <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden">
-        {/* Header - Fixed */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-pink-500 to-violet-500 text-white p-3 sm:p-4">
+      <div className="flex flex-col h-screen bg-white">
+        {/* Modern Header - Professional Design - Fixed Position */}
+        <div className="flex-shrink-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4 sm:p-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 sm:space-x-3">
-              <div>
-                <h3 className="font-semibold text-sm sm:text-lg">{roomInfo.name}</h3>
-                <div className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-white/90">
-                  <span>{activeChattersCount} ใช้งานแล้ว</span>
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              {/* Show back button for Community chat rooms and other non-public rooms */}
+              {/* Always show back button if roomInfo is not loaded yet, or if it's not a public room */}
+              {(!roomInfo || roomInfo?.type !== 'public') && (
+                <button
+                  onClick={onBack}
+                  className="lg:hidden p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px] flex items-center justify-center"
+                  aria-label="กลับ"
+                >
+                  <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+                </button>
+              )}
+
+              {/* Room Info */}
+              <div className="flex items-center space-x-3">
+                <div className="relative">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-pink-400 to-purple-600 rounded-xl flex items-center justify-center">
+                    <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full border-2 border-white"></div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-base sm:text-lg md:text-xl leading-tight">{roomInfo.name}</h3>
+                  <div className="flex items-center space-x-2 text-sm text-white/80">
+                    <div className="flex items-center space-x-1">
+                      <Users className="h-4 w-4" />
+                      <span>{activeChattersCount} คน</span>
+                    </div>
+                    <span>•</span>
+                    <span>{roomInfo.type === 'public' ? 'สาธารณะ' : 'ส่วนตัว'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex items-center">
-              <span className="font-semibold text-sm sm:text-lg flex items-center">
-                <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full mr-2 ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                กำลังใช้งาน {onlineCount}
-              </span>
+
+            {/* Online Status */}
+            <div className="hidden sm:flex items-center space-x-3">
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-white/10 rounded-full">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                <span className="text-sm font-medium">
+                  {isConnected ? 'ออนไลน์' : 'ออฟไลน์'}
+                </span>
+                <span className="text-white/70">({onlineCount})</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Messages Area - Scrollable */}
-        <div ref={messagesContainerRef} className="messages-container flex-1 overflow-y-auto p-2 sm:p-4 space-y-4 sm:space-y-6 bg-gray-50 pb-20 relative z-10">
-         {messages.map((message, index) => (
-                     <div
-            key={message._id}
-            className={`flex ${message.sender && message.sender._id === currentUser._id ? 'justify-end' : 'justify-start'} ${
-              index % 2 === 0 ? 'bg-gray-50' : 'bg-white'
-            } p-2 rounded-lg`}
-          >
-            <div className={`flex max-w-[50%] ${message.sender && message.sender._id === currentUser._id ? 'flex-row-reverse' : 'flex-row'}`}>
-              {/* Avatar */}
-              <Avatar className="w-8 h-8 mx-2">
-                {message.sender ? (
-                  <>
-                    <AvatarImage 
-                      src={message.sender.profileImages?.[0] ? getProfileImageUrl(message.sender.profileImages[0], message.sender._id) : ''} 
-                      alt={message.sender.displayName || message.sender.username} 
-                    />
-                    <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white text-xs">
-                      {(message.sender.displayName || message.sender.username || "?").charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </>
-                ) : (
-                  <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white text-xs">
-                    ?
-                  </AvatarFallback>
-                )}
-              </Avatar>
-
-              {/* Message Content */}
-              <div className={`flex flex-col group w-full ${message.sender && message.sender._id === currentUser._id ? 'items-end' : 'items-start'}`}>
-                {/* Sender Info */}
-                <div className={`flex items-center space-x-2 mb-1 ${message.sender && message.sender._id === currentUser._id ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                  {message.sender ? (
-                    <>
-                      <span className="text-sm font-medium text-gray-700">
-                        {message.sender.displayName || message.sender.username}
-                      </span>
-                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white shadow-sm border">
-                        {getMembershipIcon(message.sender.membershipTier || 'member')}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-sm font-medium text-gray-700">
-                        Unknown User
-                      </span>
-                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white shadow-sm border">
-                        {getMembershipIcon('member')}
-                      </div>
-                    </>
-                  )}
-                  <span className="text-xs text-gray-500">
-                    {formatTime(message.createdAt)}
-                  </span>
-                </div>
-
-                {/* Reply To */}
-                {message.replyTo && (
-                  <div className="bg-gray-200 rounded-lg p-2 mb-2 text-sm max-w-full">
-                    <div className="text-gray-600 text-xs mb-1">
-                      ตอบกลับ {message.replyTo.sender?.displayName || message.replyTo.sender?.username}
-                    </div>
-                    <div className="text-gray-800 truncate">
-                      {message.replyTo.content}
-                    </div>
-                  </div>
-                )}
-
-                {/* Message Content */}
-                <div className={`relative ${message.sender && message.sender._id === currentUser._id ? 'text-right' : 'text-left'} max-w-full`}>
-                  <div className={`inline-block rounded-xl px-3 py-1.5 max-w-[280px] sm:max-w-sm break-words ${
-                    message.sender && message.sender._id === currentUser._id 
-                      ? 'bg-gradient-to-r from-pink-500 to-violet-500 text-white rounded-br-md' 
-                      : 'bg-white text-gray-900 shadow-sm border border-gray-200 rounded-bl-md'
-                  }`}>
-                    {renderMessageContent(message, message.sender && message.sender._id === currentUser._id)}
-                     
-                    {message.isEdited && (
-                      <div className={`text-xs opacity-70 mt-1 ${
-                        message.sender && message.sender._id === currentUser._id ? 'text-white/70' : 'text-gray-500'
-                      }`}>
-                        แก้ไขแล้ว
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Message Actions - ปุ่ม Like, Reply - แสดงเมื่อ hover */}
-                  <div className={`absolute -bottom-8 ${message.sender && message.sender._id === currentUser._id ? 'right-0' : 'left-0'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-2 bg-white rounded-full shadow-md px-2 py-1 z-10`}>
-                    {/* Like Button */}
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('💖 Like button clicked for message:', message._id);
-                        handleReactToMessage(message._id, 'heart');
-                      }}
-                    className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 ${
-                      reactingMessages.has(message._id)
-                        ? 'text-gray-400 cursor-not-allowed'
-                        : hasUserLiked(message) 
-                          ? 'text-red-600 hover:text-red-700' 
-                          : 'text-gray-600 hover:text-red-500'
-                    }`}
-                    title={
-                      reactingMessages.has(message._id)
-                        ? 'กำลังประมวลผล...'
-                        : hasUserLiked(message) 
-                          ? 'กดเพื่อยกเลิกหัวใจ' 
-                          : 'กดไลค์'
-                    }
-                    disabled={reactingMessages.has(message._id)}
-                    >
-                      <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current text-red-600' : 'text-gray-600'}`} />
-                      {getLikeCount(message) > 0 && (
-                        <span className="text-xs">({getLikeCount(message)})</span>
-                      )}
-                    </button>
-                    
-                    {/* Reply Button */}
-                    <button
-                      onClick={() => setReplyTo(message)}
-                      className="flex items-center space-x-1 text-xs text-gray-600 hover:text-blue-500 transition-colors rounded-full px-2 py-1"
-                      title="ตอบกลับข้อความนี้"
-                    >
-                      <Reply className="h-3 w-3" />
-                    </button>
-
-                    {/* Delete Button - แสดงเฉพาะข้อความรูปภาพที่ยังไม่เกิน 3 วินาที */}
-                    {message.messageType === 'image' && message.sender && message.sender._id === currentUser._id && (
-                      (() => {
-                        const messageTime = new Date(message.createdAt);
-                        const currentTime = new Date();
-                        const timeDiff = (currentTime - messageTime) / 1000;
-                        
-                        if (timeDiff <= 3) {
-                          return (
-                            <button
-                              onClick={() => handleDeleteMessage(message._id)}
-                              className="flex items-center space-x-1 text-xs text-red-500 hover:text-red-700 transition-colors rounded-full px-2 py-1"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          );
-                        }
-                        return null;
-                      })()
-                    )}
-                  </div>
-                </div>
-
-                {/* Reactions */}
-                <div className="flex items-center flex-wrap gap-1 mt-2">
-                  {/* ปุ่มหัวใจเริ่มต้น - แสดงเสมอ */}
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      console.log('💖 Default heart button clicked:', { messageId: message._id });
-                      handleReactToMessage(message._id, 'heart');
-                    }}
-                    className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors ${
-                      reactingMessages.has(message._id)
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'cursor-pointer'
-                    } ${
-                      hasUserLiked(message)
-                        ? 'bg-red-100 text-red-600 hover:bg-red-200' 
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                    }`}
-                    title={
-                      reactingMessages.has(message._id)
-                        ? 'กำลังประมวลผล...'
-                        : hasUserLiked(message) 
-                          ? 'กดเพื่อยกเลิกหัวใจ' 
-                          : 'กดหัวใจ'
-                    }
-                    style={{ pointerEvents: reactingMessages.has(message._id) ? 'none' : 'auto' }}
-                    disabled={reactingMessages.has(message._id)}
-                  >
-                    <div className={hasUserLiked(message) ? 'text-red-600' : 'text-gray-600'}>
-                      <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current' : ''}`} />
-                    </div>
-                    {getLikeCount(message) > 0 && <span>{getLikeCount(message)}</span>}
-                  </button>
-
-                  {/* Reactions อื่นๆ */}
-                  {message.reactions && message.reactions.length > 0 && (
-                    <>
-                      {Object.entries(
-                        message.reactions.reduce((acc, reaction) => {
-                          acc[reaction.type] = (acc[reaction.type] || 0) + 1;
-                          return acc;
-                        }, {})
-                      ).filter(([type]) => type !== 'heart').map(([type, count]) => {
-                        const userHasReacted = hasUserReacted(message, type);
-                        return (
-                          <button
-                            key={type}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              console.log('💖 Reaction button clicked:', { messageId: message._id, type });
-                              handleReactToMessage(message._id, type);
-                            }}
-                            className={`flex items-center space-x-1 rounded-full px-2 py-1 text-xs transition-colors cursor-pointer ${
-                              userHasReacted 
-                                ? 'bg-red-100 text-red-600 hover:bg-red-200' 
-                                : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                            }`}
-                            title={userHasReacted ? `กดเพื่อยกเลิก ${type}` : `กด ${type}`}
-                            style={{ pointerEvents: 'auto' }}
-                          >
-                            <div className={userHasReacted ? 'text-red-600' : 'text-gray-600'}>
-                              {getReactionIcon(type)}
-                            </div>
-                            <span>{count}</span>
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-
+        {/* Modern Messages Area - Professional Thread Design - Scrollable */}
+        <div 
+          ref={messagesContainerRef} 
+          className="messages-container flex-1 p-4 sm:p-5 md:p-6 bg-gray-50 overflow-y-auto"
+        >
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full min-h-[200px] text-gray-500">
+              <div className="text-center">
+                <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg font-medium mb-2">ยินดีต้อนรับเข้าสู่ห้องแชท</p>
+                <p className="text-sm text-gray-400">เริ่มต้นการสนทนาโดยการพิมพ์ข้อความด้านล่าง</p>
               </div>
             </div>
-          </div>
-        ))}
+          ) : (
+            messages.map((message, index) => {
+            const isOwnMessage = message.sender && message.sender._id === currentUser._id;
+            const prevMessage = messages[index - 1];
+            const nextMessage = messages[index + 1];
+            const isGrouped = prevMessage &&
+              prevMessage.sender &&
+              message.sender &&
+              prevMessage.sender._id === message.sender._id &&
+              (new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime()) < 5 * 60 * 1000; // 5 minutes
+
+            return (
+              <div
+                key={message._id}
+                className={`group transition-all duration-200 ${
+                  isOwnMessage ? 'flex justify-end' : 'flex justify-start'
+                } ${isGrouped ? 'mt-1' : 'mt-4 sm:mt-6'}`}
+              >
+                <div className={`flex max-w-[85%] sm:max-w-[75%] md:max-w-[60%] ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} items-end space-x-2 sm:space-x-3`}>
+                  {/* Avatar - Show only for non-grouped messages or different senders */}
+                  {(!isGrouped || !isOwnMessage) && (
+                    <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 ring-2 ring-white shadow-md">
+                      {message.sender ? (
+                        <>
+                          <AvatarImage
+                            src={message.sender.profileImages?.[0] ? getProfileImageUrl(message.sender.profileImages[0], message.sender._id) : ''}
+                            alt={message.sender.displayName || message.sender.username}
+                          />
+                          <AvatarFallback className="bg-gradient-to-br from-pink-400 to-purple-600 text-white text-sm font-semibold">
+                            {(message.sender.displayName || message.sender.username || "?").charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </>
+                      ) : (
+                        <AvatarFallback className="bg-gradient-to-br from-pink-400 to-purple-600 text-white text-sm font-semibold">
+                          ?
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                  )}
+
+                  {/* Message Content */}
+                  <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                    {/* Sender Name - Show only for non-grouped messages */}
+                    {(!isGrouped || !isOwnMessage) && message.sender && (
+                      <div className={`flex items-center space-x-2 mb-1 ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                        <span className="text-xs sm:text-sm font-medium text-gray-700">
+                          {message.sender.displayName || message.sender.username}
+                        </span>
+                        <div className="flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-sm border">
+                          {getMembershipIcon(message.sender.membershipTier || 'member')}
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {formatTime(message.createdAt)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Message Bubble */}
+                    <div className={`relative max-w-full ${isOwnMessage ? 'ml-auto' : 'mr-auto'}`}>
+                      <div className={`inline-block rounded-2xl px-4 py-3 max-w-full break-words shadow-sm ${
+                        isOwnMessage
+                          ? 'bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-br-md'
+                          : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
+                      }`}>
+                        {renderMessageContent(message, isOwnMessage)}
+
+                        {/* Edited indicator */}
+                        {message.isEdited && (
+                          <div className={`text-xs opacity-70 mt-1 ${isOwnMessage ? 'text-white/70' : 'text-gray-500'}`}>
+                            แก้ไขแล้ว
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Message Actions - Show on hover */}
+                      <div className={`absolute ${isOwnMessage ? '-left-12' : '-right-12'} top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-1`}>
+                        {/* Like Button */}
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleReactToMessage(message._id, 'heart');
+                          }}
+                          className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 min-h-[32px] ${
+                            hasUserLiked(message)
+                              ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                          }`}
+                          title={hasUserLiked(message) ? 'ยกเลิกหัวใจ' : 'หัวใจ'}
+                        >
+                          <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current' : ''}`} />
+                          {getLikeCount(message) > 0 && <span>{getLikeCount(message)}</span>}
+                        </button>
+
+                        {/* Reply Button */}
+                        <button
+                          onClick={() => setReplyTo(message)}
+                          className="flex items-center space-x-1 text-xs text-gray-600 hover:text-blue-500 transition-colors rounded-full px-2 py-1 min-h-[32px]"
+                          title="ตอบกลับ"
+                        >
+                          <Reply className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Timestamp - Show only for grouped messages */}
+                    {isGrouped && message.sender && (
+                      <div className={`text-xs text-gray-500 mt-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
+                        {formatTime(message.createdAt)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+          )}
+        </div>
 
         {/* Typing Indicator */}
         {typingUsers.length > 0 && (
@@ -2074,13 +2097,13 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
 
       {/* Reply/Edit Bar */}
       {(replyTo || editingMessage) && (
-        <div className="bg-blue-50 border-t border-blue-200 p-3">
+        <div className="bg-blue-50 border-t border-blue-200 p-2 sm:p-3">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <div className="text-sm font-medium text-blue-800">
+              <div className="text-xs sm:text-sm font-medium text-blue-800">
                 {editingMessage ? 'แก้ไขข้อความ' : `ตอบกลับ ${replyTo?.sender?.displayName || replyTo?.sender?.username}`}
               </div>
-              <div className="text-sm text-blue-600 truncate">
+              <div className="text-xs sm:text-sm text-blue-600 truncate">
                 {editingMessage ? editingMessage.content : replyTo?.content}
               </div>
             </div>
@@ -2092,7 +2115,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 setEditingMessage(null);
                 setNewMessage('');
               }}
-              className="text-blue-600 hover:bg-blue-100"
+              className="text-blue-600 hover:bg-blue-100 min-h-[32px] min-w-[32px] sm:min-h-[36px] sm:min-w-[36px]"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -2100,36 +2123,36 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
         </div>
       )}
 
-        {/* Input Area - Fixed */}
-        <div className="flex-shrink-0 p-2 sm:p-3 bg-white border-t border-gray-200 sticky bottom-0 z-50 shadow-lg">
+        {/* Modern Input Area - Professional Design - Always Visible */}
+        <div className="flex-shrink-0 p-3 sm:p-4 bg-white border-t border-gray-200 shadow-lg">
           {/* Image Preview */}
           {imagePreview && (
-            <div className="mb-2 sm:mb-3 relative">
+            <div className="mb-3 sm:mb-4 relative">
               <div className="relative inline-block">
                 <img
                   src={imagePreview}
                   alt="Preview"
-                  className="max-h-24 sm:max-h-32 rounded-lg border"
+                  className="max-h-20 sm:max-h-24 rounded-xl border-2 border-gray-200 shadow-md"
                 />
                 <button
                   onClick={handleCancelImage}
-                  className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-red-500 text-white rounded-full p-0.5 sm:p-1 hover:bg-red-600"
+                  className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transition-all duration-200 min-h-[28px] min-w-[28px]"
                 >
-                  <X className="h-2 w-2 sm:h-3 sm:w-3" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="mt-1 sm:mt-2 flex space-x-1 sm:space-x-2">
+              <div className="mt-2 sm:mt-3 flex space-x-2 sm:space-x-3">
                 <Button
                   onClick={handleImageUpload}
                   disabled={uploadingImage}
-                  className="bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-2"
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white text-sm px-3 sm:px-4 py-2 sm:py-2.5 min-h-[40px] rounded-lg shadow-md transition-all duration-200"
                 >
                   {uploadingImage ? 'กำลังอัปโหลด...' : 'ส่งรูปภาพ'}
                 </Button>
                 <Button
                   onClick={handleCancelImage}
                   variant="outline"
-                  className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-2"
+                  className="text-sm px-3 sm:px-4 py-2 sm:py-2.5 min-h-[40px] rounded-lg border-2 hover:bg-gray-50 transition-all duration-200"
                 >
                   ยกเลิก
                 </Button>
@@ -2137,7 +2160,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             </div>
           )}
           
-          <div className="flex items-center space-x-1 sm:space-x-2">
+          <div className="flex items-end space-x-2 sm:space-x-3">
             {/* Image Upload Button */}
             <input
               ref={imageInputRef}
@@ -2146,27 +2169,28 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
               onChange={handleImageSelect}
               className="hidden"
             />
-            <Button 
-              size="icon" 
-              variant="ghost" 
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={() => imageInputRef.current?.click()}
-              className="text-gray-500 hover:text-gray-700 p-1 sm:p-2"
+              className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 sm:p-2.5 min-h-[44px] min-w-[44px] rounded-xl transition-all duration-200"
               title="เพิ่มรูปภาพ"
             >
-              <Image className="h-4 w-4 sm:h-5 sm:w-5" />
+              <Image className="h-5 w-5 sm:h-6 sm:w-6" />
             </Button>
 
             {/* Emoji Button */}
-            <Button 
-              size="icon" 
-              variant="ghost" 
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="text-gray-500 hover:text-gray-700 p-1 sm:p-2"
+              className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 sm:p-2.5 min-h-[44px] min-w-[44px] rounded-xl transition-all duration-200"
               title="เพิ่มอีโมจิ"
             >
-              <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
+              <Smile className="h-5 w-5 sm:h-6 sm:w-6" />
             </Button>
-        
+
+            {/* Message Input */}
             <div className="flex-1 relative">
               <textarea
                 ref={messageInputRef}
@@ -2179,7 +2203,7 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     if (e.shiftKey) {
-                      // Shift+Enter = เพิ่มบรรทัดใหม่ (ไม่ทำอะไร เพราะ textarea รองรับอยู่แล้ว)
+                      // Shift+Enter = เพิ่มบรรทัดใหม่
                       return;
                     } else {
                       // Enter ธรรมดา = ส่งข้อความ
@@ -2191,27 +2215,27 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
                   }
                 }}
                 onPaste={(e) => handlePaste(e)}
-                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ'}
-                className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent text-base sm:text-base resize-none min-h-[40px] max-h-[120px]"
+                placeholder={editingMessage ? 'แก้ไขข้อความ...' : 'พิมพ์ข้อความ...'}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-sm sm:text-base resize-none min-h-[48px] max-h-[120px] bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-200"
                 disabled={!isConnected}
                 rows={1}
-                style={{ 
+                style={{
                   resize: 'none',
                   overflow: 'hidden',
-                  minHeight: '40px',
+                  minHeight: '48px',
                   maxHeight: '120px'
                 }}
               />
 
-              {/* Emoji Picker */}
+              {/* Modern Emoji Picker */}
               {showEmojiPicker && (
-                <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-300 rounded-lg shadow-lg p-2 z-10">
-                  <div className="grid grid-cols-8 gap-1">
+                <div className="absolute bottom-full right-0 mb-2 bg-white border-2 border-gray-200 rounded-2xl shadow-2xl p-3 z-10 max-h-52 overflow-y-auto">
+                  <div className="grid grid-cols-6 gap-2">
                     {['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'].map((emoji, index) => (
                       <button
                         key={index}
                         onClick={() => handleEmojiClick(emoji)}
-                        className="w-8 h-8 text-lg hover:bg-gray-100 rounded flex items-center justify-center transition-colors"
+                        className="w-10 h-10 text-lg hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110 min-h-[40px] min-w-[40px]"
                         title={emoji}
                       >
                         {emoji}
@@ -2222,86 +2246,43 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
               )}
             </div>
 
-            <button
+            {/* Modern Send Button */}
+            <Button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Send button clicked!', { 
-                  newMessage: newMessage.trim(), 
-                  isConnected,
-                  messageLength: newMessage.length,
-                  isSendingMessage,
-                  uploadingImage
-                });
                 if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
                   handleSendMessage();
                 }
               }}
-              type="button"
-              style={{
-                minWidth: '40px',
-                minHeight: '40px',
-                borderRadius: '50%',
-                border: 'none',
-                outline: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'all 0.2s ease',
-                cursor: 'pointer',
-                backgroundColor: (newMessage.trim() && !isSendingMessage && !uploadingImage) ? '#ec4899' : '#9ca3af',
-                color: 'white',
-                opacity: (newMessage.trim() && !isSendingMessage && !uploadingImage) ? '1' : '0.6',
-                boxShadow: newMessage.trim() ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
-                position: 'relative',
-                zIndex: 100,
-                pointerEvents: 'auto',
-                flexShrink: 0
-              }}
-              onMouseEnter={(e) => {
-                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
-                  e.target.style.backgroundColor = '#be185d';
-                  e.target.style.transform = 'scale(1.05)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
-                  e.target.style.backgroundColor = '#ec4899';
-                  e.target.style.transform = 'scale(1)';
-                }
-              }}
-              onTouchStart={(e) => {
-                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
-                  e.target.style.backgroundColor = '#be185d';
-                  e.target.style.transform = 'scale(1.05)';
-                }
-              }}
-              onTouchEnd={(e) => {
-                if (newMessage.trim() && !isSendingMessage && !uploadingImage) {
-                  e.target.style.backgroundColor = '#ec4899';
-                  e.target.style.transform = 'scale(1)';
-                }
-              }}
+              disabled={!newMessage.trim() || isSendingMessage || uploadingImage}
+              className={`min-w-[48px] min-h-[48px] rounded-xl border-none outline-none flex items-center justify-center font-semibold transition-all duration-200 flex-shrink-0 shadow-lg ${
+                newMessage.trim() && !isSendingMessage && !uploadingImage
+                  ? 'bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 hover:shadow-xl transform hover:scale-105'
+                  : 'bg-gray-300 cursor-not-allowed opacity-50'
+              }`}
               title={
-                isSendingMessage ? 'กำลังส่งข้อความ...' : 
+                isSendingMessage ? 'กำลังส่งข้อความ...' :
                 uploadingImage ? 'กำลังอัปโหลดรูปภาพ...' :
                 !newMessage.trim() ? 'กรุณาพิมพ์ข้อความ' : 'ส่งข้อความ'
               }
             >
-              <Send className="h-4 w-4 sm:h-5 sm:w-5" style={{ pointerEvents: 'none' }} />
-            </button>
+              {isSendingMessage ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Send className="h-5 w-5 text-white" />
+              )}
+            </Button>
           </div>
         </div>
-      </div>
+      
 
       {/* Image Modal - Responsive */}
       {imageModal.show && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-90 z-[9999] overflow-hidden"
           onClick={() => setImageModal({ show: false, src: '', alt: '' })}
-          style={{ 
+          style={{
             position: 'fixed',
             top: 0,
             left: 0,
@@ -2311,19 +2292,19 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'center',
-            paddingTop: '20px', // ใกล้ header มากที่สุด
-            paddingBottom: '100px' // เว้นระยะจาก footer/navigation bar
+            paddingTop: '16px', // ใกล้ header มากที่สุดสำหรับ mobile
+            paddingBottom: '80px' // เว้นระยะจาก footer/navigation bar สำหรับ mobile
           }}
         >
-          <div className="relative flex items-start justify-center w-full h-full pt-2">
+          <div className="relative flex items-start justify-center w-full h-full pt-1 sm:pt-2">
             <img
               src={imageModal.src}
               alt={imageModal.alt}
               className="w-auto h-auto object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}
               style={{
-                maxWidth: '85vw',
-                maxHeight: 'calc(100vh - 120px)', // ลบ padding top และ bottom
+                maxWidth: '90vw',
+                maxHeight: 'calc(100vh - 96px)', // ลบ padding top และ bottom สำหรับ mobile
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain'
@@ -2331,9 +2312,9 @@ const RealTimeChat = ({ roomId, currentUser, onBack, showWebappNotification }) =
             />
             <button
               onClick={() => setImageModal({ show: false, src: '', alt: '' })}
-              className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-colors z-10"
+              className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 sm:p-2 shadow-lg transition-colors z-10 min-h-[32px] min-w-[32px] sm:min-h-[36px] sm:min-w-[36px]"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         </div>

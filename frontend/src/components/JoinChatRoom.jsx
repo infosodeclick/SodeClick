@@ -30,7 +30,7 @@ const JoinChatRoom = () => {
   useEffect(() => {
     const fetchRoomInfo = async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) {
           setError('กรุณาเข้าสู่ระบบก่อน');
           setIsLoading(false);
@@ -88,7 +88,7 @@ const JoinChatRoom = () => {
   const handleJoinRoom = async () => {
     setJoining(true);
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/admin/chatrooms/join-by-invite`, {
         method: 'POST',
         headers: {

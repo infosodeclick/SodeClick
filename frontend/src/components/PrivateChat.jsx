@@ -13,7 +13,13 @@ import {
   Trash2,
   Image as ImageIcon,
   X,
-  MessageCircle
+  MessageCircle,
+  Shield,
+  Award,
+  Star,
+  Crown,
+  Diamond,
+  Gem
 } from 'lucide-react';
 import { getProfileImageUrl } from '../utils/profileImageUtils';
 import { membershipHelpers } from '../services/membershipAPI';
@@ -38,8 +44,35 @@ const PrivateChat = ({
   const [selectedImage, setSelectedImage] = useState(null);
   const [typingTimeout, setTypingTimeout] = useState(null);
   const [imageModal, setImageModal] = useState({ show: false, src: '', alt: '' });
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const getMembershipIcon = (tier) => {
+    const iconProps = { className: "w-4 h-4" };
+    
+    switch (tier) {
+      case 'member':
+        return <Shield {...iconProps} className="w-4 h-4 text-gray-600" />;
+      case 'silver':
+        return <Award {...iconProps} className="w-4 h-4 text-slate-600" />;
+      case 'gold':
+        return <Star {...iconProps} className="w-4 h-4 text-amber-600" />;
+      case 'vip':
+        return <Crown {...iconProps} className="w-4 h-4 text-purple-600" />;
+      case 'vip1':
+        return <Crown {...iconProps} className="w-4 h-4 text-purple-700" />;
+      case 'vip2':
+        return <Crown {...iconProps} className="w-4 h-4 text-purple-800" />;
+      case 'diamond':
+        return <Diamond {...iconProps} className="w-4 h-4 text-blue-600" />;
+      case 'platinum':
+        return <Gem {...iconProps} className="w-4 h-4 text-indigo-600" />;
+      default:
+        return <Shield {...iconProps} className="w-4 h-4 text-gray-600" />;
+    }
+  };
 
   // ฟังก์ชันจัดการการกดปุ่ม
   const handleKeyDown = (e) => {
@@ -160,8 +193,8 @@ const PrivateChat = ({
         }
       }
       
-      // ดึง token จาก sessionStorage
-      const token = sessionStorage.getItem('token');
+      // ดึง token จาก localStorage
+      const token = localStorage.getItem('token');
       console.log('💖 Token available:', !!token);
       
       if (!token) {
@@ -205,7 +238,7 @@ const PrivateChat = ({
         if (response.status === 401) {
           console.error('❌ Unauthorized - token may be expired');
           // ลบ token เก่าและ redirect ไป login
-          sessionStorage.removeItem('token');
+          localStorage.removeItem('token');
           if (onSendMessage && typeof onSendMessage === 'function') {
             onSendMessage('notification', {
               type: 'error',
@@ -401,7 +434,7 @@ const PrivateChat = ({
       }
 
       // เข้าร่วมห้องแชทส่วนตัว
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const joinData = {
         roomId: selectedChat.id,
         userId: currentUser._id,
@@ -427,7 +460,7 @@ const PrivateChat = ({
         // ตั้งค่า flag เพื่อป้องกันการแจ้งเตือนซ้ำ
         window.isAutoReconnecting = true;
         
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         console.log('🚪 Re-joining private chat room after reconnect:', selectedChat.id);
         console.log('🔔 PrivateChat: Joining room for notifications:', {
           roomId: selectedChat.id,
@@ -453,12 +486,18 @@ const PrivateChat = ({
       // ฟังข้อความใหม่ - ประมวลผลทันที
       socket.on('new-message', (message) => {
         console.log('📨 PrivateChat - New message received:', message);
+        console.log('📨 PrivateChat - Current chat ID:', selectedChat.id);
+        console.log('📨 PrivateChat - Message chat room:', message.chatRoom);
+        console.log('📨 PrivateChat - Message match:', message.chatRoom === selectedChat.id);
         
         // ตรวจสอบว่าเป็นข้อความสำหรับแชทปัจจุบันหรือไม่
         if (message.chatRoom === selectedChat.id) {
-          console.log('✅ Message for current private chat');
+          console.log('✅ Message for current private chat - updating UI immediately');
           
-          // ส่ง custom event ไปยัง App.tsx เพื่ออัปเดต state ทันที
+          // อัปเดต UI ทันทีผ่าน custom event (ไม่ใช้ setMessages)
+          console.log('✅ Message for current private chat - updating UI immediately via custom event');
+
+          // ส่ง custom event ไปยัง App.tsx เพื่ออัปเดต state
           window.dispatchEvent(new CustomEvent('private-chat-message', {
             detail: {
               message,
@@ -470,7 +509,7 @@ const PrivateChat = ({
           // Scroll ไปยังข้อความล่าสุดเสมอเมื่อรับข้อความใหม่
           scrollToBottomAlways();
         } else {
-          console.log('⏭️ Message for different chat:', message.chatRoom);
+          console.log('⏭️ Message for different chat:', message.chatRoom, 'vs current:', selectedChat.id);
         }
       });
 
@@ -610,6 +649,9 @@ const PrivateChat = ({
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !selectedImage) return;
+    if (isSendingMessage || uploadingImage) return;
+
+    setIsSendingMessage(true);
 
     const messageData = {
       content: newMessage.trim(),
@@ -617,31 +659,16 @@ const PrivateChat = ({
       image: selectedImage
     };
 
-    // สร้างข้อความชั่วคราวเพื่อแสดงทันที
-    const tempMessage = {
-      _id: `temp-${Date.now()}`,
-      content: messageData.content,
-      sender: {
-        _id: currentUser._id,
-        displayName: currentUser.displayName,
-        username: currentUser.username,
-        profileImages: currentUser.profileImages
-      },
-      chatRoom: selectedChat.id,
-      messageType: selectedImage ? 'image' : 'text',
-      image: selectedImage,
-      createdAt: new Date().toISOString(),
-      isTemporary: true
-    };
-
-    // ส่ง custom event เพื่อเพิ่มข้อความชั่วคราว
-    window.dispatchEvent(new CustomEvent('private-chat-message', {
-      detail: {
-        message: tempMessage,
-        chatId: selectedChat.id,
-        messageType: 'temp-message'
-      }
-    }));
+    // ส่งข้อความไปยัง handleSendPrivateMessage เพื่อสร้างข้อความชั่วคราวและอัปเดต UI
+    console.log('🔔 PrivateChat: Sending message to handleSendPrivateMessage');
+    
+    if (onSendMessage) {
+      console.log('🔔 PrivateChat: Calling onSendMessage');
+      await onSendMessage(messageData);
+    } else {
+      console.error('❌ No send method available - onSendMessage is not provided');
+      throw new Error('No send method available');
+    }
 
     // Scroll ไปยังข้อความล่าสุดเสมอเมื่อส่งข้อความ
     scrollToBottomAlways();
@@ -657,34 +684,8 @@ const PrivateChat = ({
     setShowImageUpload(false);
 
     try {
-      // ลองส่งผ่าน Socket ก่อน
-      if (window.socketManager?.socket?.connected) {
-        const socketMessage = {
-          content: messageData.content,
-          senderId: currentUser._id,
-          chatRoomId: selectedChat.id,
-          messageType: selectedImage ? 'image' : 'text',
-          replyToId: messageData.replyTo
-        };
-
-        // ถ้ามีรูปภาพ ให้เพิ่มข้อมูลรูปภาพ
-        if (selectedImage) {
-          socketMessage.imageUrl = selectedImage;
-          socketMessage.fileType = 'image';
-          socketMessage.fileName = 'image.jpg';
-        }
-
-        console.log('🔔 PrivateChat: Sending message via socket:', socketMessage);
-        window.socketManager.socket.emit('send-message', socketMessage);
-        console.log('🔔 PrivateChat: Send message event emitted');
-      } else {
-        // ถ้า socket ไม่พร้อม ให้ใช้ HTTP API แทน
-        if (onSendMessage) {
-          await onSendMessage(messageData);
-        } else {
-          throw new Error('No send method available');
-        }
-      }
+      // handleSendPrivateMessage จะจัดการการส่งข้อความทั้งหมด
+      console.log('🔔 PrivateChat: Message sent successfully');
       
     } catch (error) {
       // ถ้าส่งไม่สำเร็จ ให้คืนค่ากลับ
@@ -710,6 +711,8 @@ const PrivateChat = ({
           message: 'ไม่สามารถส่งข้อความได้ กรุณาลองใหม่อีกครั้ง'
         });
       }
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -780,228 +783,231 @@ const PrivateChat = ({
   const otherUser = selectedChat.otherUser || selectedChat.participants?.find(p => p._id !== currentUser._id);
 
   return (
-    <div className="flex flex-col bg-white" style={{ height: '93%' }}>
-      {/* Chat Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white flex-shrink-0">
-        <div className="flex items-center space-x-3">
+    <div className="flex flex-col bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 overflow-hidden" style={{ height: '93%' }}>
+      {/* Modern Chat Header - Professional Design */}
+      <div className="flex items-center justify-between p-4 sm:p-5 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white flex-shrink-0">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <button
             onClick={onClose}
-            className="lg:hidden p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="lg:hidden p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px] flex items-center justify-center"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
-          
-          <Avatar className="w-10 h-10">
-            <AvatarImage 
-              src={getProfileImageUrl(otherUser?.profileImages?.[0], otherUser?._id)} 
-              alt={otherUser?.displayName} 
-            />
-            <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white">
-              {otherUser?.displayName?.charAt(0) || '?'}
-            </AvatarFallback>
-          </Avatar>
-          
-          <div className="flex-1">
-            <div className="flex items-center space-x-2">
-              <h3 className="font-semibold text-gray-900">
-                {otherUser?.displayName || otherUser?.firstName + ' ' + otherUser?.lastName || 'Unknown User'}
-              </h3>
-              <Badge className={`text-xs ${getMembershipBadgeColor(otherUser?.membershipTier)}`}>
-                {membershipHelpers.getTierDisplayName(otherUser?.membershipTier || 'member')}
-              </Badge>
+
+          {/* User Info */}
+          <div className="flex items-center space-x-3">
+            <div className="relative">
+              <Avatar className="w-10 h-10 sm:w-12 sm:h-12 ring-2 ring-white shadow-md">
+                <AvatarImage
+                  src={getProfileImageUrl(otherUser?.profileImages?.[0], otherUser?._id)}
+                  alt={otherUser?.displayName}
+                />
+                <AvatarFallback className="bg-gradient-to-br from-pink-400 to-purple-600 text-white text-base sm:text-lg font-semibold">
+                  {otherUser?.displayName?.charAt(0) || '?'}
+                </AvatarFallback>
+              </Avatar>
+
+              {/* Online Status */}
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full border-2 border-white"></div>
             </div>
-            <p className="text-sm text-gray-500">
-              {isTyping ? 'กำลังพิมพ์...' : 'ออนไลน์'}
-            </p>
+
+            <div>
+              <div className="flex items-center space-x-2 mb-1">
+                <h3 className="font-bold text-base sm:text-lg md:text-xl leading-tight">
+                  {otherUser?.displayName || otherUser?.firstName + ' ' + otherUser?.lastName || 'Unknown User'}
+                </h3>
+                <Badge className={`text-xs ${getMembershipBadgeColor(otherUser?.membershipTier)}`}>
+                  {membershipHelpers.getTierDisplayName(otherUser?.membershipTier || 'member')}
+                </Badge>
+              </div>
+              <p className="text-sm text-white/80">
+                {isTyping ? 'กำลังพิมพ์...' : 'แชทส่วนตัว'}
+              </p>
+            </div>
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-2">
-          <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <MoreVertical className="h-5 w-5 text-gray-600" />
+          <button className="p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px]">
+            <MoreVertical className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </button>
         </div>
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 relative z-10 min-h-0">
+      {/* Modern Messages Area - Professional Thread Design */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 md:p-6 bg-gradient-to-b from-gray-50/50 to-white/50 relative z-10 min-h-0">
         {messages.map((message, index) => {
           const isOwnMessage = message.sender?._id === currentUser._id;
           const prevMessage = messages[index - 1];
           const nextMessage = messages[index + 1];
-          const showAvatar = !nextMessage || nextMessage.sender?._id !== message.sender?._id;
-          const showTimestamp = !prevMessage || 
-            (new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime()) > 5 * 60 * 1000; // 5 minutes
+          const isGrouped = prevMessage &&
+            prevMessage.sender &&
+            message.sender &&
+            prevMessage.sender._id === message.sender._id &&
+            (new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime()) < 5 * 60 * 1000; // 5 minutes
 
           return (
-            <div key={message._id} className="message-group">
-              {/* Timestamp */}
-              {showTimestamp && (
-                <div className="flex justify-center mb-4">
-                  <span className="text-xs text-gray-500 bg-white px-3 py-1 rounded-full shadow-sm">
-                    {formatTime(message.createdAt)}
-                  </span>
-                </div>
-              )}
-
-              <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} items-end space-x-2`}>
-                {/* Avatar for received messages */}
-                {!isOwnMessage && (
-                  <div className="flex-shrink-0">
-                    {showAvatar ? (
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage 
-                          src={getProfileImageUrl(message.sender?.profileImages?.[0], message.sender?._id)} 
-                          alt={message.sender?.displayName} 
+            <div
+              key={message._id}
+              className={`group transition-all duration-200 ${
+                isOwnMessage ? 'flex justify-end' : 'flex justify-start'
+              } ${isGrouped ? 'mt-1' : 'mt-4 sm:mt-6'}`}
+            >
+              <div className={`flex max-w-[85%] sm:max-w-[75%] md:max-w-[60%] ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} items-end space-x-2 sm:space-x-3`}>
+                {/* Avatar - Show only for non-grouped messages or different senders */}
+                {(!isGrouped || !isOwnMessage) && (
+                  <Avatar className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0 ring-2 ring-white shadow-md">
+                    {message.sender ? (
+                      <>
+                        <AvatarImage
+                          src={getProfileImageUrl(message.sender?.profileImages?.[0], message.sender?._id)}
+                          alt={message.sender?.displayName}
                         />
-                        <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white text-xs">
+                        <AvatarFallback className="bg-gradient-to-br from-pink-400 to-purple-600 text-white text-sm font-semibold">
                           {message.sender?.displayName?.charAt(0) || '?'}
                         </AvatarFallback>
-                      </Avatar>
+                      </>
                     ) : (
-                      <div className="w-8 h-8" /> // Spacer
+                      <AvatarFallback className="bg-gradient-to-br from-pink-400 to-purple-600 text-white text-sm font-semibold">
+                        ?
+                      </AvatarFallback>
                     )}
-                  </div>
+                  </Avatar>
                 )}
 
-                {/* Message Bubble */}
-                <div className={`flex flex-col max-w-xs sm:max-w-md lg:max-w-lg ${isOwnMessage ? 'items-end' : 'items-start'}`}>
-                  {/* Reply To */}
-                  {message.replyTo && (
-                    <div className="mb-2 p-2 bg-gray-100 rounded-lg text-sm max-w-full">
-                      <div className="text-gray-600 text-xs mb-1">
-                        ตอบกลับ {message.replyTo.sender?.displayName}
+                {/* Message Content */}
+                <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                  {/* Sender Name - Show only for non-grouped messages */}
+                  {(!isGrouped || !isOwnMessage) && message.sender && (
+                    <div className={`flex items-center space-x-2 mb-1 ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                      <span className="text-xs sm:text-sm font-medium text-gray-700">
+                        {message.sender?.displayName || message.sender?.username}
+                      </span>
+                      <div className="flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-sm border">
+                        {getMembershipIcon(message.sender.membershipTier || 'member')}
                       </div>
-                      <div className="text-gray-800 truncate">
-                        {message.replyTo.content}
-                      </div>
+                      <span className="text-xs text-gray-500">
+                        {formatTime(message.createdAt)}
+                      </span>
                     </div>
                   )}
 
-                  {/* Message Content */}
-                  <div
-                    className={`relative px-4 py-2 rounded-2xl max-w-full break-words group ${
+                  {/* Message Bubble */}
+                  <div className={`relative max-w-full ${isOwnMessage ? 'ml-auto' : 'mr-auto'}`}>
+                    <div className={`inline-block rounded-2xl px-4 py-3 max-w-full break-words shadow-sm ${
                       isOwnMessage
-                        ? 'bg-gradient-to-r from-pink-500 to-violet-500 text-white rounded-br-md'
-                        : 'bg-white text-gray-900 rounded-bl-md shadow-sm border border-gray-200'
-                    }`}
-                  >
-                    {/* Message Text */}
-                    {message.content && (
-                      <div className="text-sm leading-relaxed">
-                        {message.content}
-                      </div>
-                    )}
-
-                    {/* Message Image */}
-                    {(message.image || message.fileUrl) && (
-                      <div className="mt-2">
-                        <img 
-                          src={message.image || message.fileUrl} 
-                          alt="Message attachment" 
-                          className="max-w-[200px] max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => setImageModal({
-                            show: true,
-                            src: message.image || message.fileUrl,
-                            alt: 'Message attachment'
-                          })}
-                        />
-                      </div>
-                    )}
-
-                    {/* Message Attachments */}
-                    {message.attachments && message.attachments.length > 0 && (
-                      <div className="mt-2 space-y-2">
-                        {message.attachments.map((attachment, index) => (
-                          <div key={index}>
-                            {attachment.type === 'image' && (
-                              <img 
-                                src={attachment.url} 
-                                alt="Message attachment" 
-                                className="max-w-[200px] max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                onClick={() => setImageModal({
-                                  show: true,
-                                  src: attachment.url,
-                                  alt: 'Message attachment'
-                                })}
-                              />
-                            )}
-                            {attachment.type !== 'image' && (
-                              <div className="p-2 bg-gray-100 rounded-lg">
-                                <div className="text-sm text-gray-600">
-                                  📎 {attachment.filename || 'Attachment'}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : ''}
-                                </div>
-                              </div>
-                            )}
+                        ? 'bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-br-md'
+                        : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
+                    }`}>
+                      {/* Reply To */}
+                      {message.replyTo && (
+                        <div className="mb-2 p-2 bg-gray-100 rounded-lg text-sm max-w-full">
+                          <div className="text-gray-600 text-xs mb-1">
+                            ตอบกลับ {message.replyTo.sender?.displayName}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          <div className="text-gray-800 truncate text-xs sm:text-sm">
+                            {message.replyTo.content}
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Edited indicator */}
-                    {message.isEdited && (
-                      <div className="text-xs opacity-70 mt-1">
-                        แก้ไขแล้ว
-                      </div>
-                    )}
+                      {/* Message Content */}
+                      {message.content && (
+                        <div className="text-sm leading-relaxed">
+                          {message.content}
+                        </div>
+                      )}
 
-                    {/* Message Actions */}
-                    <div className={`absolute ${isOwnMessage ? '-left-12' : '-right-12'} top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex space-x-1`}>
+                      {/* Message Image */}
+                      {(message.image || message.fileUrl) && (
+                        <div className="mt-2">
+                          <img
+                            src={message.image || message.fileUrl}
+                            alt="Message attachment"
+                            className="max-w-[180px] sm:max-w-[200px] max-h-[220px] sm:max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setImageModal({
+                              show: true,
+                              src: message.image || message.fileUrl,
+                              alt: 'Message attachment'
+                            })}
+                          />
+                        </div>
+                      )}
+
+                      {/* Message Attachments */}
+                      {message.attachments && message.attachments.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          {message.attachments.map((attachment, index) => (
+                            <div key={index}>
+                              {attachment.type === 'image' && (
+                                <img
+                                  src={attachment.url}
+                                  alt="Message attachment"
+                                  className="max-w-[180px] sm:max-w-[200px] max-h-[220px] sm:max-h-[250px] w-auto h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => setImageModal({
+                                    show: true,
+                                    src: attachment.url,
+                                    alt: 'Message attachment'
+                                  })}
+                                />
+                              )}
+                              {attachment.type !== 'image' && (
+                                <div className="p-2 bg-gray-100 rounded-lg">
+                                  <div className="text-sm text-gray-600">
+                                    📎 {attachment.filename || 'Attachment'}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {attachment.size ? `${(attachment.size / 1024).toFixed(1)} KB` : ''}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Edited indicator */}
+                      {message.isEdited && (
+                        <div className={`text-xs opacity-70 mt-1 ${isOwnMessage ? 'text-white/70' : 'text-gray-500'}`}>
+                          แก้ไขแล้ว
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Message Actions - Show on hover */}
+                    <div className={`absolute ${isOwnMessage ? '-left-12' : '-right-12'} top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center space-x-1`}>
+                      {/* Reply Button */}
                       <button
                         onClick={() => setReplyTo(message)}
-                        className="p-1 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors"
+                        className="flex items-center space-x-1 text-xs text-gray-600 hover:text-blue-500 transition-colors rounded-full px-2 py-1 min-h-[32px]"
                         title="ตอบกลับ"
                       >
-                        <Reply className="h-3 w-3 text-gray-600" />
+                        <Reply className="h-3 w-3" />
                       </button>
+
+                      {/* Like Button */}
                       <button
                         onClick={() => handleReactToMessage(message._id, 'heart')}
-                        className={`p-1 rounded-full shadow-md transition-colors ${
-                          hasUserLiked(message) 
-                            ? 'bg-red-50 hover:bg-red-100' 
-                            : 'bg-white hover:bg-gray-50'
+                        className={`flex items-center space-x-1 text-xs transition-all duration-200 rounded-full px-2 py-1 min-h-[32px] ${
+                          hasUserLiked(message)
+                            ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                            : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
                         }`}
-                        title={hasUserLiked(message) ? 'กดเพื่อยกเลิกหัวใจ' : 'กดไลค์'}
+                        title={hasUserLiked(message) ? 'ยกเลิกหัวใจ' : 'หัวใจ'}
                       >
-                        <Heart className={`h-3 w-3 ${
-                          hasUserLiked(message) 
-                            ? 'fill-current text-red-600' 
-                            : 'text-gray-600'
-                        }`} />
-                        {getLikeCount(message) > 0 && (
-                          <span className="ml-1 text-xs text-gray-600">({getLikeCount(message)})</span>
-                        )}
+                        <Heart className={`h-3 w-3 ${hasUserLiked(message) ? 'fill-current' : ''}`} />
+                        {getLikeCount(message) > 0 && <span>{getLikeCount(message)}</span>}
                       </button>
                     </div>
                   </div>
 
-                  {/* Message Time */}
-                  <div className={`text-xs text-gray-500 mt-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
-                    {formatTime(message.createdAt)}
-                  </div>
+                  {/* Timestamp - Show only for grouped messages */}
+                  {isGrouped && message.sender && (
+                    <div className={`text-xs text-gray-500 mt-1 ${isOwnMessage ? 'text-right' : 'text-left'}`}>
+                      {formatTime(message.createdAt)}
+                    </div>
+                  )}
                 </div>
-
-                {/* Avatar for sent messages */}
-                {isOwnMessage && (
-                  <div className="flex-shrink-0">
-                    {showAvatar ? (
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage 
-                          src={getProfileImageUrl(currentUser.profileImages?.[0], currentUser._id)} 
-                          alt={currentUser.displayName} 
-                        />
-                        <AvatarFallback className="bg-gradient-to-r from-pink-400 to-violet-400 text-white text-xs">
-                          {currentUser.displayName?.charAt(0) || '?'}
-                        </AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      <div className="w-8 h-8" /> // Spacer
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -1079,29 +1085,30 @@ const PrivateChat = ({
         </div>
       )}
 
-      {/* Message Input */}
-      <div className="p-3 border-t border-gray-200 bg-white flex-shrink-0 z-50 shadow-lg">
-        <form onSubmit={handleSendMessage} className="flex items-end space-x-2">
+      {/* Modern Input Area - Professional Design */}
+      <div className="p-3 sm:p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200/50 flex-shrink-0 z-50 shadow-2xl">
+        <form onSubmit={handleSendMessage} className="flex items-end space-x-2 sm:space-x-3">
+          {/* Message Input */}
           <div className="flex-1 relative">
             <textarea
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={(e) => handleKeyDown(e)}
               onPaste={(e) => handlePaste(e)}
-              placeholder="พิมพ์ข้อความ"
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-12 resize-none min-h-[40px] max-h-[120px]"
+              placeholder="พิมพ์ข้อความ..."
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 text-sm sm:text-base resize-none min-h-[48px] max-h-[120px] bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-200"
               rows={1}
-              style={{ 
+              style={{
                 resize: 'none',
                 overflow: 'hidden',
-                minHeight: '40px',
+                minHeight: '48px',
                 maxHeight: '120px'
               }}
             />
-            
-            {/* Emoji Picker */}
+
+            {/* Modern Emoji Picker */}
             {showEmojiPicker && (
-              <div className="absolute bottom-full left-0 mb-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="absolute bottom-full right-0 mb-2 bg-white border-2 border-gray-200 rounded-2xl shadow-2xl p-3 z-10 max-h-52 overflow-y-auto">
                 <div className="grid grid-cols-6 gap-2">
                   {emojis.map((emoji, index) => (
                     <button
@@ -1111,7 +1118,7 @@ const PrivateChat = ({
                         setNewMessage(prev => prev + emoji);
                         setShowEmojiPicker(false);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-lg"
+                      className="w-10 h-10 text-lg hover:bg-gray-100 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110 min-h-[40px] min-w-[40px]"
                     >
                       {emoji}
                     </button>
@@ -1122,27 +1129,38 @@ const PrivateChat = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center space-x-1" style={{ position: 'relative', zIndex: 50 }}>
-            <button
-              type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              style={{ position: 'relative', zIndex: 51 }}
-            >
-              <Smile className="h-5 w-5 text-gray-600" />
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              style={{ position: 'relative', zIndex: 51 }}
-            >
-              <Paperclip className="h-5 w-5 text-gray-600" />
-            </button>
-            
+          <div className="flex items-end space-x-2">
+            {/* Image Upload Button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
             <Button
-              type="submit"
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 sm:p-2.5 min-h-[44px] min-w-[44px] rounded-xl transition-all duration-200"
+              title="เพิ่มรูปภาพ"
+            >
+              <Paperclip className="h-5 w-5 sm:h-6 sm:w-6" />
+            </Button>
+
+            {/* Emoji Button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 p-2 sm:p-2.5 min-h-[44px] min-w-[44px] rounded-xl transition-all duration-200"
+              title="เพิ่มอีโมจิ"
+            >
+              <Smile className="h-5 w-5 sm:h-6 sm:w-6" />
+            </Button>
+
+            {/* Modern Send Button */}
+            <Button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1150,35 +1168,34 @@ const PrivateChat = ({
                   handleSendMessage(e);
                 }
               }}
-              className="bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 text-white px-4 py-2 rounded-full"
-              style={{ 
-                position: 'relative', 
-                zIndex: 100, 
-                pointerEvents: 'auto',
-                cursor: 'pointer'
-              }}
+              disabled={!newMessage.trim() && !selectedImage}
+              className={`min-w-[48px] min-h-[48px] rounded-xl border-none outline-none flex items-center justify-center font-semibold transition-all duration-200 flex-shrink-0 shadow-lg ${
+                newMessage.trim() || selectedImage
+                  ? 'bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 hover:shadow-xl transform hover:scale-105'
+                  : 'bg-gray-300 cursor-not-allowed opacity-50'
+              }`}
+              title={
+                isSendingMessage ? 'กำลังส่งข้อความ...' :
+                uploadingImage ? 'กำลังอัปโหลดรูปภาพ...' :
+                !newMessage.trim() && !selectedImage ? 'กรุณาพิมพ์ข้อความ' : 'ส่งข้อความ'
+              }
             >
-              <Send className="h-4 w-4" style={{ pointerEvents: 'none' }} />
+              {isSendingMessage ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Send className="h-5 w-5 text-white" />
+              )}
             </Button>
           </div>
-
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageSelect}
-            className="hidden"
-          />
         </form>
       </div>
 
       {/* Image Modal - Responsive */}
       {imageModal.show && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-90 z-[9999] overflow-hidden"
           onClick={() => setImageModal({ show: false, src: '', alt: '' })}
-          style={{ 
+          style={{
             position: 'fixed',
             top: 0,
             left: 0,
@@ -1188,19 +1205,19 @@ const PrivateChat = ({
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'center',
-            paddingTop: '20px', // ใกล้ header มากที่สุด
-            paddingBottom: '100px' // เว้นระยะจาก footer/navigation bar
+            paddingTop: '16px', // ใกล้ header มากที่สุดสำหรับ mobile
+            paddingBottom: '80px' // เว้นระยะจาก footer/navigation bar สำหรับ mobile
           }}
         >
-          <div className="relative flex items-start justify-center w-full h-full pt-2">
+          <div className="relative flex items-start justify-center w-full h-full pt-1 sm:pt-2">
             <img
               src={imageModal.src}
               alt={imageModal.alt}
               className="w-auto h-auto object-contain rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}
               style={{
-                maxWidth: '85vw',
-                maxHeight: 'calc(100vh - 120px)', // ลบ padding top และ bottom
+                maxWidth: '90vw',
+                maxHeight: 'calc(100vh - 96px)', // ลบ padding top และ bottom สำหรับ mobile
                 width: 'auto',
                 height: 'auto',
                 objectFit: 'contain'
@@ -1208,9 +1225,9 @@ const PrivateChat = ({
             />
             <button
               onClick={() => setImageModal({ show: false, src: '', alt: '' })}
-              className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 shadow-lg transition-colors z-10"
+              className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 sm:p-2 shadow-lg transition-colors z-10 min-h-[32px] min-w-[32px] sm:min-h-[36px] sm:min-w-[36px]"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         </div>

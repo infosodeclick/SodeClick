@@ -192,8 +192,8 @@ class EnhancedAPIService {
       'Content-Type': 'application/json',
     };
 
-    // เพิ่ม authorization token ถ้ามี (ใช้ sessionStorage แทน localStorage)
-    const token = sessionStorage.getItem('token');
+    // เพิ่ม authorization token ถ้ามี
+    const token = localStorage.getItem('token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }

@@ -5,6 +5,47 @@ const ChatRoom = require('../models/ChatRoom');
 const User = require('../models/User');
 const { auth, chatroomAccess } = require('../middleware/auth');
 
+// GET /api/chatroom/main-public - ดึงห้องสาธารณะหลัก
+router.get('/main-public', async (req, res) => {
+  try {
+    const mainPublicRoom = await ChatRoom.findOne({ 
+      type: 'public', 
+      isMainPublicRoom: true,
+      isActive: true 
+    })
+    .populate('owner', 'username displayName membershipTier verificationBadge')
+    .lean();
+
+    if (!mainPublicRoom) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No main public room found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: mainPublicRoom._id,
+        name: mainPublicRoom.name,
+        description: mainPublicRoom.description,
+        type: mainPublicRoom.type,
+        owner: mainPublicRoom.owner,
+        memberCount: mainPublicRoom.members?.length || 0,
+        createdAt: mainPublicRoom.createdAt,
+        lastActivity: mainPublicRoom.lastActivity
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching main public room:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
 // GET /api/chatroom - ดูรายการห้องแชท (ไม่ต้องการ auth สำหรับการดูรายการ)
 router.get('/', async (req, res) => {
   try {
@@ -31,7 +72,7 @@ router.get('/', async (req, res) => {
 
     const [chatRooms, total] = await Promise.all([
       ChatRoom.find(query)
-        .populate('owner', 'username displayName membershipTier verificationBadge')
+        .populate('owner', 'username displayName membershipTier verificationBadge role')
         .populate('members.user', 'username displayName membershipTier verificationBadge')
         .sort({ lastActivity: -1 })
         .skip(skip)
@@ -98,7 +139,8 @@ router.get('/', async (req, res) => {
           ageRestriction: room.ageRestriction || { minAge: 18, maxAge: 100 },
           stats: room.stats || { totalMembers: 0, totalMessages: 0, totalCoinsReceived: 0, totalGiftsReceived: 0 },
           lastActivity: room.lastActivity || room.createdAt,
-          createdAt: room.createdAt
+          createdAt: room.createdAt,
+          isMainPublicRoom: room.isMainPublicRoom || false
         })),
         pagination: {
           current: pageNum,
@@ -149,8 +191,8 @@ router.post('/', async (req, res) => {
     // ตรวจสอบสิทธิ์การสร้างห้อง (SuperAdmin ข้ามการตรวจสอบ)
     const limits = owner.getMembershipLimits();
     
-    // SuperAdmin สามารถสร้างห้องได้ไม่จำกัด
-    if (!owner.isSuperAdmin()) {
+    // SuperAdmin และ Admin สามารถสร้างห้องได้ไม่จำกัด
+    if (!owner.isAdmin()) {
       const currentRooms = await ChatRoom.countDocuments({ 
         owner: ownerId, 
         isActive: true 
@@ -311,7 +353,7 @@ router.get('/:roomId', auth, chatroomAccess, async (req, res) => {
 });
 
 // GET /api/chatroom/:roomId/online-users - ดึงข้อมูลคนออนไลน์ (อนุญาตให้ดูได้โดยไม่ต้องเป็นสมาชิก)
-router.get('/:roomId/online-users', async (req, res) => {
+router.get('/:roomId/online-users', auth, async (req, res) => {
   try {
     const { roomId } = req.params;
     const { userId, includeSystemUsers = false } = req.query;
@@ -356,6 +398,74 @@ router.get('/:roomId/online-users', async (req, res) => {
   } catch (error) {
     console.error('Error fetching online users:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// GET /api/chatroom/:roomId/payment-status - ตรวจสอบสถานะการจ่ายเหรียญ
+router.get('/:roomId/payment-status', auth, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const userId = req.user._id;
+
+    const chatRoom = await ChatRoom.findById(roomId);
+    if (!chatRoom) {
+      return res.status(404).json({
+        success: false,
+        message: 'Chat room not found'
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const hasPaid = user.hasPaidForRoom(roomId);
+    const isOwner = chatRoom.owner.toString() === userId.toString();
+    const canJoin = chatRoom.type === 'public' || 
+                   (chatRoom.type === 'private' && (hasPaid || user.isAdmin() || isOwner));
+
+    console.log('💰 Payment status check:', {
+      roomId,
+      userId: userId.toString(),
+      roomOwner: chatRoom.owner.toString(),
+      roomType: chatRoom.type,
+      entryFee: chatRoom.entryFee,
+      hasPaid,
+      isOwner,
+      canJoin,
+      isAdmin: user.isAdmin(),
+      userCoins: user.coins,
+      paidRooms: user.paidRooms.map(p => ({
+        roomId: p.roomId?.toString(),
+        amount: p.amount,
+        paidAt: p.paidAt
+      }))
+    });
+
+    res.json({
+      success: true,
+      data: {
+        roomId,
+        roomName: chatRoom.name,
+        entryFee: chatRoom.entryFee,
+        hasPaid,
+        canJoin,
+        userCoins: user.coins,
+        isAdmin: user.isAdmin(),
+        isOwner
+      }
+    });
+  } catch (error) {
+    console.error('Error checking payment status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check payment status',
+      error: error.message
+    });
   }
 });
 
@@ -470,11 +580,17 @@ router.post('/:roomId/pay-entry', async (req, res) => {
 router.post('/:roomId/join', auth, async (req, res) => {
   try {
     const { roomId } = req.params;
-    const { userId } = req.body;
+    const userId = req.user._id; // ใช้ userId จาก auth middleware
 
-    console.log('Join room request:', { roomId, userId });
+    console.log('🏠 Join room request:', { 
+      roomId, 
+      userId, 
+      userRole: req.user.role,
+      username: req.user.username 
+    });
 
     if (!userId) {
+      console.log('❌ No userId found in req.user');
       return res.status(400).json({
         success: false,
         message: 'User ID is required'
@@ -532,14 +648,14 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // ตรวจสอบข้อจำกัดอายุ - SuperAdmin ข้ามการตรวจสอบ
+    // ตรวจสอบข้อจำกัดอายุ - SuperAdmin และ Admin ข้ามการตรวจสอบ
     console.log('Age check:', { 
       userAge: user.age, 
       minAge: chatRoom.ageRestriction?.minAge, 
       maxAge: chatRoom.ageRestriction?.maxAge 
     });
     
-    if (!user.isSuperAdmin() && chatRoom.ageRestriction && (user.age < chatRoom.ageRestriction.minAge || user.age > chatRoom.ageRestriction.maxAge)) {
+    if (!user.isAdmin() && chatRoom.ageRestriction && (user.age < chatRoom.ageRestriction.minAge || user.age > chatRoom.ageRestriction.maxAge)) {
       console.log('Age restriction failed');
       return res.status(403).json({
         success: false,
@@ -547,13 +663,13 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // ตรวจสอบจำนวนสมาชิกสูงสุด - SuperAdmin ข้ามการตรวจสอบ
+    // ตรวจสอบจำนวนสมาชิกสูงสุด - SuperAdmin และ Admin ข้ามการตรวจสอบ
     console.log('Member count check:', { 
       currentCount: chatRoom.memberCount, 
       maxMembers: chatRoom.settings?.maxMembers 
     });
     
-    if (!user.isSuperAdmin() && chatRoom.settings && chatRoom.memberCount >= chatRoom.settings.maxMembers) {
+    if (!user.isAdmin() && chatRoom.settings && chatRoom.memberCount >= chatRoom.settings.maxMembers) {
       console.log('Room is full');
       return res.status(403).json({
         success: false,
@@ -561,25 +677,31 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // ตรวจสอบค่าเข้าห้อง (สำหรับห้องแบบปิด) - SuperAdmin ข้ามการตรวจสอบ
-    if (chatRoom.type === 'private' && chatRoom.entryFee > 0 && !user.isSuperAdmin()) {
-      if (user.coins < chatRoom.entryFee) {
-        return res.status(400).json({
-          success: false,
-          message: 'Insufficient coins to join this room',
-          required: chatRoom.entryFee,
-          current: user.coins
-        });
-      }
+    // ตรวจสอบค่าเข้าห้อง (สำหรับห้องแบบปิด) - SuperAdmin, Admin และเจ้าของห้องข้ามการตรวจสอบ
+    if (chatRoom.type === 'private' && chatRoom.entryFee > 0 && !user.isAdmin() && chatRoom.owner.toString() !== userId.toString()) {
+      // ตรวจสอบว่าเคยจ่ายแล้วหรือยัง
+      if (!user.hasPaidForRoom(chatRoom._id)) {
+        if (user.coins < chatRoom.entryFee) {
+          return res.status(400).json({
+            success: false,
+            message: 'Insufficient coins to join this room',
+            required: chatRoom.entryFee,
+            current: user.coins
+          });
+        }
 
-      // หักเหรียญและโอนให้เจ้าของห้อง
-      user.coins -= chatRoom.entryFee;
-      
-      const owner = await User.findById(chatRoom.owner);
-      if (owner) {
-        owner.coins += chatRoom.entryFee;
-        chatRoom.stats.totalCoinsReceived += chatRoom.entryFee;
-        await owner.save();
+        // หักเหรียญและโอนให้เจ้าของห้อง
+        user.coins -= chatRoom.entryFee;
+        
+        const owner = await User.findById(chatRoom.owner);
+        if (owner) {
+          owner.coins += chatRoom.entryFee;
+          chatRoom.stats.totalCoinsReceived += chatRoom.entryFee;
+          await owner.save();
+        }
+
+        // บันทึกการจ่ายเหรียญ
+        await user.addRoomPayment(chatRoom._id, chatRoom.entryFee);
       }
     }
 

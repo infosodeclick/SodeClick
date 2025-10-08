@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense, lazy } from 'react'
+import { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react'
 
 // Loading component for Suspense fallbacks
 const LoadingSpinner = ({ size = 'h-8 w-8' }: { size?: string }) => (
@@ -280,15 +280,15 @@ function App() {
     const loginSuccess = urlParams.get('login_success');
     const authError = urlParams.get('error');
     
-    console.log('🔍 URL Parameters:', { token, loginSuccess, authError });
+    // console.log('🔍 URL Parameters:', { token, loginSuccess, authError });
     
     if (token && loginSuccess === 'true') {
-      console.log('🎉 Google OAuth callback detected with token');
+      // console.log('🎉 Google OAuth callback detected with token');
       
       // Decode JWT token to get user info
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('🔍 Token payload:', payload);
+        // console.log('🔍 Token payload:', payload);
         
         // Create user object from token payload
         const userData = {
@@ -298,11 +298,14 @@ function App() {
           token: token
         };
         
-        console.log('✅ Processing Google login with user data:', userData);
+        // console.log('✅ Processing Google login with user data:', userData);
         
-        // Store token and user data
-        sessionStorage.setItem('token', token);
-        sessionStorage.setItem('user', JSON.stringify(userData));
+          // Store token and user data
+          localStorage.setItem('token', token);
+          localStorage.setItem('user', JSON.stringify(userData));
+          
+          // อัปเดตข้อมูลผู้ใช้ในฐานข้อมูลให้ตรงกับ localStorage
+          console.log('🔄 Syncing user data with backend...');
         
         // Call login function
         login(userData);
@@ -348,8 +351,8 @@ function App() {
   }, []);
 
   // Real-time event handlers
-  useRealTimeUpdate('userLoggedIn', (data) => {
-    console.log('User logged in:', data);
+  useRealTimeUpdate('userLoggedIn', () => {
+    // console.log('User logged in:', data);
     // อัปเดต UI โดยไม่ต้องรีเฟรชหน้าเว็บ
     success('เข้าสู่ระบบสำเร็จ');
     
@@ -358,26 +361,28 @@ function App() {
     
     // รีเฟรชข้อมูลผู้ใช้ในหน้าแรกหลังจาก login (ใช้ setTimeout เพื่อหลีกเลี่ยง performance warning)
     if (activeTab === 'discover') {
-      console.log('🔄 Refreshing user data after login...');
+      // console.log('🔄 Refreshing user data after login...');
       // ใช้ setTimeout เพื่อให้ UI อัปเดตก่อน แล้วค่อยโหลดข้อมูล
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('refreshUserData'));
       }, 100);
     }
     
-    // อัปเดตข้อมูลที่เกี่ยวข้อง
-    setTimeout(() => {
-      // โหลดข้อมูล liked users
-      fetchLikedUsers();
-      // โหลดข้อมูลแชทส่วนตัว
-      fetchPrivateChats();
-      // รีเฟรชข้อมูล Premium users
-      window.dispatchEvent(new CustomEvent('refreshPremiumUsers'));
-    }, 200);
+      // อัปเดตข้อมูลที่เกี่ยวข้อง
+      setTimeout(() => {
+        // โหลดข้อมูล liked users
+        fetchLikedUsers();
+        // โหลดข้อมูลแชทส่วนตัว
+        fetchPrivateChats();
+        // โหลดข้อมูลห้องแชทสาธารณะ
+        fetchChatRooms();
+        // รีเฟรชข้อมูล Premium users
+        window.dispatchEvent(new CustomEvent('refreshPremiumUsers'));
+      }, 200);
   });
 
-  useRealTimeUpdate('userLoggedOut', (data) => {
-    console.log('User logged out:', data);
+  useRealTimeUpdate('userLoggedOut', () => {
+    // console.log('User logged out:', data);
     // อัปเดต UI โดยไม่ต้องรีเฟรชหน้าเว็บ
     success('ออกจากระบบสำเร็จ');
     
@@ -396,7 +401,7 @@ function App() {
   });
 
   useRealTimeUpdate('profileImageUpdated', (data) => {
-    console.log('Profile image updated:', data);
+    // console.log('Profile image updated:', data);
     // อัปเดต avatar ใน header โดยไม่ต้องรีเฟรชหน้าเว็บ
     const avatarElement = document.querySelector('[data-avatar-user-id]');
     if (avatarElement && data.userId === user?._id) {
@@ -406,27 +411,27 @@ function App() {
   });
 
   useRealTimeUpdate('newNotification', (notification) => {
-    console.log('🔔 App: New notification received:', notification);
-    console.log('🔔 App: Notification type:', notification.type);
-    console.log('🔔 App: Notification message:', notification.message);
+    // console.log('🔔 App: New notification received:', notification);
+    // console.log('🔔 App: Notification type:', notification.type);
+    // console.log('🔔 App: Notification message:', notification.message);
     
     // ตรวจสอบว่าเป็น notification สำหรับผู้ใช้ปัจจุบันหรือไม่
     if (notification.recipientId && notification.recipientId !== user?._id) {
-      console.log('⏭️ Notification not for current user, ignoring');
+      // console.log('⏭️ Notification not for current user, ignoring');
       return;
     }
     
     // อัปเดต notifications state
     setNotifications(prev => {
       const newNotifications = [notification, ...prev];
-      console.log('🔔 App: Updated notifications count:', newNotifications.length);
+      // console.log('🔔 App: Updated notifications count:', newNotifications.length);
       return newNotifications;
     });
     
     // อัปเดต unread count
     setUnreadCount(prev => {
       const newCount = prev + 1;
-      console.log('🔔 App: Updated unread count:', newCount);
+      // console.log('🔔 App: Updated unread count:', newCount);
       return newCount;
     });
     
@@ -591,7 +596,6 @@ function App() {
   
   // Debug wrapper for setShowProfileModal
   const setShowProfileModalDebug = (value: boolean) => {
-    console.log('🔄 setShowProfileModal called:', { value, stack: new Error().stack });
     setShowProfileModal(value);
   }
   const [profileAlert, setProfileAlert] = useState<{message: string, type: 'error' | 'warning' | 'success'} | null>(null)
@@ -614,7 +618,13 @@ function App() {
   // ฟังก์ชันโหลดข้อมูล liked users จาก backend
   const fetchLikedUsers = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      // ตรวจสอบ user ก่อน
+      if (!user) {
+        console.log('❌ ไม่มี user - ข้ามการโหลด liked users');
+        return;
+      }
+
+      const token = localStorage.getItem('token');
       if (!token) {
         console.log('❌ ไม่มี token - ข้ามการโหลด liked users');
         return;
@@ -636,7 +646,13 @@ function App() {
           setLikedProfiles(new Set(result.data));
         }
       } else {
-        console.error('❌ Failed to load liked users');
+        console.error('❌ Failed to load liked users:', response.status, response.statusText);
+        // ถ้าเป็น 401 ให้ลบ token
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.reload();
+        }
       }
     } catch (error) {
       console.error('❌ Error loading liked users:', error);
@@ -661,7 +677,8 @@ function App() {
   const [selectedPrivateChat, setSelectedPrivateChat] = useState<any>(null)
   const [showNewPrivateChatModal, setShowNewPrivateChatModal] = useState(false)
   const [privateChats, setPrivateChats] = useState<any[]>([])
-  const [chatType, setChatType] = useState<'public' | 'private'>('public') // 'public', 'private'
+  const [chatRooms, setChatRooms] = useState<any[]>([])
+  const [chatType, setChatType] = useState<'public' | 'private' | 'quick'>('quick') // 'public', 'private', 'quick'
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   
@@ -683,7 +700,7 @@ function App() {
   })
   
   // Fetch notifications from backend
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!user?._id) {
       console.log('🔔 No user ID, skipping notification fetch');
       return;
@@ -697,19 +714,12 @@ function App() {
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
       const url = `${apiUrl}/api/notifications/${user._id}`
       
-      console.log('🔔 Fetching notifications from:', url);
-      console.log('🔔 User ID:', user._id);
-      console.log('🔔 Token exists:', !!token);
-      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       })
-      
-      console.log('🔔 Response status:', response.status);
-      console.log('🔔 Response headers:', Object.fromEntries(response.headers.entries()));
       
       // เพิ่มการตรวจสอบ response type
       const contentType = response.headers.get('content-type')
@@ -721,37 +731,38 @@ function App() {
       
       if (response.ok) {
         const data = await response.json()
-        console.log('🔔 Notifications API response:', data);
         
         if (data.success) {
           const notifications = data.data.notifications || [];
           const unreadCount = data.data.unreadCount || 0;
           
-          console.log('🔔 Setting notifications:', notifications.length, 'items');
-          console.log('🔔 Setting unread count:', unreadCount);
-          
-          setNotifications(notifications)
-          setUnreadCount(unreadCount)
+          setNotifications(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(notifications)) {
+              return prev;
+            }
+            return notifications;
+          });
+          setUnreadCount(prev => prev === unreadCount ? prev : unreadCount);
         } else {
           console.error('❌ API returned success: false:', data.message);
-          setNotifications([])
-          setUnreadCount(0)
+          setNotifications(prev => prev.length === 0 ? prev : []);
+          setUnreadCount(prev => prev === 0 ? prev : 0);
         }
       } else {
         console.error('❌ Notifications API error:', response.status, response.statusText)
         // ไม่ให้ notifications error รบกวนการทำงานของระบบ
-        setNotifications([])
-        setUnreadCount(0)
+        setNotifications(prev => prev.length === 0 ? prev : []);
+        setUnreadCount(prev => prev === 0 ? prev : 0);
       }
     } catch (error) {
       console.error('❌ Error fetching notifications:', error)
       // ไม่ให้ notifications error รบกวนการทำงานของระบบ
-      setNotifications([])
-      setUnreadCount(0)
+      setNotifications(prev => prev.length === 0 ? prev : []);
+      setUnreadCount(prev => prev === 0 ? prev : 0);
     } finally {
       setIsLoadingNotifications(false)
     }
-  }
+  }, [user?._id])
 
   const clearAllNotifications = async () => {
     if (!user?._id) return
@@ -793,25 +804,30 @@ function App() {
     // Fetch initial notifications
     fetchNotifications()
     
-    // Load purchased images when user data is available
-    loadPurchasedImages(user._id)
-    
     // Set up polling every 30 seconds
     const interval = setInterval(fetchNotifications, 30000)
     
     return () => clearInterval(interval)
-  }, [user?._id])
+  }, [user?._id, fetchNotifications])
+
 
   // Listen for real-time notification updates from auto refresh
   useEffect(() => {
     const handleNotificationsUpdated = (event: CustomEvent) => {
       const { notifications } = event.detail;
-      console.log('🔄 App: Received notifications update from auto refresh:', notifications);
+      // console.log('🔄 App: Received notifications update from auto refresh:', notifications);
       
       if (notifications && Array.isArray(notifications)) {
-        setNotifications(notifications);
+        setNotifications(prev => {
+          // ตรวจสอบว่า notifications เปลี่ยนจริงหรือไม่
+          if (JSON.stringify(prev) === JSON.stringify(notifications)) {
+            return prev; // ไม่เปลี่ยน state ถ้าเหมือนเดิม
+          }
+          return notifications;
+        });
+        
         const unreadCount = notifications.filter(n => !n.isRead).length;
-        setUnreadCount(unreadCount);
+        setUnreadCount(prev => prev === unreadCount ? prev : unreadCount);
       }
     };
 
@@ -826,7 +842,7 @@ function App() {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'navigate') {
-        console.log('🔗 Received navigation message from privacy policy:', event.data);
+        // console.log('🔗 Received navigation message from privacy policy:', event.data);
         
         // กลับไปหน้าหลัก (ค้นหา)
         if (event.data.tab === 'discover') {
@@ -850,7 +866,7 @@ function App() {
   useEffect(() => {
     if (!user?._id) return;
 
-    console.log('🚀 App: Starting notification auto refresh for user:', user._id);
+    // console.log('🚀 App: Starting notification auto refresh for user:', user._id);
     
     // Start notification refresh only (not full chat refresh)
     autoRefreshManager.startRefresh('notifications', () => {
@@ -1258,6 +1274,58 @@ function App() {
     return uniqueChats;
   };
 
+  // ฟังก์ชันดึงข้อมูลห้องแชทสาธารณะจาก API
+  const fetchChatRooms = async () => {
+    if (!user) return;
+
+    try {
+      console.log('🔄 ดึงข้อมูลห้องแชทสาธารณะ...');
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/chatroom?type=all&limit=50`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data && data.data.chatRooms) {
+        const formattedRooms = data.data.chatRooms.map(room => ({
+          id: room.id,
+          name: room.name,
+          description: room.description,
+          type: room.type,
+          memberCount: room.memberCount || 0,
+          activeMemberCount: room.activeMemberCount || 0,
+          lastActivity: room.lastActivity ? new Date(room.lastActivity) : new Date(),
+          createdAt: room.createdAt ? new Date(room.createdAt) : new Date(),
+          entryFee: room.entryFee || 0,
+          owner: room.owner,
+          isMainPublicRoom: room.isMainPublicRoom || false
+        }));
+
+        setChatRooms(formattedRooms);
+        console.log('✅ โหลดห้องแชทสำเร็จ:', formattedRooms.length, 'ห้อง');
+      } else {
+        console.error('❌ API returned error:', data.message || 'Unknown error');
+        setChatRooms([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching chat rooms:', error);
+      setChatRooms([]);
+    }
+  };
+
   // ฟังก์ชันดึงข้อมูลแชทส่วนตัวจาก API
   const fetchPrivateChats = async () => {
     if (!user || (!user._id && !user.id)) {
@@ -1267,7 +1335,7 @@ function App() {
     
     try {
       console.log('🔄 Fetching private chats from API...');
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       if (!token) {
         console.error('❌ No token found');
@@ -1286,6 +1354,18 @@ function App() {
       });
 
       if (!response.ok) {
+        if (response.status === 404) {
+          console.log('📋 No private chats found for user (404)');
+          setPrivateChats([]);
+          return;
+        }
+        if (response.status === 401) {
+          console.error('❌ Unauthorized - clearing token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.reload();
+          return;
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -1362,7 +1442,7 @@ function App() {
     
     try {
       console.log('🔄 Creating private chat via API...');
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       if (!token) {
         console.error('❌ No token found');
@@ -1430,7 +1510,7 @@ function App() {
     
     try {
       console.log('🔄 Fetching messages for chat room:', chatRoomId);
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       if (!token) {
         console.error('❌ No token found');
@@ -1550,7 +1630,9 @@ function App() {
       setIsAuthenticated(true)
       // โหลดข้อมูล liked users เมื่อผู้ใช้เข้าสู่ระบบแล้ว
       fetchLikedUsers()
-      
+      // โหลดข้อมูลห้องแชทสาธารณะ
+      fetchChatRooms()
+
       // Initialize socket manager for real-time features
       console.log('🔌 Initializing socket manager...');
       window.socketManager = socketManager;
@@ -1691,7 +1773,7 @@ function App() {
       try {
         // setIsLoadingPremium(true)
         const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         console.log('🔑 Frontend - Sending token:', token ? 'Present' : 'Not present');
         console.log('👤 Frontend - Current user:', user);
         
@@ -1741,11 +1823,34 @@ function App() {
     }
   }, [user]) // เพิ่ม user เป็น dependency เพื่อให้โหลดใหม่เมื่อ user เปลี่ยน
 
+  // โหลดข้อมูลห้องแชทเมื่อเข้าหน้าแชท
+  useEffect(() => {
+    if (user && activeTab === 'messages') {
+      console.log('🔄 เข้าหน้าแชท - โหลดข้อมูลห้องแชท...');
+      fetchChatRooms();
+    }
+  }, [user, activeTab]);
+
+  // เลือกห้องหลักอัตโนมัติเมื่อข้อมูลห้องแชทโหลดเสร็จ
+  useEffect(() => {
+    if (chatRooms.length > 0 && activeTab === 'messages' && !selectedRoomId) {
+      console.log('🔄 ข้อมูลห้องแชทโหลดเสร็จ - เลือกห้องหลัก...');
+      const mainRoom = chatRooms.find(room => room.isMainPublicRoom);
+      if (mainRoom) {
+        setSelectedRoomId(mainRoom.id);
+        console.log('✅ เลือกห้องหลักอัตโนมัติ:', mainRoom.name);
+      } else if (chatRooms.length > 0) {
+        setSelectedRoomId(chatRooms[0].id);
+        console.log('⚠️ ไม่มีห้องหลัก เลือกห้องแรก:', chatRooms[0].name);
+      }
+    }
+  }, [chatRooms, activeTab, selectedRoomId]);
+
   // Function to fetch premium users (extracted from useEffect)
   // const fetchPremiumUsers = async () => {
   //   try {
   //     const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-  //     const token = sessionStorage.getItem('token');
+  //     const token = localStorage.getItem('token');
   //     
   //     const res = await fetch(`${base}/api/profile/premium?limit=50`, {
   //       headers: {
@@ -1842,7 +1947,7 @@ function App() {
 
     const interval = setInterval(async () => {
       try {
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         if (!token) return;
 
         // ดึงข้อมูลผู้ใช้ที่ออนไลน์ล่าสุด
@@ -1894,7 +1999,7 @@ function App() {
         const res = await fetch(`${base}/api/profile/discover?limit=50`, {
           headers: {
             'Content-Type': 'application/json',
-            ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {})
+            ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
           }
         })
         if (!res.ok) return
@@ -2026,34 +2131,53 @@ function App() {
   useEffect(() => {
     const loadAvatar = async () => {
       try {
-        if (user?._id || user?.id) {
-          const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-          const userId = user._id || user.id;
-          const res = await fetch(`${base}/api/profile/${userId}`, {
-            headers: {
-              'Content-Type': 'application/json',
-              ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {})
-            }
-          })
-          if (res.ok) {
-            const data = await res.json()
-            const mainImageIndex = data?.data?.profile?.mainProfileImageIndex || 0
-            const img = (data?.data?.profile?.profileImages?.[mainImageIndex] as string | undefined) || ''
-            console.log('🎯 App.tsx header avatar updated');
-            // ตรวจสอบว่าไม่ใช่รูป default
-            if (img && typeof img === 'string' && !img.startsWith('data:image/svg+xml')) {
-              const avatarUrl = getProfileImageUrl(img, user?._id || user?.id)
-              setAvatarUrl(avatarUrl)
-            } else {
-              setAvatarUrl(null)
-            }
-            return
-          }
+        // ตรวจสอบว่ามี user และ token
+        if (!user || (!user._id && !user.id)) {
+          console.log('❌ No user found - skipping avatar load');
+          return;
         }
-      } catch (_) {
-        // ignore
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.log('❌ No token found - skipping avatar load');
+          return;
+        }
+
+        const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+        const userId = user._id || user.id;
+        const res = await fetch(`${base}/api/profile/${userId}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          const mainImageIndex = data?.data?.profile?.mainProfileImageIndex || 0
+          const img = (data?.data?.profile?.profileImages?.[mainImageIndex] as string | undefined) || ''
+          console.log('🎯 App.tsx header avatar updated');
+          // ตรวจสอบว่าไม่ใช่รูป default
+          if (img && typeof img === 'string' && !img.startsWith('data:image/svg+xml')) {
+            const avatarUrl = getProfileImageUrl(img, user?._id || user?.id)
+            setAvatarUrl(avatarUrl)
+          } else {
+            setAvatarUrl(null)
+          }
+          return
+        } else if (res.status === 404) {
+          console.log('📋 Profile not found (404) - using default avatar');
+          setAvatarUrl(null)
+        } else if (res.status === 401) {
+          console.error('❌ Unauthorized - clearing token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('❌ Error loading avatar:', error);
+        setAvatarUrl(null)
       }
-      setAvatarUrl(null)
     }
     if (isAuthenticated) {
       loadAvatar()
@@ -2116,7 +2240,7 @@ function App() {
   const handleProfileLike = async (profileId: string) => {
     console.log('🔍 handleProfileLike called with profileId:', profileId);
     
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
       console.error('❌ ไม่มี token - กรุณาเข้าสู่ระบบก่อน');
       return;
@@ -2334,7 +2458,7 @@ function App() {
       }
 
       // ตรวจสอบว่าซื้อรูปนี้แล้วหรือยัง
-      const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       const hasAlreadyPurchased = currentUser.purchasedImages?.some((purchased: any) => 
         purchased.profileId === targetUserId && purchased.imageId === imageId
       );
@@ -2345,7 +2469,7 @@ function App() {
       }
       
       // ตรวจสอบ token
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         showWebappNotification('กรุณาเข้าสู่ระบบก่อน');
         return;
@@ -2408,11 +2532,9 @@ function App() {
   };
 
   // ฟังก์ชันโหลดข้อมูลการซื้อรูปจาก API
-  const loadPurchasedImages = async (userId: string) => {
+  const loadPurchasedImages = useCallback(async (userId: string) => {
     try {
-      console.log('🔄 Loading purchased images for user:', userId);
-      
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         console.error('❌ No token found');
         return;
@@ -2427,7 +2549,6 @@ function App() {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('📦 Loaded purchased images from API:', data);
         
         if (data.success && data.data.transactions) {
           // แปลงข้อมูล transactions เป็นรูปแบบ purchasedImages
@@ -2437,17 +2558,14 @@ function App() {
             purchasedAt: transaction.purchasedAt
           }));
           
-          console.log('🔄 Converting to purchasedImages format:', purchasedImages);
-          
-          // อัพเดทข้อมูลผู้ใช้ใน sessionStorage
-          const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+          // อัพเดทข้อมูลผู้ใช้ใน localStorage
+          const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
           const updatedUser = {
             ...currentUser,
             purchasedImages: purchasedImages
           };
           
-          sessionStorage.setItem('user', JSON.stringify(updatedUser));
-          console.log('✅ Updated user with purchased images from API');
+          localStorage.setItem('user', JSON.stringify(updatedUser));
         }
       } else {
         console.error('❌ Failed to load purchased images:', response.status);
@@ -2455,7 +2573,14 @@ function App() {
     } catch (error) {
       console.error('❌ Error loading purchased images:', error);
     }
-  };
+  }, []);
+
+  // Load purchased images when user data is available
+  useEffect(() => {
+    if (!user?._id) return
+    
+    loadPurchasedImages(user._id)
+  }, [user?._id]);
 
   // ฟังก์ชันจ่ายเงินจริงหลังจากยืนยัน
   const confirmBlurPayment = async () => {
@@ -2466,7 +2591,7 @@ function App() {
     }
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         showWebappNotification('กรุณาเข้าสู่ระบบก่อน');
         return;
@@ -2532,8 +2657,8 @@ function App() {
       });
 
       if (result.success) {
-        // อัพเดทข้อมูลผู้ใช้ใน sessionStorage
-        const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+        // อัพเดทข้อมูลผู้ใช้ใน localStorage
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
         const targetUserId = paymentDetails.targetUserId;
         const targetUserName = paymentDetails.targetUserName;
         
@@ -2555,7 +2680,7 @@ function App() {
           coins: result.data.remainingCoins,
           purchasedImages: [...(currentUser.purchasedImages || []), purchasedImage]
         };
-        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+        localStorage.setItem('user', JSON.stringify(updatedUser));
         
         console.log('✅ Payment successful, updated user coins:', updatedUser.coins);
         console.log('✅ Updated purchasedImages:', updatedUser.purchasedImages);
@@ -2563,13 +2688,13 @@ function App() {
         // แสดงข้อความสำเร็จ
         showWebappNotification(`✅ จ่ายเหรียญสำเร็จ! คุณสามารถดูรูปของ ${targetUserName} ได้แล้ว`);
         
-        // อัพเดทข้อมูลการซื้อรูปใน sessionStorage ทันที
+        // อัพเดทข้อมูลการซื้อรูปใน localStorage ทันที
         const updatedPurchasedImages = [...(currentUser.purchasedImages || []), purchasedImage];
         const updatedUserWithPurchases = {
           ...updatedUser,
           purchasedImages: updatedPurchasedImages
         };
-        sessionStorage.setItem('user', JSON.stringify(updatedUserWithPurchases));
+        localStorage.setItem('user', JSON.stringify(updatedUserWithPurchases));
 
         // โหลดข้อมูลการซื้อรูปใหม่จาก API เพื่อให้แน่ใจว่าข้อมูลเป็นปัจจุบัน
         await loadPurchasedImages(currentUser.id);
@@ -2605,8 +2730,8 @@ function App() {
         setShowPaymentConfirmation(false);
         setPaymentDetails(null);
         
-        // อัพเดท sessionStorage เพื่อให้ข้อมูลเป็นปัจจุบัน
-        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+        // อัพเดท localStorage เพื่อให้ข้อมูลเป็นปัจจุบัน
+        localStorage.setItem('user', JSON.stringify(updatedUser));
         
         // บังคับให้ re-render UI เพื่อแสดงภาพทันที
         setTimeout(() => {
@@ -2710,7 +2835,14 @@ function App() {
         messageCount: chat.messages?.length || 0
       })));
       
-      localStorage.setItem('privateChats', JSON.stringify(chats));
+      // บันทึกข้อมูลแชทพร้อมกับ timestamp
+      const chatData = {
+        chats: chats,
+        timestamp: new Date().toISOString(),
+        userId: user?._id || user?.id
+      };
+      
+      localStorage.setItem('privateChats', JSON.stringify(chatData));
       
       // ตรวจสอบว่าข้อมูลถูกบันทึกจริงหรือไม่
       const saved = localStorage.getItem('privateChats');
@@ -2737,14 +2869,26 @@ function App() {
       console.log('🔍 Raw localStorage data:', savedChats);
       
       if (savedChats) {
-        const parsedChats = JSON.parse(savedChats);
-        console.log('📂 Loaded chats from localStorage:', parsedChats.length);
-        console.log('📋 Chat details:', parsedChats.map((chat: any) => ({
+        const parsedData = JSON.parse(savedChats);
+        
+        // รองรับทั้งรูปแบบเก่าและใหม่
+        let chats: any[] = [];
+        if (parsedData.chats && Array.isArray(parsedData.chats)) {
+          // รูปแบบใหม่: { chats: [...], timestamp: "...", userId: "..." }
+          chats = parsedData.chats;
+          console.log('📂 Loaded chats from localStorage (new format):', chats.length);
+        } else if (Array.isArray(parsedData)) {
+          // รูปแบบเก่า: [...]
+          chats = parsedData;
+          console.log('📂 Loaded chats from localStorage (old format):', chats.length);
+        }
+        
+        console.log('📋 Chat details:', chats.map((chat: any) => ({
           id: chat.id,
           otherUserName: chat.otherUser?.name || chat.otherUser?.displayName,
           messageCount: chat.messages?.length || 0
         })));
-        return parsedChats;
+        return chats;
       } else {
         console.log('📭 No chats found in localStorage');
       }
@@ -2918,8 +3062,12 @@ function App() {
               } else {
                 console.error('❌ Failed to create new chat via API');
                 // Fallback: สร้างแชทใน localStorage
+                const currentUserId = user._id || user.id;
+                const otherUserId = otherUser._id || otherUser.id;
+                const chatId = `private_${currentUserId}_${otherUserId}`;
+                
                 const fallbackChat = {
-                  id: `private_${Date.now()}`,
+                  id: chatId,
                   otherUser: otherUser,
                   messages: [],
                   createdAt: new Date(),
@@ -3018,8 +3166,21 @@ function App() {
     console.log('🗑️ Deleting private chat:', chatId);
     
     try {
-      // เรียก API เพื่อ soft delete แชท
+      // ตรวจสอบ token
       const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ No token found');
+        alert('กรุณาเข้าสู่ระบบใหม่');
+        logout();
+        return;
+      }
+
+      console.log('🔐 Using token:', token ? 'Token exists' : 'No token');
+      console.log('🗑️ Attempting to delete private chat with ID:', chatId);
+      console.log('🗑️ Chat ID type:', typeof chatId);
+      console.log('🗑️ Chat ID length:', chatId?.length);
+
+      // เรียก API เพื่อลบแชท
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/messages/private-chat/${chatId}`, {
         method: 'DELETE',
         headers: {
@@ -3030,10 +3191,14 @@ function App() {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Chat soft deleted successfully:', result);
+        console.log('✅ Chat deleted successfully:', result);
         
-        // รีเฟรชข้อมูล private chats จาก API
-        await fetchPrivateChats();
+        // ลบออกจาก UI ทันที (ไม่รอ API refresh)
+        setPrivateChats(prev => {
+          const updatedChats = prev.filter(chat => chat.id !== chatId);
+          saveChatsToStorage(updatedChats);
+          return updatedChats;
+        });
         
         // ถ้าแชทที่ลบเป็นแชทที่เลือกอยู่ ให้กลับไปที่รายการ
         if (selectedPrivateChat?.id === chatId) {
@@ -3041,36 +3206,30 @@ function App() {
           setSelectedPrivateChat(null);
         }
         
-        console.log('✅ Private chat deleted successfully and data refreshed');
+        console.log('✅ Private chat deleted successfully from UI');
       } else {
         const errorData = await response.json();
         console.error('❌ Failed to delete chat:', errorData);
         
-        // ถ้า API ล้มเหลว ให้ลบออกจาก UI แบบเดิม (fallback)
-        setPrivateChats(prev => {
-          const updatedChats = prev.filter(chat => chat.id !== chatId);
-          saveChatsToStorage(updatedChats);
-          return updatedChats;
-        });
-        
-        if (selectedPrivateChat?.id === chatId) {
-          setPrivateChatView('list');
-          setSelectedPrivateChat(null);
+        // ตรวจสอบว่าเป็น token error หรือไม่
+        if (response.status === 401) {
+          console.error('❌ Token expired or invalid');
+          alert('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          logout();
+          return;
         }
+        
+        // แสดง error message สำหรับกรณีอื่นๆ
+        alert('ไม่สามารถลบแชทได้: ' + (errorData.message || 'เกิดข้อผิดพลาด'));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error deleting chat:', error);
       
-      // ถ้าเกิดข้อผิดพลาด ให้ลบออกจาก UI แบบเดิม (fallback)
-      setPrivateChats(prev => {
-        const updatedChats = prev.filter(chat => chat.id !== chatId);
-        saveChatsToStorage(updatedChats);
-        return updatedChats;
-      });
-      
-      if (selectedPrivateChat?.id === chatId) {
-        setPrivateChatView('list');
-        setSelectedPrivateChat(null);
+      // ตรวจสอบว่าเป็น network error หรือไม่
+      if (error?.name === 'TypeError' && error?.message?.includes('fetch')) {
+        alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่');
+      } else {
+        alert('ไม่สามารถลบแชทได้: เกิดข้อผิดพลาดในการเชื่อมต่อ');
       }
     }
     console.log(`แชท ${chatId} ถูกลบสำหรับผู้ใช้ ${user?._id || user?.id}`);
@@ -3158,11 +3317,17 @@ function App() {
     };
 
     // แสดงข้อความชั่วคราวใน UI ทันที
-    setSelectedPrivateChat((prev: any) => ({
-      ...prev,
-      messages: [...(prev.messages || []), tempMessage],
-      lastMessage: tempMessage
-    }));
+    console.log('📝 Adding temporary message to UI immediately:', tempMessage);
+    setSelectedPrivateChat((prev: any) => {
+      console.log('📝 Previous messages count:', prev.messages?.length || 0);
+      const updatedChat = {
+        ...prev,
+        messages: [...(prev.messages || []), tempMessage],
+        lastMessage: tempMessage
+      };
+      console.log('📝 Updated messages count:', updatedChat.messages.length);
+      return updatedChat;
+    });
 
     // อัปเดตรายการแชทด้วยข้อความชั่วคราว
     setPrivateChats(prev => {
@@ -3182,23 +3347,30 @@ function App() {
     
     // ส่งข้อความไปยัง backend
     try {
+      const requestData = {
+        content: messageData.content,
+        senderId: user._id || user.id,
+        chatRoomId: selectedPrivateChat.id,
+        messageType: 'text',
+        replyToId: messageData.replyTo || null
+      };
+      
+      console.log('📤 Sending message to backend:', requestData);
+      console.log('📤 Token exists:', !!localStorage.getItem('token'));
+      
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          content: messageData.content,
-          senderId: user._id || user.id,
-          chatRoomId: selectedPrivateChat.id,
-          messageType: 'text',
-          replyToId: messageData.replyTo || null
-        })
+        body: JSON.stringify(requestData)
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Backend error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
@@ -3343,30 +3515,33 @@ function App() {
     
     // ถ้าเป็นข้อความจาก Socket.IO ให้ใช้ข้อมูลจาก Socket.IO
     if (messageData.socketMessage && messageData.messageType === 'socket-message') {
-      console.log('📨 Received message from Socket.IO:', messageData.socketMessage);
+      console.log('📨 App.tsx - Received message from Socket.IO:', messageData.socketMessage);
+      console.log('📨 App.tsx - Current selected chat ID:', selectedPrivateChat?.id);
+      console.log('📨 App.tsx - Message chat room:', messageData.socketMessage.chatRoom);
       
       // ตรวจสอบว่าข้อความนี้มีอยู่แล้วหรือไม่ (เพื่อป้องกัน duplicate)
       const messageExists = selectedPrivateChat.messages?.some((msg: any) => 
-        msg._id === messageData.socketMessage._id || 
-        (msg.content === messageData.socketMessage.content && 
-         msg.senderId === messageData.socketMessage.senderId && 
-         Math.abs(new Date(msg.timestamp).getTime() - new Date(messageData.socketMessage.timestamp).getTime()) < 1000)
+        msg._id === messageData.socketMessage._id
       );
       
       if (messageExists) {
-        console.log('📨 Message already exists, skipping duplicate');
+        console.log('📨 App.tsx - Message already exists, skipping duplicate');
         return;
       }
       
-      // อัปเดตแชทที่เลือกด้วยข้อความจาก Socket.IO
-      setSelectedPrivateChat((prev: any) => ({
-        ...prev,
-        messages: [...(prev.messages || []), messageData.socketMessage],
-        lastMessage: messageData.socketMessage
-      }));
+      // อัปเดตแชทที่เลือกด้วยข้อความจาก Socket.IO ทันที
+      setSelectedPrivateChat((prev: any) => {
+        console.log('📨 App.tsx - Updating selectedPrivateChat with new message');
+        return {
+          ...prev,
+          messages: [...(prev.messages || []), messageData.socketMessage],
+          lastMessage: messageData.socketMessage
+        };
+      });
       
-      // อัปเดตรายการแชทด้วยข้อความจาก Socket.IO
+      // อัปเดตรายการแชทด้วยข้อความจาก Socket.IO ทันที
       setPrivateChats(prev => {
+        console.log('📨 App.tsx - Updating privateChats list with new message');
         const updatedChats = prev.map(chat => 
           chat.id === selectedPrivateChat.id 
             ? { ...chat, messages: [...(chat.messages || []), messageData.socketMessage], lastMessage: messageData.socketMessage }
@@ -3385,7 +3560,7 @@ function App() {
     
     // ส่งข้อความไปยัง backend ผ่าน API
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       
       if (!token) {
         console.error('❌ No token found for sending message');
@@ -3444,7 +3619,7 @@ function App() {
             const updateResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/messages/update-recipient-chat-list`, {
               method: 'POST',
               headers: {
-                'Authorization': `Bearer ${sessionStorage.getItem('token')}`,
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
@@ -3621,6 +3796,45 @@ function App() {
         return;
       }
       
+      // จัดการข้อความชั่วคราว (temp-message)
+      if (messageType === 'temp-message') {
+        console.log('📝 Processing temporary message for private chat');
+        
+        // อัปเดต private chats ถ้าข้อความมาจากแชทที่กำลังดู
+        if (selectedPrivateChat && selectedPrivateChat.id === chatRoomId) {
+          console.log('📝 Adding temporary message to current selected chat');
+          
+          setSelectedPrivateChat((prev: any) => {
+            const existingMessages = prev.messages || [];
+            
+            // เช็ค duplicate โดยดูจาก temp ID
+            const isDuplicate = existingMessages.some((msg: any) => 
+              msg._id === message._id
+            );
+            
+            if (isDuplicate) {
+              console.log('📝 Duplicate temporary message detected, skipping');
+              return prev;
+            }
+            
+            return {
+              ...prev,
+              messages: [...existingMessages, message],
+              lastMessage: message
+            };
+          });
+        }
+        
+        // อัปเดตรายการแชทด้วยข้อความชั่วคราว
+        setPrivateChats(prev => prev.map(chat => 
+          chat.id === chatRoomId 
+            ? { ...chat, lastMessage: message }
+            : chat
+        ));
+        
+        return;
+      }
+      
       // จัดการข้อความปกติ (HTTP API)
       // อัปเดต private chats ถ้าข้อความมาจากแชทที่กำลังดู
       if (selectedPrivateChat && selectedPrivateChat.id === chatRoomId) {
@@ -3726,28 +3940,9 @@ function App() {
         console.log('🔌 Setting up socket listeners on socket:', socket.id);
         socket.on('new-private-chat', handleNewPrivateChat);
         
-        // ฟังข้อความใหม่สำหรับ private chat
-        socket.on('new-message', (message) => {
-          console.log('📨 New private message received:', message);
-          
-          // ตรวจสอบว่าเป็นข้อความสำหรับแชทปัจจุบันหรือไม่
-          if (selectedPrivateChat && message.chatRoom === selectedPrivateChat.id) {
-            console.log('📨 Adding message to current private chat');
-            setSelectedPrivateChat((prev: any) => ({
-              ...prev,
-              messages: [...(prev.messages || []), message]
-            }));
-          }
-          
-          // อัปเดตรายการแชท
-          setPrivateChats((prev: any[]) => 
-            prev.map(chat => 
-              chat.id === message.chatRoom 
-                ? { ...chat, lastMessage: message }
-                : chat
-            )
-          );
-        });
+        // ฟังข้อความใหม่สำหรับ private chat (ใช้ custom event แทน)
+        // ลบ duplicate listener เพื่อหลีกเลี่ยงการขัดแย้ง
+        // PrivateChat component จะจัดการ Socket.IO event และส่ง custom event มา
         
         // ฟัง event สำหรับการรีเฟรชรายการแชทฝั่งผู้รับ
         socket.on('refresh-private-chat-list', (data) => {
@@ -3842,7 +4037,7 @@ function App() {
             const res = await fetch(`${base}/api/profile/${userId}`, {
               headers: {
                 'Content-Type': 'application/json',
-                ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {})
+                ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
               }
             })
             if (res.ok) {
@@ -3910,6 +4105,7 @@ function App() {
     setTimeout(() => {
       fetchLikedUsers();
       fetchPrivateChats();
+      fetchChatRooms();
       if (activeTab === 'discover') {
         window.dispatchEvent(new CustomEvent('refreshUserData'));
       }
@@ -4238,8 +4434,11 @@ function App() {
   
   // Chat handlers
   const handleSelectRoom = (roomId: string) => {
+    console.log('📱 handleSelectRoom called with roomId:', roomId);
+    console.log('🔍 Current state before update:', { selectedRoomId, chatView, chatType });
     setSelectedRoomId(roomId)
     setChatView('chat')
+    console.log('✅ Set selectedRoomId to:', roomId, 'and chatView to chat');
   }
   
   const handleBackToRoomList = () => {
@@ -4849,7 +5048,7 @@ function App() {
                               const res = await fetch(`${base}/api/profile/search?${params.toString()}`, {
                                 headers: { 
                                   'Content-Type': 'application/json', 
-                                  ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {}) 
+                                  ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}) 
                                 }
                               })
                               
@@ -4936,7 +5135,7 @@ function App() {
                               const res = await fetch(`${base}/api/profile/all?limit=50&page=1`, {
                                 headers: { 
                                   'Content-Type': 'application/json', 
-                                  ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {}) 
+                                  ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}) 
                                 }
                               })
                               
@@ -5031,7 +5230,7 @@ function App() {
                     const tier: string = (u?.membership?.tier || 'member') as string
                     
                     // ตรวจสอบว่าเป็นรูปเบลอหรือไม่และยังไม่ได้จ่ายเหรียญ
-                    const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+                    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
                     const profileId = (u as any)?._id?.toString();
                     const mainImageId = (mainImage as any)?._id?.toString() || 'main_image';
                     
@@ -5078,7 +5277,7 @@ function App() {
                         key={u._id || idx}
                         className="modern-card rounded-xl sm:rounded-2xl overflow-hidden shadow-lg sm:shadow-xl hover:shadow-xl sm:hover:shadow-2xl hover:shadow-pink-100/50 transition-all duration-500 hover:-translate-y-1 sm:hover:-translate-y-2 cursor-pointer group"
                         onClick={() => {
-                          const token = sessionStorage.getItem('token');
+                          const token = localStorage.getItem('token');
                           if (!token) {
                             showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                             return
@@ -5186,7 +5385,7 @@ function App() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     
-                                    const token = sessionStorage.getItem('token');
+                                    const token = localStorage.getItem('token');
                                     if (!token) {
                                       showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                                       return
@@ -5236,7 +5435,7 @@ function App() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     
-                                    const token = sessionStorage.getItem('token');
+                                    const token = localStorage.getItem('token');
                                     if (!token) {
                                       showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                                       return
@@ -5284,7 +5483,7 @@ function App() {
                     fetch(`${base}/api/profile/discover?limit=50`, {
                       headers: {
                         'Content-Type': 'application/json',
-                        ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {})
+                        ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
                       }
                     })
                     .then(res => res.json())
@@ -5361,7 +5560,7 @@ function App() {
                       <div key={user._id} className="modern-card rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-pink-100/50 transition-all duration-500 hover:-translate-y-2 cursor-pointer group floating-hearts"                         onClick={() => {
                           console.log('🖱️ Discover card clicked:', displayName);
                           
-                          const token = sessionStorage.getItem('token');
+                          const token = localStorage.getItem('token');
                           if (!token) {
                             showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                             return
@@ -5514,7 +5713,7 @@ function App() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     
-                                    const token = sessionStorage.getItem('token');
+                                    const token = localStorage.getItem('token');
                                     if (!token) {
                                       showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                                       return
@@ -5613,7 +5812,7 @@ function App() {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     
-                                    const token = sessionStorage.getItem('token');
+                                    const token = localStorage.getItem('token');
                                     if (!token) {
                                       showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                                       return
@@ -5649,7 +5848,7 @@ function App() {
                         fetch(`${base}/api/profile/discover?limit=50`, {
                           headers: {
                             'Content-Type': 'application/json',
-                            ...(sessionStorage.getItem('token') ? { 'Authorization': `Bearer ${sessionStorage.getItem('token')}` } : {})
+                            ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
                           }
                         })
                         .then(res => res.json())
@@ -5748,24 +5947,80 @@ function App() {
                   </Button>
                 </div>
               ) : (
-                <div className="h-[calc(100vh-10rem)] sm:h-[700px] flex flex-col keyboard-aware">
+                <div className="h-[calc(100vh-10rem)] sm:h-[500px] flex flex-col keyboard-aware">
                   {/* Mobile-First Tab Navigation for Chat Types */}
                   <div className="bg-gradient-to-r from-pink-500 to-violet-500 text-white p-2 sm:p-4 rounded-t-lg -mt-2">
-                    <div className="flex space-x-1 sm:space-x-2">
+                    <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                      <button
+                        onClick={() => {
+                          setChatType('quick');
+                          setChatView('chat');
+                          setPrivateChatView('list');
+
+                          // อัตโนมัติเลือกห้องหลักสำหรับแชทด่วน
+                          if (chatRooms.length > 0) {
+                            // หาห้องหลักก่อน
+                            const mainRoom = chatRooms.find(room => room.isMainPublicRoom);
+                            if (mainRoom) {
+                              setSelectedRoomId(mainRoom.id);
+                              console.log('✅ เลือกห้องหลัก:', mainRoom.name);
+                            } else {
+                              // ถ้าไม่มีห้องหลัก ให้เลือกห้องแรก
+                              setSelectedRoomId(chatRooms[0].id);
+                              console.log('⚠️ ไม่มีห้องหลัก เลือกห้องแรก:', chatRooms[0].name);
+                            }
+                          } else {
+                            // ถ้ายังไม่มีข้อมูลห้องแชท ให้ดึงข้อมูลก่อน แล้วรอให้มีข้อมูล
+                            console.log('🔄 ไม่มีข้อมูลห้องแชท กำลังดึงข้อมูล...');
+                            fetchChatRooms();
+
+                            // รอให้มีข้อมูลแล้วค่อยเข้าห้องแชท
+                            const checkAndSetRoom = () => {
+                              if (chatRooms.length > 0) {
+                                // หาห้องหลักก่อน
+                                const mainRoom = chatRooms.find(room => room.isMainPublicRoom);
+                                if (mainRoom) {
+                                  setSelectedRoomId(mainRoom.id);
+                                  console.log('✅ เลือกห้องหลัก:', mainRoom.name);
+                                } else {
+                                  // ถ้าไม่มีห้องหลัก ให้เลือกห้องแรก
+                                  setSelectedRoomId(chatRooms[0].id);
+                                  console.log('⚠️ ไม่มีห้องหลัก เลือกห้องแรก:', chatRooms[0].name);
+                                }
+                              } else {
+                                // ถ้ายังไม่มีข้อมูล ให้รออีก 500ms แล้วลองใหม่
+                                setTimeout(checkAndSetRoom, 500);
+                              }
+                            };
+
+                            setTimeout(checkAndSetRoom, 200);
+                          }
+                        }}
+                        className={`px-2 py-2 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
+                          chatType === 'quick'
+                            ? 'bg-white text-pink-600 shadow-sm'
+                            : 'text-white/80 hover:text-white hover:bg-white/20'
+                        }`}
+                      >
+                        <span className="hidden sm:inline">Public</span>
+                        <span className="sm:hidden">Public</span>
+                      </button>
                       <button
                         onClick={() => {
                           setChatType('public');
                           setChatView('list');
                           setPrivateChatView('list');
+                          // Reset selectedRoomId เมื่อกลับไปที่รายการห้องแชท
+                          setSelectedRoomId(null);
                         }}
-                        className={`flex-1 px-3 py-2 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 ${
+                        className={`px-2 py-2 sm:px-3 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
                           chatType === 'public'
                             ? 'bg-white text-pink-600 shadow-sm'
                             : 'text-white/80 hover:text-white hover:bg-white/20'
                         }`}
                       >
-                        <span className="hidden sm:inline">ห้องแชทสาธารณะ</span>
-                        <span className="sm:hidden">สาธารณะ</span>
+                        <span className="hidden sm:inline">Community</span>
+                        <span className="sm:hidden">Community</span>
                       </button>
                       <button
                         onClick={() => {
@@ -5782,15 +6037,37 @@ function App() {
                             : 'text-white/80 hover:text-white hover:bg-white/20'
                         }`}
                       >
-                        <span className="hidden sm:inline">แชทส่วนตัว</span>
-                        <span className="sm:hidden">ส่วนตัว</span>
+                        <span className="hidden sm:inline">Private</span>
+                        <span className="sm:hidden">Private</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Chat Content */}
                   <div className="flex-1 overflow-y-auto bg-white rounded-b-lg">
-                    {chatType === 'public' ? (
+                    {chatType === 'quick' ? (
+                      selectedRoomId && selectedRoomId !== 'null' ? (
+                        <RealTimeChat
+                          roomId={selectedRoomId}
+                          currentUser={user}
+                          onBack={() => {
+                            setChatType('public');
+                            setChatView('list');
+                          }}
+                          showWebappNotification={showWebappNotification}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-pink-500 mx-auto mb-3"></div>
+                            <p className="text-sm">กำลังโหลดห้องแชท...</p>
+                            {chatRooms.length === 0 && (
+                              <p className="text-xs text-gray-400 mt-2">ถ้ายังไม่สามารถโหลดได้ อาจจะยังไม่มีห้องแชทในระบบ</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    ) : chatType === 'public' ? (
                       chatView === 'list' ? (
                         <ChatRoomList
                           currentUser={user}
@@ -6085,7 +6362,7 @@ function App() {
                 const isBlurred = typeof currentImage === 'object' && (currentImage as any)?.isBlurred;
                 
                 // ตรวจสอบว่าผู้ใช้จ่ายเหรียญเพื่อดูรูปนี้แล้วหรือไม่
-                const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+                const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
                 const profileId = selectedProfile?.id?.toString();
                 const imageId = (currentImage as any)?._id?.toString() || `image_${activeImageIndex}`;
                 
@@ -6161,7 +6438,7 @@ function App() {
                               e.preventDefault();
                               e.stopPropagation();
                               
-                              const token = sessionStorage.getItem('token');
+                              const token = localStorage.getItem('token');
                               if (!token) {
                                 showWebappNotification('กรุณาเข้าสู่ระบบก่อน');
                                 return;
@@ -6406,7 +6683,7 @@ function App() {
                         onClick={async () => {
                           console.log('👤 View profile details:', selectedProfile.name);
                           
-                          const token = sessionStorage.getItem('token');
+                          const token = localStorage.getItem('token');
                           if (!token) {
                             showWebappNotification('กรุณาเข้าสู่ระบบก่อน')
                             return

@@ -8,9 +8,9 @@ class ProfileAPI {
 
   // Helper method to get auth headers
   getAuthHeaders() {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     if (!token) {
-      console.error('No token found in sessionStorage');
+      console.error('No token found in localStorage');
       throw new Error('Authentication token not found');
     }
     return {
@@ -22,7 +22,7 @@ class ProfileAPI {
   // ดึงข้อมูลโปรไฟล์ผู้ใช้ (ใช้ enhanced API)
   async getUserProfile(userId) {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const headers = {
         'Content-Type': 'application/json'
       };
@@ -91,7 +91,7 @@ class ProfileAPI {
       console.log('ProfileAPI: Sending data to backend:', profileData);
       
       // ตรวจสอบ token ก่อน
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('Authentication token not found. Please login again.');
       }
@@ -114,8 +114,8 @@ class ProfileAPI {
         // จัดการ error ตาม status code
         if (result.status === 401) {
           // Unauthorized -> ล้าง token และให้ผู้ใช้เข้าสู่ระบบใหม่
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
           throw new Error('Session expired. Please login again.');
         }
         
@@ -151,7 +151,7 @@ class ProfileAPI {
       const formData = new FormData();
       formData.append('profileImage', imageFile);
 
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       console.log('📤 Token exists:', !!token);
 
       const response = await fetch(`${this.baseURL}/${userId}/upload-image`, {
@@ -182,7 +182,7 @@ class ProfileAPI {
   // ตั้งรูปโปรไฟล์หลัก
   async setMainProfileImage(userId, imageIndex) {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const response = await fetch(`${this.baseURL}/${userId}/main-image/${imageIndex}`, {
         method: 'PUT',
         headers: {
@@ -206,7 +206,7 @@ class ProfileAPI {
       try {
         console.log('🔒 ProfileAPI: Blurring profile images:', { userId, imageIndices });
         
-        const token = sessionStorage.getItem('token');
+        const token = localStorage.getItem('token');
         console.log('🔒 ProfileAPI: Token exists:', !!token);
         console.log('🔒 ProfileAPI: Token value:', token ? token.substring(0, 20) + '...' : 'null');
         
@@ -251,7 +251,7 @@ class ProfileAPI {
     try {
       console.log('🔓 ProfileAPI: Unblurring profile images:', { userId, imageIndices });
       
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       console.log('🔓 ProfileAPI: Token exists:', !!token);
       
       const url = `${this.baseURL}/${userId}/unblur-images`;
@@ -292,7 +292,7 @@ class ProfileAPI {
     try {
       console.log('🗑️ ProfileAPI: Deleting image', { userId, imageIndex });
       
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('Authentication token not found');
       }

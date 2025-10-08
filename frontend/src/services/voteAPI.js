@@ -7,7 +7,7 @@ class VoteAPI {
 
   // Helper method to get auth headers
   getAuthHeaders() {
-    const token = sessionStorage.getItem('token');
+    const token = localStorage.getItem('token');
     return {
       'Content-Type': 'application/json',
       ...(token && { 'Authorization': `Bearer ${token}` })

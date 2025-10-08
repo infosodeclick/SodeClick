@@ -81,7 +81,7 @@ const AdminCreateChatRoom = () => {
     setIsLoading(true);
 
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
       const res = await fetch(`${apiUrl}/api/admin/chatrooms/create`, {

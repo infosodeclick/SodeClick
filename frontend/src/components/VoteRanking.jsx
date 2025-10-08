@@ -19,7 +19,7 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
   const { error: showError } = useToast();
   
   // Check if user is logged in
-  const currentUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isLoggedIn = !!currentUser.id;
 
   const fetchRankings = async (page = 1, sort = sortBy, search = searchQuery, append = false) => {

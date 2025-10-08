@@ -91,7 +91,7 @@ const SuperAdminPanel = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const params = new URLSearchParams({
         page: 1,
         limit: 50,
@@ -119,7 +119,7 @@ const SuperAdminPanel = () => {
 
   const handleVote = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/superadmin/vote`, {
         method: 'POST',
         headers: {
@@ -151,7 +151,7 @@ const SuperAdminPanel = () => {
 
   const handleAddCoins = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/superadmin/add-coins`, {
         method: 'POST',
         headers: {
@@ -183,7 +183,7 @@ const SuperAdminPanel = () => {
 
   const handleAddVotePoints = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/superadmin/add-vote-points`, {
         method: 'POST',
         headers: {
@@ -215,7 +215,7 @@ const SuperAdminPanel = () => {
 
   const handleViewUserStats = async (user) => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/superadmin/user-stats/${user._id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -240,7 +240,7 @@ const SuperAdminPanel = () => {
 
   const handleViewHistory = async () => {
     try {
-      const token = sessionStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/superadmin/admin-actions`, {
         headers: {
           'Authorization': `Bearer ${token}`,

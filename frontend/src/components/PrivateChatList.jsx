@@ -293,24 +293,36 @@ const PrivateChatList = ({
         </div>
 
         {/* Filters */}
-        <div className="flex space-x-1 sm:space-x-2">
-          {[
-            { key: 'all', label: 'ทั้งหมด' },
-            { key: 'online', label: 'ออนไลน์' },
-            { key: 'recent', label: 'ล่าสุด' }
-          ].map((filter) => (
-            <button
-              key={filter.key}
-              onClick={() => setFilterType(filter.key)}
-              className={`px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs transition-all ${
-                filterType === filter.key
-                  ? 'bg-white text-pink-600 font-medium'
-                  : 'text-white/80 hover:text-white hover:bg-white/20'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between">
+          <div className="flex space-x-1 sm:space-x-2">
+            {[
+              { key: 'all', label: 'ทั้งหมด' },
+              { key: 'online', label: 'ออนไลน์' },
+              { key: 'recent', label: 'ล่าสุด' }
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => setFilterType(filter.key)}
+                className={`px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-xs transition-all ${
+                  filterType === filter.key
+                    ? 'bg-white text-pink-600 font-medium'
+                    : 'text-white/80 hover:text-white hover:bg-white/20'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* ปุ่มสร้างห้องแชทส่วนตัว */}
+          <button
+            onClick={onCreateNewChat}
+            className="flex items-center space-x-1 px-2 py-1 sm:px-3 sm:py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs transition-all border border-white/30"
+          >
+            <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">สร้างห้องแชทส่วนตัว</span>
+            <span className="sm:hidden">สร้าง</span>
+          </button>
         </div>
       </div>
 
