@@ -1259,6 +1259,9 @@ const io = socketIo(server, {
   randomizationFactor: 0.5 // เพิ่ม randomization สำหรับการกระจายโหลด
 });
 
+// Export io instance to global for use in other modules
+global.io = io;
+
 // Socket.IO error handling
 io.on('connection_error', (error) => {
   console.error('❌ Socket.IO connection error:', error);
@@ -1679,241 +1682,26 @@ io.on('connection', (socket) => {
 
       // สำหรับ private chat ที่ไม่ใช่ ChatRoom
       if (chatRoomId.startsWith('private_')) {
-        console.log('🔒 Processing private chat message');
-        // สร้างข้อความสำหรับ private chat
-        const messageData = {
-          content: messageType === 'image' ? '' : content,
-          sender: senderId,
-          chatRoom: chatRoomId, // ใช้ private chat ID
-          messageType,
-          replyTo: replyToId || null
-        };
-
-        console.log('📝 Creating message with data:', messageData);
-
-        // เพิ่มข้อมูลไฟล์ถ้ามี
-        if ((messageType === 'file' || messageType === 'image') && (fileUrl || data.imageUrl)) {
-          const imageUrl = fileUrl || data.imageUrl;
-          messageData.fileUrl = imageUrl;
-          messageData.imageUrl = imageUrl; // เพิ่ม imageUrl ด้วย
-          messageData.fileName = fileName;
-          messageData.fileSize = fileSize;
-          messageData.fileType = fileType;
-          
-          console.log('🔍 [server.js] Adding file data to private message:', {
-            messageType,
-            fileUrl: imageUrl,
-            imageUrl: imageUrl,
-            fileName,
-            fileSize,
-            fileType
-          });
+        console.log('🔒 Private chat message received via socket - SKIPPING database save');
+        console.log('📝 Private chat messages should be handled via API only (routes/messages.js)');
+        
+        // ⚡ IMPORTANT: Private chat messages are handled by API routes only
+        // ไม่บันทึกข้อความใน database ที่นี่ เพราะจะทำให้ซ้ำกับ API
+        
+        // ลบ tempId ออกจาก Set
+        if (data.tempId) {
+          global.processingMessages.delete(data.tempId);
         }
-
-        const message = new Message(messageData);
-        await message.save();
-        console.log('💾 Message saved to database:', message._id);
         
-        // ลบ tempId ออกจาก Set หลังจากบันทึกข้อความสำเร็จ
-        global.processingMessages.delete(data.tempId);
-        
-        // ส่งการยืนยันกลับไปยังผู้ส่งว่าข้อความถูกบันทึกแล้ว
+        // ส่งการยืนยันกลับไปยังผู้ส่ง (แต่ไม่ได้บันทึกใน database)
         socket.emit('message-saved', {
-          messageId: message._id,
-          tempId: data.tempId, // ถ้ามี temp ID จาก frontend
+          messageId: data.tempId || 'api-handled',
+          tempId: data.tempId,
           chatRoomId: chatRoomId,
-          status: 'saved'
+          status: 'api-handled'
         });
 
-        // Populate ข้อมูล
-        await message.populate([
-          { path: 'sender', select: 'username displayName membershipTier profileImages' },
-          { path: 'replyTo', select: 'content sender', populate: { path: 'sender', select: 'username displayName' } }
-        ]);
-
-        // 🚀 ส่งข้อความไปยังทุกคนในห้องทันที (ไม่รอ query อื่นๆ)
-        console.log('📤 [server.js] Broadcasting private message to room:', chatRoomId);
-        const roomSize = io.sockets.adapter.rooms.get(chatRoomId)?.size || 0;
-        console.log('📤 [server.js] Connected sockets in room:', roomSize);
-        console.log('📤 [server.js] Message content:', message.content?.substring(0, 50) || message.messageType);
-        console.log('📤 [server.js] Message ID:', message._id);
-        console.log('📤 [server.js] Sender:', message.sender.displayName || message.sender.username);
-        
-        // Broadcast ทันที
-        console.log('🔍 [server.js] Message data before broadcast:', {
-          _id: message._id,
-          messageType: message.messageType,
-          fileUrl: message.fileUrl,
-          imageUrl: message.imageUrl,
-          attachments: message.attachments,
-          allKeys: Object.keys(message)
-        });
-        
-        const broadcastPayload = {
-          _id: message._id,
-          content: message.content,
-          sender: {
-            _id: message.sender._id,
-            displayName: message.sender.displayName,
-            username: message.sender.username,
-            profileImages: message.sender.profileImages,
-            membershipTier: message.sender.membershipTier
-          },
-          chatRoom: message.chatRoom,
-          messageType: message.messageType,
-          fileUrl: message.fileUrl,
-          imageUrl: message.imageUrl || message.fileUrl, // ใช้ imageUrl ก่อน ถ้าไม่มีใช้ fileUrl
-          attachments: message.attachments, // เพิ่ม attachments
-          replyTo: message.replyTo,
-          createdAt: message.createdAt,
-          updatedAt: message.updatedAt,
-          reactions: message.reactions || [] // เพิ่ม reactions
-        };
-        
-        io.to(chatRoomId).emit('new-message', broadcastPayload);
-        console.log('✅ [server.js] Private message broadcasted immediately to', roomSize, 'client(s)');
-        console.log('✅ [server.js] Broadcast payload:', {
-          _id: broadcastPayload._id,
-          content: broadcastPayload.content,
-          chatRoom: broadcastPayload.chatRoom,
-          messageType: broadcastPayload.messageType
-        });
-        
-        // ทำ unread count และ notification แบบ async (ไม่บล็อก broadcast)
-        // ใช้ setTimeout แทน setImmediate เพื่อให้ broadcast เสร็จก่อน
-        setTimeout(async () => {
-          try {
-            // ตรวจสอบว่ามีข้อความใน private chat นี้อยู่แล้วหรือไม่
-            const existingMessages = await Message.find({
-              chatRoom: chatRoomId,
-              _id: { $ne: message._id }
-            }).limit(1);
-            
-            const isNewChat = existingMessages.length === 0;
-            console.log('🆕 Is new private chat?', isNewChat);
-            
-            // ส่งข้อมูล unread count ให้ผู้ใช้ที่เกี่ยวข้อง
-            const userParts = chatRoomId.split('_');
-            if (userParts.length >= 3) {
-              const userId1 = userParts[1];
-              const userId2 = userParts[2];
-              
-              // ส่งข้อมูล unread count ให้ผู้ใช้ทั้งสองคน
-              const [user1UnreadCount, user2UnreadCount] = await Promise.all([
-                Message.countDocuments({
-                  chatRoom: chatRoomId,
-                  sender: { $ne: userId1 },
-                  readBy: { $ne: userId1 },
-                  isDeleted: false
-                }),
-                Message.countDocuments({
-                  chatRoom: chatRoomId,
-                  sender: { $ne: userId2 },
-                  readBy: { $ne: userId2 },
-                  isDeleted: false
-                })
-              ]);
-              
-              // ส่งข้อมูล unread count ให้ผู้ใช้แต่ละคน
-              io.to(`user_${userId1}`).emit('unread-count-update', {
-                chatRoomId,
-                unreadCount: user1UnreadCount
-              });
-              
-              io.to(`user_${userId2}`).emit('unread-count-update', {
-                chatRoomId,
-                unreadCount: user2UnreadCount
-              });
-
-              // ส่งการแจ้งเตือนข้อความใหม่ให้ผู้ใช้ที่ไม่ได้ส่งข้อความ (เฉพาะครั้งแรกของแต่ละข้อความ)
-              const receiverId = senderId === userId1 ? userId2 : userId1;
-              
-              // เช็คว่าข้อความนี้ถูกแจ้งเตือนไปแล้วหรือยัง (ใช้ Set เพื่อเก็บ messageId ที่แจ้งเตือนแล้ว)
-              if (!global.notifiedMessages) {
-                global.notifiedMessages = new Set();
-              }
-              
-              const notificationKey = `${message._id}_${receiverId}`;
-              if (global.notifiedMessages.has(notificationKey)) {
-                console.log('⏭️ Notification already sent for this message, skipping');
-                return;
-              }
-              
-              const sender = await User.findById(senderId).select('username displayName firstName lastName profileImages mainProfileImageIndex membershipTier');
-          
-          if (sender) {
-            // บันทึกว่าแจ้งเตือนข้อความนี้แล้ว
-            global.notifiedMessages.add(notificationKey);
-            
-            // ลบ key เก่าๆ ทุก 1 ชั่วโมง (ป้องกัน memory leak)
-            setTimeout(() => {
-              global.notifiedMessages.delete(notificationKey);
-            }, 60 * 60 * 1000); // 1 ชั่วโมง
-            
-            console.log('🔔 Sending notification for message:', message._id, 'to user:', receiverId);
-            
-            // ส่งแจ้งเตือนไปยัง receiver
-            io.to(`user_${receiverId}`).emit('newNotification', {
-              _id: `msg_${message._id}`,
-              type: 'private_message',
-              title: 'ข้อความใหม่',
-              message: `${sender.displayName || sender.firstName || sender.username || 'Unknown User'} ส่งข้อความมา`,
-              recipientId: receiverId, // เพิ่ม recipientId เพื่อให้ frontend ตรวจสอบได้
-              data: {
-                senderId: sender._id,
-                senderName: sender.displayName || sender.firstName || sender.username || 'Unknown User',
-                senderProfileImage: sender.profileImages && sender.profileImages.length > 0 ? 
-                  (sender.mainProfileImageIndex !== undefined ? 
-                    sender.profileImages[sender.mainProfileImageIndex] : 
-                    sender.profileImages[0]) : null,
-                messageId: message._id,
-                chatRoom: chatRoomId,
-                messageContent: message.content || message.text || ''
-              },
-              createdAt: new Date(),
-              isRead: false
-            });
-            
-            console.log('📨 Sent notification to user_' + receiverId + ' for new private message');
-            
-            // ถ้าเป็นแชทส่วนตัวใหม่ ให้ส่งการแจ้งเตือนพิเศษ
-            if (isNewChat) {
-              console.log('🆕 Sending new private chat notification to user_' + receiverId);
-              console.log('🆕 Sender details:', {
-                _id: sender._id,
-                username: sender.username,
-                displayName: sender.displayName || sender.firstName || sender.username
-              });
-              
-              // ตรวจสอบว่า receiver มี socket ที่เชื่อมต่ออยู่หรือไม่
-              const receiverSockets = io.sockets.adapter.rooms.get(`user_${receiverId}`);
-              console.log('🆕 Receiver sockets in user_' + receiverId + ':', receiverSockets?.size || 0);
-              
-              // ส่งการแจ้งเตือนแชทส่วนตัวใหม่
-              io.to(`user_${receiverId}`).emit('new-private-chat', {
-                chatRoomId,
-                sender: {
-                  _id: sender._id,
-                  username: sender.username,
-                  displayName: sender.displayName || sender.firstName || sender.username,
-                  membershipTier: sender.membershipTier,
-                  profileImages: sender.profileImages,
-                  mainProfileImageIndex: sender.mainProfileImageIndex
-                },
-                message: message,
-                isNew: true
-              });
-              
-              console.log('✅ New private chat notification sent to user_' + receiverId);
-            }
-          }
-        }
-          } catch (err) {
-            console.error('❌ Error in async private chat notification:', err);
-          }
-        }, 10); // รอ 10ms หลังจาก broadcast เสร็จ
-        
-        return;
+        return; // ⚡ IMPORTANT: จบการทำงานที่นี่ ไม่ต้องทำอะไรต่อ
       }
 
       // สำหรับ ChatRoom ปกติ

@@ -489,9 +489,20 @@ const PrivateChat = ({
         console.log('📨 PrivateChat - Current chat ID:', selectedChat.id);
         console.log('📨 PrivateChat - Message chat room:', message.chatRoom);
         console.log('📨 PrivateChat - Message match:', message.chatRoom === selectedChat.id);
+        console.log('📨 PrivateChat - Message sender:', message.sender?._id, 'Current user:', currentUser._id);
         
         // ตรวจสอบว่าเป็นข้อความสำหรับแชทปัจจุบันหรือไม่
         if (message.chatRoom === selectedChat.id) {
+          // ⚡ IMPORTANT: ถ้าข้อความนี้เป็นของตัวเอง ให้ skip ไม่ต้องส่ง custom event
+          // เพราะเพิ่มไปแล้วตอนส่งข้อความผ่าน API response
+          const messageSenderId = message.sender?._id || message.senderId;
+          const currentUserId = currentUser._id || currentUser.id;
+          
+          if (messageSenderId === currentUserId) {
+            console.log('⏭️ PrivateChat - Skipping own message from socket (already added via API response)');
+            return;
+          }
+          
           console.log('✅ Message for current private chat - updating UI immediately');
           
           // อัปเดต UI ทันทีผ่าน custom event (ไม่ใช้ setMessages)

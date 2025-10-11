@@ -122,7 +122,7 @@ const PrivateChatList = ({
   const handleSelectChat = async (chat) => {
     // รีเซ็ต unread count สำหรับแชทนี้
     try {
-      const result = await unreadAPI.markAsRead(chat.roomId || chat.id, currentUser._id);
+      const result = await unreadAPI.markAsRead(chat.roomId || chat.id);
       
       // อัปเดต state ทันที (ไม่ว่าจะสำเร็จหรือไม่)
       setUnreadCounts(prev => ({

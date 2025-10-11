@@ -374,29 +374,65 @@ router.post('/', auth, upload.array('attachments', 5), async (req, res) => {
       { path: 'replyTo', select: 'content sender', populate: { path: 'sender', select: 'username displayName' } }
     ]);
 
-    // 🚀 Broadcast ข้อความผ่าน Socket.IO ไปหาทุกคนในห้อง (เฉพาะ private chat)
-    // สำหรับ ChatRoom ปกติ จะ broadcast ผ่าน socket event ใน server.js แล้ว
-    try {
-      const io = getSocketInstance();
-      if (io && chatRoomId.startsWith('private_')) {
-        console.log('📤 [messages.js] Broadcasting private message to room:', chatRoomId);
-        console.log('📤 [messages.js] Message ID:', message._id);
+    // 🚀 Broadcast ข้อความผ่าน Socket.IO ไปหาทุกคนในห้อง
+    // สำหรับ private chat ต้อง broadcast เองเพราะ server.js ไม่จัดการ API saves
+    if (chatRoomId.startsWith('private_')) {
+      console.log('📤 [messages.js] Broadcasting private chat message via Socket.IO');
+      
+      // ใช้ global.io ที่ถูก export จาก server.js
+      if (global.io) {
+        const broadcastPayload = {
+          _id: message._id,
+          content: message.content,
+          sender: {
+            _id: message.sender._id,
+            displayName: message.sender.displayName,
+            username: message.sender.username,
+            profileImages: message.sender.profileImages,
+            membershipTier: message.sender.membershipTier,
+            membership: message.sender.membership
+          },
+          chatRoom: message.chatRoom,
+          messageType: message.messageType,
+          fileUrl: message.fileUrl,
+          imageUrl: message.imageUrl || message.fileUrl,
+          attachments: message.attachments,
+          replyTo: message.replyTo,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          reactions: message.reactions || []
+        };
         
-        // ส่งข้อความไปยังทุกคนในห้อง (เฉพาะ private chat)
-        io.to(chatRoomId).emit('new-message', message);
+        // Broadcast ไปยังห้องแชท
+        global.io.to(chatRoomId).emit('new-message', broadcastPayload);
+        console.log('✅ [messages.js] Private chat message broadcasted to room:', chatRoomId);
         
-        // Log จำนวนคนที่อยู่ในห้อง
-        const roomSize = io.sockets.adapter.rooms.get(chatRoomId)?.size || 0;
-        console.log('✅ [messages.js] Private message broadcasted to', roomSize, 'client(s) in room', chatRoomId);
-      } else if (io && !chatRoomId.startsWith('private_')) {
-        console.log('📤 [messages.js] Skipping broadcast for ChatRoom (handled by socket event)');
+        // ส่ง notification ไปยังผู้ใช้ที่เกี่ยวข้อง
+        const [userId1, userId2] = chatRoomId.replace('private_', '').split('_');
+        const otherUserId = senderId === userId1 ? userId2 : userId1;
+        
+        global.io.to(`user_${otherUserId}`).emit('private-chat-notification', {
+          type: 'private_chat',
+          title: 'ข้อความใหม่',
+          message: `${message.sender.displayName || message.sender.username} ส่งข้อความมา`,
+          data: {
+            chatId: chatRoomId,
+            messageId: message._id,
+            senderId: senderId,
+            senderName: message.sender.displayName || message.sender.username
+          },
+          createdAt: new Date().toISOString()
+        });
+        
+        console.log('✅ [messages.js] Notification sent to user:', otherUserId);
       } else {
-        console.warn('⚠️ [messages.js] Socket.IO instance not available');
+        console.warn('⚠️ [messages.js] global.io not available for broadcasting');
       }
-    } catch (socketError) {
-      console.error('❌ [messages.js] Error broadcasting message:', socketError);
-      // ไม่ให้ socket error รบกวนการตอบกลับ API
+    } else {
+      console.log('📤 [messages.js] Regular chat message, broadcasting handled by server.js');
     }
+    
+    console.log('📤 [messages.js] Message ID:', message._id);
 
     res.status(201).json({
       success: true,
@@ -1008,6 +1044,39 @@ router.post('/create-private-chat', async (req, res) => {
 
     const isNew = existingMessages.length === 0;
 
+    // บันทึก chat ID ลงใน privateChats array ของทั้งสองผู้ใช้
+    // ตรวจสอบว่ามี chat นี้อยู่แล้วหรือไม่
+    const user1HasChat = user1.privateChats && user1.privateChats.some(chat => chat.chatId === privateChatId);
+    const user2HasChat = user2.privateChats && user2.privateChats.some(chat => chat.chatId === privateChatId);
+
+    if (!user1HasChat) {
+      await User.findByIdAndUpdate(userId1, {
+        $push: {
+          privateChats: {
+            chatId: privateChatId,
+            otherUserId: userId2,
+            createdAt: new Date(),
+            isDeleted: false
+          }
+        }
+      });
+      console.log('✅ Added chat to user1 privateChats:', userId1);
+    }
+
+    if (!user2HasChat) {
+      await User.findByIdAndUpdate(userId2, {
+        $push: {
+          privateChats: {
+            chatId: privateChatId,
+            otherUserId: userId1,
+            createdAt: new Date(),
+            isDeleted: false
+          }
+        }
+      });
+      console.log('✅ Added chat to user2 privateChats:', userId2);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Private chat created successfully',
@@ -1235,12 +1304,15 @@ router.post('/mark-as-read', auth, async (req, res) => {
     const { chatRoomId, userId } = req.body;
     const currentUserId = req.user._id;
 
-    if (!chatRoomId || !userId) {
+    if (!chatRoomId) {
       return res.status(400).json({
         success: false,
-        message: 'Chat room ID and user ID are required'
+        message: 'Chat room ID is required'
       });
     }
+
+    // ใช้ currentUserId แทน userId จาก request body เพื่อความปลอดภัย
+    const targetUserId = userId || currentUserId;
 
     // ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงแชทนี้
     let hasAccess = false;
@@ -1251,14 +1323,14 @@ router.post('/mark-as-read', auth, async (req, res) => {
       if (userParts.length >= 3) {
         const userId1 = userParts[1];
         const userId2 = userParts[2];
-        hasAccess = currentUserId === userId1 || currentUserId === userId2;
+        hasAccess = currentUserId.toString() === userId1 || currentUserId.toString() === userId2;
       }
     } else {
       // สำหรับ ChatRoom ปกติ
       const chatRoom = await ChatRoom.findById(chatRoomId);
       if (chatRoom) {
         hasAccess = chatRoom.members.some(member => 
-          member.user.toString() === currentUserId
+          member.user.toString() === currentUserId.toString()
         );
       }
     }

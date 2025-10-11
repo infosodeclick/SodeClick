@@ -59,14 +59,12 @@ export const unreadAPI = {
   /**
    * ทำเครื่องหมายข้อความว่าอ่านแล้ว
    * @param {string} chatRoomId - ID ของห้องแชท
-   * @param {string} userId - ID ของผู้ใช้
    * @returns {Promise<Object>} ผลลัพธ์การทำเครื่องหมาย
    */
-  async markAsRead(chatRoomId, userId) {
+  async markAsRead(chatRoomId) {
     try {
       const response = await enhancedAPI.post('/api/messages/mark-as-read', {
-        chatRoomId,
-        userId
+        chatRoomId
       });
       
       if (response.success) {

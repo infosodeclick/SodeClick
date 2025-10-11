@@ -7,14 +7,14 @@
   "type": "commonjs",
   "scripts": {
     "start": "shx cp env.production .env && node server.js",
-    "dev": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && nodemon server.js",
-    "start:dev": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && node server.js",
-    "seed": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && node scripts/seedData.js",
-    "create-admin": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && node scripts/createAdmin.js",
-    "create-chat-rooms": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && node scripts/createDefaultChatRooms.js",
+    "dev": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && nodemon server.js",
+    "start:dev": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node server.js",
+    "seed": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/seedData.js",
+    "create-admin": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/createAdmin.js",
+    "create-chat-rooms": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/createDefaultChatRooms.js",
     "assign:memberships": "node ./scripts/assignRandomMemberships.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:windows": "shx cp env.development .env && (shx cp env.local .env.local 2>nul || echo.) && nodemon server.js"
+    "dev:windows": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && nodemon server.js"
   },
   "keywords": [
     "express",

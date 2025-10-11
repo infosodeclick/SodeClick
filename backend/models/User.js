@@ -113,6 +113,27 @@ const userSchema = new mongoose.Schema({
     ref: 'User'
   }],
   
+  // Private chats - รายการแชทส่วนตัวของผู้ใช้
+  privateChats: [{
+    chatId: { 
+      type: String, 
+      required: true 
+    },
+    otherUserId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'User',
+      required: true 
+    },
+    createdAt: { 
+      type: Date, 
+      default: Date.now 
+    },
+    isDeleted: { 
+      type: Boolean, 
+      default: false 
+    }
+  }],
+  
   // Extended Profile Information
   occupation: {
     job: { type: String, trim: true, maxlength: 100 },

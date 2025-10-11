@@ -1607,8 +1607,14 @@ function App() {
           // ตั้งค่า isRead เป็น false ถ้าไม่มีข้อมูล
           isRead: message.isRead !== null ? message.isRead : false
         }));
-        console.log('🔄 Processed messages with metadata:', processedMessages.length);
-        return processedMessages;
+        
+        // ลบข้อความซ้ำจาก API response
+        const uniqueMessages = processedMessages.filter((msg: any, index: number, arr: any[]) => {
+          return arr.findIndex(m => m._id === msg._id) === index;
+        });
+        
+        console.log('🔄 Processed messages with metadata:', processedMessages.length, '-> unique:', uniqueMessages.length);
+        return uniqueMessages;
       } else {
         console.error('❌ Invalid response format:', result);
         return [];
@@ -3389,44 +3395,29 @@ function App() {
       if (messages.length > 0) {
         console.log('✅ Loaded chat history:', messages.length);
         
-        // อัปเดต selectedPrivateChat (ลบข้อความซ้ำก่อน)
+        // ลบข้อความซ้ำจาก API response
         const uniqueMessages = messages.filter((msg: any, index: number, arr: any[]) => {
           return arr.findIndex(m => m._id === msg._id) === index;
         });
         
-        console.log('🧹 Removed duplicate messages in selectedPrivateChat:', messages.length, '->', uniqueMessages.length);
+        console.log('🧹 Removed duplicate messages from API:', messages.length, '->', uniqueMessages.length);
         
-        // ตรวจสอบว่าข้อความที่โหลดมาเหมือนกับที่มีอยู่แล้วหรือไม่
+        // อัปเดต selectedPrivateChat โดยแทนที่ข้อความทั้งหมด (ไม่ merge)
         setSelectedPrivateChat((prev: any) => {
-          if (prev && prev.messages && prev.messages.length > 0) {
-            // ถ้ามีข้อความอยู่แล้ว ให้ใช้ข้อความที่มีอยู่แทน (ไม่ merge)
-            console.log('📭 Messages already exist, keeping existing messages to prevent duplicates');
-            return prev;
-          } else {
-            // ถ้าไม่มีข้อความอยู่ ให้ใช้ข้อความที่โหลดมา
-            console.log('📨 No existing messages, using loaded messages:', uniqueMessages.length);
-            return {
-              ...prev,
-              ...chatData,
-              messages: uniqueMessages
-            };
-          }
+          console.log('📨 Updating selectedPrivateChat with API messages:', uniqueMessages.length);
+          return {
+            ...prev,
+            ...chatData,
+            messages: uniqueMessages
+          };
         });
         
-        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา (ลบข้อความซ้ำก่อน)
+        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
         setPrivateChats(prev => {
           const updatedChats = prev.map(c => {
             if (c.id === chatId) {
-              // ตรวจสอบว่าข้อความที่โหลดมาเหมือนกับที่มีอยู่แล้วหรือไม่
-              if (c.messages && c.messages.length > 0) {
-                // ถ้ามีข้อความอยู่แล้ว ให้ใช้ข้อความที่มีอยู่แทน (ไม่ merge)
-                console.log('📭 Messages already exist in chat list, keeping existing messages to prevent duplicates');
-                return c;
-              } else {
-                // ถ้าไม่มีข้อความอยู่ ให้ใช้ข้อความที่โหลดมา
-                console.log('🧹 Using unique messages for chat list:', uniqueMessages.length);
-                return { ...c, messages: uniqueMessages };
-              }
+              console.log('📨 Updating chat list with API messages:', uniqueMessages.length);
+              return { ...c, messages: uniqueMessages };
             }
             return c;
           });
@@ -3448,15 +3439,21 @@ function App() {
   const handleSelectPrivateChat = async (chat: any) => {
     console.log('📱 Selecting private chat:', chat);
     
+    // ตั้งค่าแชทที่เลือกก่อน
+    setSelectedPrivateChat(chat);
+    setPrivateChatView('chat');
+    
     // ตรวจสอบว่ามีข้อความอยู่แล้วหรือไม่
     if (chat.messages && chat.messages.length > 0) {
-      console.log('📭 Chat already has messages, using existing messages to prevent duplicates');
-      setSelectedPrivateChat(chat);
-      setPrivateChatView('chat');
+      console.log('📭 Chat already has messages, using existing messages');
+      
+      // แต่ยังต้องโหลดจาก API เพื่อให้แน่ใจว่าข้อความล่าสุด
+      if (chat.id) {
+        console.log('📨 Refreshing messages from API to ensure latest data');
+        await loadChatHistoryAndUpdateState(chat.id, chat);
+      }
     } else {
       console.log('📨 Chat has no messages, loading from API');
-      setSelectedPrivateChat(chat);
-      setPrivateChatView('chat');
       
       // ดึงข้อความจาก API เมื่อเลือกแชท
       if (chat.id) {
@@ -3756,14 +3753,17 @@ function App() {
           }
         };
 
-        // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
+        console.log('✅ Updating message from API response:', updatedMessage._id);
+
+        // แทนที่ข้อความชั่วคราวด้วยข้อความจริง (ตรวจสอบซ้ำก่อน)
         setSelectedPrivateChat((prev: any) => {
           const existingMessage = prev.messages.find((msg: any) => msg._id === updatedMessage._id);
           if (existingMessage) {
-            console.log('📨 Message already exists, skipping duplicate');
+            console.log('📨 Message already exists in selectedPrivateChat, skipping duplicate');
             return prev;
           }
           
+          console.log('📨 Replacing temporary message with real message');
           return {
             ...prev,
             messages: prev.messages.map((msg: any) => 
@@ -3773,7 +3773,7 @@ function App() {
           };
         });
 
-        // อัปเดตรายการแชทด้วยข้อความจริง
+        // อัปเดตรายการแชทด้วยข้อความจริง (ตรวจสอบซ้ำก่อน)
         setPrivateChats(prev => {
           const updatedChats = prev.map(chat => {
             if (chat.id === selectedPrivateChat.id) {
@@ -3783,6 +3783,7 @@ function App() {
                 return chat;
               }
               
+              console.log('📨 Updating chat list with real message');
               return {
                 ...chat,
                 messages: chat.messages.map((msg: any) => 
@@ -4008,21 +4009,9 @@ function App() {
       
       // อัปเดตข้อความด้วย ID จาก backend และข้อมูล sender ที่ถูกต้อง
       if (result.success && result.data) {
-        // ส่ง notification ไปยังผู้รับข้อความ (ถ้ามี Socket.IO)
-        if (isSocketReady()) {
-          const otherUser = selectedPrivateChat.otherUser || selectedPrivateChat.participants?.find(p => p._id !== user._id);
-          if (otherUser) {
-            window.socketManager?.socket.emit('private-message-sent', {
-              chatId: selectedPrivateChat.id,
-              message: result.data,
-              recipientId: otherUser._id,
-              senderId: user._id
-            });
-            console.log('✅ Private message socket notification sent');
-          }
-        } else {
-          console.warn('⚠️ No socket available for real-time messaging');
-        }
+        // ⚡ IMPORTANT: ไม่ส่ง Socket.IO event สำหรับ Private Chat
+        // เพราะ Backend จะ broadcast ข้อความผ่าน Socket.IO เอง
+        console.log('✅ Private message sent via API - backend will handle Socket.IO broadcast');
         
         // อัปเดตรายการแชทฝั่งผู้รับ
         const otherUser = selectedPrivateChat.otherUser || selectedPrivateChat.participants?.find(p => p._id !== user._id);
@@ -4149,9 +4138,21 @@ function App() {
           id: message._id,
           content: message.content?.substring(0, 50),
           sender: message.sender?.displayName || message.sender?.username,
+          senderId: message.sender?._id,
+          currentUserId: user?._id,
           chatRoom: chatRoomId,
           timestamp: message.createdAt
         });
+        
+        // ⚡ IMPORTANT: ถ้าข้อความนี้เป็นของตัวเอง ให้ skip ไม่ต้องเพิ่ม
+        // เพราะเพิ่มไปแล้วตอนส่งข้อความผ่าน API
+        const messageSenderId = message.sender?._id || message.senderId;
+        const currentUserId = user?._id || user?.id;
+        
+        if (messageSenderId === currentUserId) {
+          console.log('⏭️ Skipping own message from socket (already added via API response)');
+          return;
+        }
         
         // อัปเดต private chats ถ้าข้อความมาจากแชทที่กำลังดู
         if (selectedPrivateChat && selectedPrivateChat.id === chatRoomId) {
@@ -4201,12 +4202,31 @@ function App() {
           console.log('⏭️ Message not for current chat or no chat selected');
         }
         
-        // อัปเดตรายการแชทด้วยข้อความใหม่
-        setPrivateChats(prev => prev.map(chat => 
-          chat.id === chatRoomId 
-            ? { ...chat, lastMessage: message }
-            : chat
-        ));
+        // อัปเดตรายการแชทด้วยข้อความใหม่ (เฉพาะข้อความจากคนอื่น)
+        setPrivateChats(prev => {
+          const updatedChats = prev.map(chat => {
+            if (chat.id === chatRoomId) {
+              // เช็คว่ามีข้อความนี้อยู่แล้วหรือไม่
+              const messageExists = chat.messages?.some((msg: any) => msg._id === message._id);
+              if (messageExists) {
+                console.log('📨 Message already exists in chat list, skipping');
+                return chat;
+              }
+              
+              // เพิ่มข้อความใหม่และอัปเดต lastMessage
+              return { 
+                ...chat, 
+                messages: [...(chat.messages || []), message],
+                lastMessage: message 
+              };
+            }
+            return chat;
+          });
+          
+          // บันทึกลง localStorage
+          saveChatsToStorage(updatedChats);
+          return updatedChats;
+        });
         
         return;
       }

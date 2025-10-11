@@ -17,6 +17,13 @@ const targetFile = path.join(__dirname, '../../public/sw-auto-refresh-dev.js');
 
 // อ่านไฟล์ต้นฉบับ
 try {
+  // ตรวจสอบว่าไฟล์ต้นฉบับมีหรือไม่
+  if (!fs.existsSync(sourceFile)) {
+    console.log('⚠️  Service Worker source file not found, skipping copy (optional feature)');
+    console.log('📁 Expected source:', sourceFile);
+    process.exit(0); // Exit gracefully
+  }
+
   const content = fs.readFileSync(sourceFile, 'utf8');
 
   // ปรับแต่งเนื้อหาให้เหมาะกับ development
