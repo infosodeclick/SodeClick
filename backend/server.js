@@ -1035,6 +1035,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/settings', require('./routes/settings'));
 // app.use('/api/oauth-config', oauthConfigRoutes); // File not exists
 app.use('/api/users', usersRoutes);
 // app.use('/api/private-messages', privateMessagesRoutes); // File not exists
@@ -1274,6 +1275,7 @@ app.set('io', io);
 const Message = require('./models/Message');
 const ChatRoom = require('./models/ChatRoom');
 const User = require('./models/User');
+const SystemSettings = require('./models/SystemSettings');
 const jwt = require('jsonwebtoken');
 
 // WebSocket authentication middleware

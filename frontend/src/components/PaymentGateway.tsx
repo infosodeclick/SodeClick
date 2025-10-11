@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "./ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { rabbitAPI, rabbitHelpers } from "../services/rabbitAPI"
+import settingsAPI from "../services/settingsAPI"
 
 import { 
   ArrowLeft, 
@@ -201,21 +202,32 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
   // ตรวจสอบ bypass mode
   const checkBypassMode = async () => {
     try {
-      // ตรวจสอบการตั้งค่า bypass จาก localStorage หรือ API
-      const bypassEnabled = localStorage.getItem('payment_bypass_enabled') === 'true'
+      // ตรวจสอบการตั้งค่า bypass จาก API (จะ sync กับ localStorage อัตโนมัติ)
+      const result = await settingsAPI.checkPaymentBypassStatus()
 
-      if (bypassEnabled) {
-        console.log('🔄 Payment bypass mode enabled')
+      console.log(`🔄 Payment bypass mode from ${result.source}:`, result.enabled)
+
+      if (result.enabled) {
         setBypassMode(true)
         bypassPayment()
       } else {
-        console.log('💳 Normal payment mode')
         setBypassMode(false)
         createRabbitPayment()
       }
     } catch (error) {
       console.error('Error checking bypass mode:', error)
-      createRabbitPayment()
+
+      // Fallback ไปใช้ localStorage ถ้า API ไม่พร้อมใช้งาน
+      const bypassEnabled = localStorage.getItem('payment_bypass_enabled') === 'true'
+      console.log('💳 Fallback to localStorage - Normal payment mode:', bypassEnabled)
+
+      if (bypassEnabled) {
+        setBypassMode(true)
+        bypassPayment()
+      } else {
+        setBypassMode(false)
+        createRabbitPayment()
+      }
     }
   }
 
@@ -249,6 +261,10 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
 
       setCurrentTransaction(transaction)
 
+      // คำนวณเหรียญและคะแนนโหวตที่ได้รับสำหรับ bypass mode
+      const bonusCoins = plan?.rewards?.totalCoins || plan?.rewards?.coins || 0
+      const bonusVotes = plan?.rewards?.votePoints || 0
+
       // สร้าง success data ทันที (ไม่ต้องรอ payment)
       const successData = {
         ...transaction,
@@ -256,18 +272,43 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
         timestamp: new Date().toISOString(),
         status: 'completed',
         tier: plan.tier,
-        plan: plan // ส่ง plan object ไปด้วยเพื่อให้ PaymentSuccess สามารถแสดงข้อมูลได้
+        plan: plan, // ส่ง plan object ไปด้วยเพื่อให้ PaymentSuccess สามารถแสดงข้อมูลได้
+        bonusCoins: bonusCoins,
+        bonusVotes: bonusVotes,
+        // รวมเหรียญและคะแนนโหวตที่ได้รับเข้าไปใน transaction data
+        coins: (user?.coins || 0) + bonusCoins,
+        votePoints: (user?.votePoints || 0) + bonusVotes
       }
 
       console.log('🎉 Payment bypassed! Success data:', successData)
       console.log('📦 Plan object:', JSON.stringify(plan, null, 2))
       console.log('🪙 Plan rewards:', JSON.stringify(plan?.rewards, null, 2))
 
-      // ทดสอบการเพิ่มเหรียญแบบ manual
+      // เพิ่มเหรียญและคะแนนโหวตให้ผู้ใช้แบบ manual สำหรับ bypass mode
       if (plan?.rewards) {
-        const testCoins = plan.rewards.totalCoins || plan.rewards.coins || 0
-        const testVotes = plan.rewards.votePoints || 0
-        console.log('🧪 Manual test - would add:', testCoins, 'coins and', testVotes, 'vote points')
+        const bonusCoins = plan.rewards.totalCoins || plan.rewards.coins || 0
+        const bonusVotes = plan.rewards.votePoints || 0
+
+        if (bonusCoins > 0 || bonusVotes > 0) {
+          console.log('🪙 Adding bonus coins and votes for bypass mode:', bonusCoins, 'coins and', bonusVotes, 'vote points')
+
+          // อัปเดตข้อมูลผู้ใช้ใน localStorage ชั่วคราวสำหรับ bypass mode
+          const currentUserData = JSON.parse(localStorage.getItem('user') || '{}')
+          const updatedUserData = {
+            ...currentUserData,
+            coins: (currentUserData.coins || 0) + bonusCoins,
+            votePoints: (currentUserData.votePoints || 0) + bonusVotes
+          }
+
+          localStorage.setItem('user', JSON.stringify(updatedUserData))
+
+          // อัปเดต AuthContext ถ้ามี
+          if (window.updateAuthContext) {
+            window.updateAuthContext(updatedUserData)
+          }
+
+          console.log('✅ Bonus coins and votes added for bypass mode')
+        }
       }
 
       // รอ 1 วินาทีเพื่อแสดง loading animation
@@ -509,14 +550,33 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
                 <Button
                   variant={bypassMode ? "default" : "outline"}
                   size="sm"
-                  onClick={() => {
+                  onClick={async () => {
                     const newBypassMode = !bypassMode
-                    setBypassMode(newBypassMode)
-                    localStorage.setItem('payment_bypass_enabled', newBypassMode.toString())
 
-                    if (newBypassMode) {
-                      // ถ้าเปิด bypass mode ให้เรียก bypass payment ทันที
-                      bypassPayment()
+                    try {
+                      // บันทึกการตั้งค่าไปยัง API
+                      const result = await settingsAPI.updatePaymentBypassSettings(
+                        newBypassMode,
+                        newBypassMode ? 'เปิดใช้งานจาก Payment Gateway' : 'ปิดใช้งานจาก Payment Gateway'
+                      )
+
+                      if (result.success) {
+                        setBypassMode(newBypassMode)
+
+                        if (newBypassMode) {
+                          // ถ้าเปิด bypass mode ให้เรียก bypass payment ทันที
+                          bypassPayment()
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error toggling bypass mode:', error)
+                      // Fallback ไปใช้ localStorage
+                      setBypassMode(newBypassMode)
+                      localStorage.setItem('payment_bypass_enabled', newBypassMode.toString())
+
+                      if (newBypassMode) {
+                        bypassPayment()
+                      }
                     }
                   }}
                   className={`text-xs ${bypassMode ? 'bg-yellow-500 hover:bg-yellow-600' : ''}`}

@@ -122,15 +122,25 @@ const PrivateChatList = ({
   const handleSelectChat = async (chat) => {
     // รีเซ็ต unread count สำหรับแชทนี้
     try {
-      await unreadAPI.markAsRead(chat.roomId || chat.id, currentUser._id);
+      const result = await unreadAPI.markAsRead(chat.roomId || chat.id, currentUser._id);
       
-      // อัปเดต state ทันที
+      // อัปเดต state ทันที (ไม่ว่าจะสำเร็จหรือไม่)
       setUnreadCounts(prev => ({
         ...prev,
         [chat.roomId || chat.id]: 0
       }));
+      
+      // ไม่แสดง error ถ้าเป็น 403 เพราะอาจเป็นเรื่องปกติ
+      if (result === null) {
+        console.log('ℹ️ Mark as read returned null (this may be normal)');
+      }
     } catch (error) {
-      console.error('Error marking messages as read:', error);
+      // ไม่แสดง error ถ้าเป็น 403 เพราะอาจเป็นเรื่องปกติ
+      if (error.message && error.message.includes('403')) {
+        console.log('ℹ️ Mark as read access forbidden (this may be normal)');
+      } else {
+        console.error('Error marking messages as read:', error);
+      }
       // แสดง notification ถ้ามี แต่ไม่ต้องขัดขวางการเข้าแชท
       if (showWebappNotification) {
         showWebappNotification('ไม่สามารถทำเครื่องหมายข้อความเป็นอ่านแล้วได้', 'warning');

@@ -6,6 +6,7 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { useToast } from './ui/toast';
+import settingsAPI from '../services/settingsAPI';
 import {
   Crown,
   Search,
@@ -68,21 +69,45 @@ const SuperAdminPanel = () => {
   // โหลดการตั้งค่า payment
   const loadPaymentSettings = async () => {
     try {
+      // ลองดึงข้อมูลจาก API ก่อน (จะ sync กับ localStorage อัตโนมัติ)
+      const result = await settingsAPI.checkPaymentBypassStatus();
+
+      setPaymentSettings({
+        bypassEnabled: result.enabled
+      });
+
+      console.log(`🔄 Loaded payment bypass settings from ${result.source}:`, result.enabled);
+    } catch (error) {
+      console.error('Error loading payment settings:', error);
+
+      // Fallback ไปใช้ localStorage ถ้า API ไม่พร้อมใช้งาน
       const bypassEnabled = localStorage.getItem('payment_bypass_enabled') === 'true';
       setPaymentSettings({
         bypassEnabled: bypassEnabled
       });
-    } catch (error) {
-      console.error('Error loading payment settings:', error);
     }
   };
 
   // บันทึกการตั้งค่า payment
   const savePaymentSettings = async () => {
     try {
-      localStorage.setItem('payment_bypass_enabled', paymentSettings.bypassEnabled.toString());
-      success('บันทึกการตั้งค่า Payment สำเร็จ');
-      setShowPaymentSettingsModal(false);
+      // บันทึกไปยัง API (จะ sync กับ localStorage อัตโนมัติ)
+      const result = await settingsAPI.updatePaymentBypassSettings(
+        paymentSettings.bypassEnabled,
+        paymentSettings.bypassEnabled ? 'เปิดใช้งานจาก SuperAdmin Panel' : 'ปิดใช้งานจาก SuperAdmin Panel'
+      );
+
+      if (result.success) {
+        // อัปเดต state ด้วยข้อมูลจาก API response
+        setPaymentSettings({
+          bypassEnabled: result.data.enabled
+        });
+
+        success(result.message || 'บันทึกการตั้งค่า Payment สำเร็จ');
+        setShowPaymentSettingsModal(false);
+      } else {
+        throw new Error(result.message || 'เกิดข้อผิดพลาดในการบันทึก');
+      }
     } catch (error) {
       console.error('Error saving payment settings:', error);
       error('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า');

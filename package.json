@@ -4,7 +4,7 @@
   "description": "Full-stack project with React + Vite + TailwindCSS + Shadcn/UI frontend and Express.js + MongoDB backend",
   "main": "index.js",
   "scripts": {
-    "dev": "node scripts/dev-windows-fixed.js",
+    "dev": "node scripts/copy-env.js && concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:macos": "node scripts/dev-macos.js",
     "dev:windows": "node scripts/dev-windows.js",
     "dev:windows-simple": "node scripts/dev-windows-simple.js",
@@ -15,7 +15,8 @@
     "test:macos": "node scripts/test-macos.js",
     "fix-permissions": "node scripts/fix-macos-permissions.js",
     "fix-rollup": "node scripts/fix-rollup.js",
-    "dev:concurrent": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "copy-env": "node scripts/copy-env.js",
+    "dev:concurrent": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
     "dev:start": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",

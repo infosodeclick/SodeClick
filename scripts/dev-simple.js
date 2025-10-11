@@ -3,39 +3,22 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 
-// Function to check if directory exists
-function checkDirectory(dir) {
-  return fs.existsSync(dir);
-}
-
-// Function to check if node_modules exists
-function checkNodeModules(dir) {
-  return fs.existsSync(path.join(dir, 'node_modules'));
-}
-
-// Function to run npm install in a directory
-function runNpmInstall(dir) {
-  return new Promise((resolve, reject) => {
-    console.log(`📦 Installing dependencies in ${path.basename(dir)}...`);
-    
-    // Use cross-platform npm command
-    const npm = spawn('npm', ['install'], { 
-      cwd: dir, 
-      stdio: 'inherit',
-      shell: os.platform() === 'win32' ? true : false
-    });
-    
-    npm.on('close', (code) => {
-      if (code === 0) {
-        console.log(`✅ Dependencies installed in ${path.basename(dir)}`);
-        resolve();
-      } else {
-        reject(new Error(`Failed to install dependencies in ${path.basename(dir)}`));
-      }
-    });
-  });
+// Function to copy environment files
+function copyEnvFile(source, target) {
+  try {
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, target);
+      console.log(`✅ Copied ${path.basename(source)} to ${path.basename(target)}`);
+      return true;
+    } else {
+      console.warn(`⚠️  Source file ${source} not found`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`❌ Error copying ${source}:`, error.message);
+    return false;
+  }
 }
 
 async function main() {
@@ -44,52 +27,33 @@ async function main() {
     const frontendDir = path.join(rootDir, 'frontend');
     const backendDir = path.join(rootDir, 'backend');
 
-    console.log('🔍 Checking project structure...');
+    console.log('🚀 Starting development environment...\n');
 
-    // Check if directories exist
-    if (!checkDirectory(frontendDir)) {
-      console.error('❌ Frontend directory not found');
-      process.exit(1);
-    }
+    // Copy environment files
+    console.log('📝 Copying environment files...');
+    copyEnvFile(path.join(frontendDir, 'env.development'), path.join(frontendDir, '.env'));
+    copyEnvFile(path.join(backendDir, 'env.development'), path.join(backendDir, '.env'));
 
-    if (!checkDirectory(backendDir)) {
-      console.error('❌ Backend directory not found');
-      process.exit(1);
-    }
-
-    console.log('✅ Project structure verified');
-
-    // Install dependencies if needed
-    if (!checkNodeModules(frontendDir)) {
-      await runNpmInstall(frontendDir);
-    } else {
-      console.log('✅ Frontend dependencies already installed');
-    }
-
-    if (!checkNodeModules(backendDir)) {
-      await runNpmInstall(backendDir);
-    } else {
-      console.log('✅ Backend dependencies already installed');
-    }
-
-    // Use concurrently to run both servers with cross-platform compatibility
-    console.log('🚀 Starting development servers with concurrently...');
+    console.log('\n🚀 Starting servers with concurrently...');
+    console.log('Backend will run on http://localhost:5000');
+    console.log('Frontend will run on http://localhost:5173');
+    console.log('Press Ctrl+C to stop all servers\n');
     
-    const concurrentlyArgs = [
-      'concurrently',
-      '--kill-others',
-      '--prefix-colors', 'blue,green',
-      '--prefix', '[{name}]',
-      '--names', 'frontend,backend',
-      'npm run dev:frontend',
-      'npm run dev:backend'
-    ];
+    // Use concurrently package directly from node_modules
+    const concurrentlyPath = path.join(rootDir, 'node_modules', '.bin', 'concurrently');
+    const isWindows = process.platform === 'win32';
+    const concurrentlyCmd = isWindows ? concurrentlyPath + '.cmd' : concurrentlyPath;
     
-    const concurrently = spawn('npx', concurrentlyArgs, {
+    // Use concurrently to start both servers
+    const concurrently = spawn(concurrentlyCmd, [
+      '-n', 'backend,frontend',
+      '-c', 'blue,green',
+      '"cd backend && npm run dev"',
+      '"cd frontend && npm run dev"'
+    ], {
       cwd: rootDir,
       stdio: 'inherit',
-      shell: os.platform() === 'win32' ? true : false,
-      env: { ...process.env, PATH: process.env.PATH }
+      shell: true
     });
 
     // Handle process termination
@@ -105,8 +69,19 @@ async function main() {
       process.exit(0);
     });
 
+    concurrently.on('exit', (code) => {
+      console.log(`\nDevelopment servers exited with code ${code}`);
+      process.exit(code);
+    });
+
+    concurrently.on('error', (error) => {
+      console.error('❌ Error starting concurrently:', error.message);
+      process.exit(1);
+    });
+
   } catch (error) {
     console.error('❌ Error:', error.message);
+    console.error(error.stack);
     process.exit(1);
   }
 }

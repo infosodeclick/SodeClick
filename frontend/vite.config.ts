@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
-import type { ViteDevServer } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -29,18 +28,6 @@ export default defineConfig({
             console.warn(`⚠️ Service Worker file not found: ${sourcePath}`)
           }
         })
-      }
-    },
-    // Plugin to handle Service Worker MIME types
-    {
-      name: 'service-worker-mime',
-      configureServer(server: ViteDevServer) {
-        server.middlewares.use((_req: any, res: any, next: any) => {
-          if (_req.url === '/sw-auto-refresh-dev.js' || _req.url === '/sw-auto-refresh.js') {
-            res.setHeader('Content-Type', 'application/javascript');
-          }
-          next();
-        });
       }
     }
   ],

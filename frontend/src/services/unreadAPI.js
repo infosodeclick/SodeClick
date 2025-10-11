@@ -72,11 +72,19 @@ export const unreadAPI = {
       if (response.success) {
         return response.data;
       } else {
-        console.warn('Mark as read failed:', response.error);
+        // ไม่แสดง warning สำหรับ 403 เพราะอาจเป็นเรื่องปกติ
+        if (response.status !== 403) {
+          console.warn('Mark as read failed:', response.error);
+        }
         return null;
       }
     } catch (error) {
-      console.error('Error marking messages as read:', error);
+      // ไม่แสดง error ถ้าเป็น 403 Forbidden เพราะอาจเป็นเรื่องปกติ
+      if (error.message && error.message.includes('403')) {
+        console.log('ℹ️ Mark as read access forbidden (this may be normal)');
+      } else {
+        console.error('Error marking messages as read:', error);
+      }
       return null;
     }
   },

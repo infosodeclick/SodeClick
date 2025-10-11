@@ -241,7 +241,13 @@ class EnhancedAPIService {
       
       // Handle 401/403 responses
       if (response.status === 401 || response.status === 403) {
-        console.warn(`⚠️ ${response.status} response from ${fullURL}`);
+        // ไม่แสดง warning สำหรับ 403 เพราะอาจเป็นเรื่องปกติ
+        if (response.status === 401) {
+          console.warn(`⚠️ ${response.status} response from ${fullURL}`);
+        } else {
+          // ไม่แสดง log สำหรับ 403 เพื่อลด noise ใน console
+          // console.log(`ℹ️ ${response.status} response from ${fullURL} (this may be normal)`);
+        }
         return {
           success: false,
           error: response.status === 401 ? 'Authentication required' : 'Access forbidden',

@@ -43,6 +43,7 @@ import { membershipAPI } from './services/membershipAPI'
 import { paymentAPI } from './services/paymentAPI'
 import { useToast, ToastProvider } from './components/ui/toast'
 import MaintenanceMode from './components/MaintenanceMode'
+// import { usePrivateChat } from './hooks/usePrivateChat' // ใช้ระบบเดิมก่อน
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { 
@@ -540,6 +541,38 @@ function App() {
   const handleTabChange = (newTab: 'discover' | 'matches' | 'messages' | 'membership' | 'profile' | 'payment') => {
     setActiveTab(newTab)
     
+    // Special handling for messages tab
+    if (newTab === 'messages') {
+      console.log('🔄 Tab changed to messages, checking private chats...');
+      
+      // ตั้งค่า chat state
+      setChatType('private');
+      setPrivateChatView('list');
+      
+      // ตรวจสอบว่ามีข้อมูลแชทอยู่แล้วหรือไม่
+      if (privateChats.length > 0) {
+        console.log('✅ Private chats already loaded, no need to fetch');
+        // ไม่รีเซ็ต selectedPrivateChat เพื่อเก็บข้อมูลไว้
+      } else {
+        console.log('📭 No private chats loaded, checking localStorage first...');
+        setSelectedPrivateChat(null);
+        
+        // ตรวจสอบ localStorage ก่อน
+        const savedChats = loadChatsFromStorage();
+        if (savedChats.length > 0) {
+          console.log('✅ Found chats in localStorage, loading them');
+          const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+          setPrivateChats(uniqueStoredChats);
+        } else {
+          console.log('📭 No chats in localStorage, fetching from API...');
+          // รีเฟรชข้อมูลแชทส่วนตัวเมื่อเปลี่ยนไปยัง messages
+          setTimeout(() => {
+            fetchPrivateChats();
+          }, 200);
+        }
+      }
+    }
+    
     // Special scroll behavior for matches tab
     if (newTab === 'matches') {
       setTimeout(() => {
@@ -677,6 +710,8 @@ function App() {
   const [selectedPrivateChat, setSelectedPrivateChat] = useState<any>(null)
   const [showNewPrivateChatModal, setShowNewPrivateChatModal] = useState(false)
   const [privateChats, setPrivateChats] = useState<any[]>([])
+  
+  // ใช้ระบบแชทส่วนตัวเดิมก่อน (แก้ไข error ก่อน)
   const [chatRooms, setChatRooms] = useState<any[]>([])
   const [chatType, setChatType] = useState<'public' | 'private' | 'quick'>('quick') // 'public', 'private', 'quick'
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
@@ -1326,12 +1361,23 @@ function App() {
     }
   };
 
+  // เพิ่ม state เพื่อป้องกัน race condition
+  const [isFetchingPrivateChats, setIsFetchingPrivateChats] = useState(false);
+
   // ฟังก์ชันดึงข้อมูลแชทส่วนตัวจาก API
   const fetchPrivateChats = async () => {
     if (!user || (!user._id && !user.id)) {
       console.log('❌ No user or user ID found');
       return;
     }
+
+    // ป้องกัน race condition
+    if (isFetchingPrivateChats) {
+      console.log('⏳ Already fetching private chats, skipping...');
+      return;
+    }
+
+    setIsFetchingPrivateChats(true);
     
     try {
       console.log('🔄 Fetching private chats from API...');
@@ -1355,8 +1401,17 @@ function App() {
 
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('📋 No private chats found for user (404)');
-          setPrivateChats([]);
+          console.log('📋 No private chats found for user (404) - trying localStorage fallback');
+          // อย่า reset ทันที ให้ลอง fallback ก่อน
+          const savedChats = loadChatsFromStorage();
+          if (savedChats.length > 0) {
+            const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+            setPrivateChats(uniqueStoredChats);
+            console.log('🔄 Restored chats from localStorage after 404:', uniqueStoredChats.length);
+          } else {
+            console.log('📭 No chats in localStorage either, keeping current state');
+            // อย่า reset state ถ้าไม่มีข้อมูลใน localStorage
+          }
           return;
         }
         if (response.status === 401) {
@@ -1397,7 +1452,14 @@ function App() {
         const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
         setPrivateChats(uniqueStoredChats);
         console.log('🔄 Restored chats from localStorage fallback:', uniqueStoredChats.length);
+      } else {
+        // ถ้าไม่มีข้อมูลใน localStorage ให้เก็บ state เดิมไว้
+        console.log('📭 No chats found in localStorage, keeping current state');
+        // อย่า reset state ถ้าไม่มีข้อมูลใน localStorage
       }
+    } finally {
+      // รีเซ็ต flag เมื่อเสร็จสิ้น
+      setIsFetchingPrivateChats(false);
     }
   };
 
@@ -1633,10 +1695,63 @@ function App() {
       // โหลดข้อมูลห้องแชทสาธารณะ
       fetchChatRooms()
 
-      // Initialize socket manager for real-time features
-      console.log('🔌 Initializing socket manager...');
-      window.socketManager = socketManager;
-      console.log('🔌 window.socketManager set:', !!window.socketManager);
+  // Initialize socket manager for real-time features
+  console.log('🔌 Initializing socket manager...');
+  window.socketManager = socketManager;
+  console.log('🔌 window.socketManager set:', !!window.socketManager);
+
+  // Add socket event listeners for real-time updates
+  const setupSocketEventListeners = () => {
+    const handleMembershipUpdated = (event) => {
+      const { userId, newTier, user } = event.detail;
+      console.log('👑 Real-time membership update received:', { userId, newTier, user });
+
+      // ถ้าเป็นการอัปเดตของผู้ใช้ปัจจุบัน ให้อัปเดตข้อมูลใน AuthContext
+      if (userId === user?._id || userId === user?.id) {
+        console.log('🔄 Updating current user membership data:', newTier);
+
+        const updatedUserData = {
+          ...user,
+          membership: {
+            tier: newTier,
+            startDate: user.membership?.startDate,
+            endDate: user.membership?.endDate
+          },
+          membershipTier: newTier
+        };
+
+        localStorage.setItem('user', JSON.stringify(updatedUserData));
+
+        if (window.updateAuthContext) {
+          window.updateAuthContext(updatedUserData);
+          console.log('✅ AuthContext updated with new membership tier');
+        }
+      }
+
+      // อัปเดตข้อมูลผู้ใช้ในแชทหรือ components อื่นๆ ที่แสดงข้อมูลผู้ใช้นี้
+      // สามารถเพิ่ม logic เพิ่มเติมได้ที่นี่ตามความต้องการ
+    };
+
+    const handleUserUpgraded = (event) => {
+      const { userId, tier, coinsAdded } = event.detail;
+      console.log('🎉 User upgrade notification received:', { userId, tier, coinsAdded });
+
+      // สามารถเพิ่ม logic สำหรับแสดง notification หรืออัปเดตข้อมูลได้ที่นี่
+    };
+
+    // เพิ่ม event listeners
+    window.addEventListener('membershipUpdated', handleMembershipUpdated);
+    window.addEventListener('userUpgraded', handleUserUpgraded);
+
+    // คืนค่าฟังก์ชัน cleanup สำหรับ useEffect
+    return () => {
+      window.removeEventListener('membershipUpdated', handleMembershipUpdated);
+      window.removeEventListener('userUpgraded', handleUserUpgraded);
+    };
+  };
+
+  // Setup socket event listeners
+  setupSocketEventListeners();
       
       // Add global debug function
       (window as any).debugSocket = () => {
@@ -1714,6 +1829,150 @@ function App() {
     }
   }, [privateChats, user]);
 
+  // เพิ่ม useEffect สำหรับโหลดข้อมูลจาก localStorage เมื่อ component mount
+  useEffect(() => {
+    if (user && privateChats.length === 0) {
+      console.log('🔄 Component mounted, loading chats from localStorage...');
+      const savedChats = loadChatsFromStorage();
+      if (savedChats.length > 0) {
+        console.log('✅ Loaded chats from localStorage:', savedChats.length);
+        const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+        setPrivateChats(uniqueStoredChats);
+      } else {
+        console.log('📭 No chats in localStorage, fetching from API...');
+        // ถ้าไม่มีข้อมูลใน localStorage ให้เรียก API
+        setTimeout(() => {
+          fetchPrivateChats();
+        }, 500);
+      }
+    }
+  }, [user]); // เรียกเมื่อ user เปลี่ยน
+
+  // เพิ่ม useEffect สำหรับโหลดข้อมูลทันทีเมื่อ component mount (ไม่รอ user)
+  useEffect(() => {
+    console.log('🔄 Component mounted, checking localStorage immediately...');
+    
+    // บังคับโหลดข้อมูลทันที
+    const loadData = () => {
+      try {
+        const savedChats = localStorage.getItem('privateChats');
+        console.log('🔍 Raw localStorage data on mount:', savedChats);
+        
+        if (savedChats) {
+          const parsedData = JSON.parse(savedChats);
+          let chats: any[] = [];
+          
+          if (parsedData.chats && Array.isArray(parsedData.chats)) {
+            chats = parsedData.chats;
+          } else if (Array.isArray(parsedData)) {
+            chats = parsedData;
+          }
+          
+          if (chats.length > 0) {
+            console.log('✅ Found chats in localStorage on mount:', chats.length);
+            setPrivateChats(chats);
+          } else {
+            console.log('📭 No chats found in localStorage on mount');
+          }
+        } else {
+          console.log('📭 No localStorage data found on mount');
+        }
+      } catch (error) {
+        console.error('❌ Error loading data on mount:', error);
+      }
+    };
+    
+    // เรียกทันที
+    loadData();
+    
+    // เรียกอีกครั้งหลังจาก 100ms เพื่อให้แน่ใจ
+    setTimeout(loadData, 100);
+    
+    // เรียกอีกครั้งหลังจาก 500ms เพื่อให้แน่ใจ
+    setTimeout(loadData, 500);
+    
+  }, []); // เรียกทันทีเมื่อ component mount
+
+  // เพิ่ม useEffect สำหรับโหลดข้อมูลเมื่อ refresh หน้าเว็บ
+  useEffect(() => {
+    const handlePageLoad = () => {
+      if (user && privateChats.length === 0) {
+        console.log('🔄 Page loaded, checking for chats in localStorage...');
+        const savedChats = loadChatsFromStorage();
+        if (savedChats.length > 0) {
+          console.log('✅ Loaded chats from localStorage after page load:', savedChats.length);
+          const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+          setPrivateChats(uniqueStoredChats);
+        }
+      }
+    };
+
+    // เรียกทันทีถ้า page โหลดเสร็จแล้ว
+    if (document.readyState === 'complete') {
+      handlePageLoad();
+    } else {
+      // รอให้ page โหลดเสร็จ
+      window.addEventListener('load', handlePageLoad);
+      return () => window.removeEventListener('load', handlePageLoad);
+    }
+  }, [user]); // เรียกเมื่อ user เปลี่ยน
+
+  // เพิ่ม useEffect สำหรับโหลดข้อมูลเมื่อ activeTab เปลี่ยนเป็น messages
+  useEffect(() => {
+    if (activeTab === 'messages') {
+      console.log('🔄 Active tab changed to messages, checking for chats...');
+      
+      // บังคับโหลดข้อมูลทันที
+      const loadData = () => {
+        try {
+          const savedChats = localStorage.getItem('privateChats');
+          console.log('🔍 Raw localStorage data on messages tab:', savedChats);
+          
+          if (savedChats) {
+            const parsedData = JSON.parse(savedChats);
+            let chats: any[] = [];
+            
+            if (parsedData.chats && Array.isArray(parsedData.chats)) {
+              chats = parsedData.chats;
+            } else if (Array.isArray(parsedData)) {
+              chats = parsedData;
+            }
+            
+            if (chats.length > 0) {
+              console.log('✅ Found chats in localStorage for messages tab:', chats.length);
+              setPrivateChats(chats);
+            } else {
+              console.log('📭 No chats found in localStorage for messages tab');
+              if (user) {
+                setTimeout(() => {
+                  fetchPrivateChats();
+                }, 300);
+              }
+            }
+          } else {
+            console.log('📭 No localStorage data found for messages tab');
+            if (user) {
+              setTimeout(() => {
+                fetchPrivateChats();
+              }, 300);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error loading data for messages tab:', error);
+        }
+      };
+      
+      // เรียกทันที
+      loadData();
+      
+      // เรียกอีกครั้งหลังจาก 200ms เพื่อให้แน่ใจ
+      setTimeout(loadData, 200);
+      
+    }
+  }, [activeTab]); // เรียกเมื่อ activeTab เปลี่ยน
+
+  // ลบ useEffect ที่ซ้ำซ้อนออก เพราะจัดการใน handleTabChange แล้ว
+
   // แยก useEffect สำหรับล้างข้อมูลแชทเมื่อผู้ใช้ออกจากระบบ
   useEffect(() => {
     if (!user) {
@@ -1725,7 +1984,7 @@ function App() {
   // จัดการข้อความที่ได้รับจาก Socket
   // Removed duplicate listener - handled in the main private chat useEffect below
 
-  // Cleanup socket connection on component unmount
+  // Cleanup socket connection and listeners on component unmount
   useEffect(() => {
     return () => {
       if (window.socketManager) {
@@ -1733,6 +1992,8 @@ function App() {
         window.socketManager.disconnect();
         window.socketManager = undefined;
       }
+
+      // Socket cleanup is handled by the socket manager itself
     };
   }, []);
 
@@ -2888,6 +3149,20 @@ function App() {
           otherUserName: chat.otherUser?.name || chat.otherUser?.displayName,
           messageCount: chat.messages?.length || 0
         })));
+        
+        // ตรวจสอบว่าเป็นข้อมูลของผู้ใช้ปัจจุบัน
+        if (user && chats.length > 0) {
+          // กรองเฉพาะแชทที่มี otherUser ที่ถูกต้อง
+          const validChats = chats.filter(chat => 
+            chat.otherUser && 
+            (chat.otherUser._id || chat.otherUser.id) &&
+            chat.id
+          );
+          
+          console.log('📂 Filtered valid chats for current user:', validChats.length);
+          return validChats;
+        }
+        
         return chats;
       } else {
         console.log('📭 No chats found in localStorage');
@@ -3078,17 +3353,19 @@ function App() {
                 setPrivateChats(prev => {
                   const updatedChats = [fallbackChat, ...prev];
                   const uniqueChats = removeDuplicateChatsFromArray(updatedChats);
+                  // บันทึกลง localStorage ทันที
                   saveChatsToStorage(uniqueChats);
+                  console.log('💾 Saved new chat to localStorage');
                   return uniqueChats;
                 });
                 setSelectedPrivateChat(fallbackChat);
               }
             }
             
-            // เปลี่ยนไปยังแชทส่วนตัว
+            // เปลี่ยนไปยังแชทส่วนตัว (ไม่เรียก handleTabChange เพื่อไม่ให้รีเซ็ต state)
             setChatType('private');
             setPrivateChatView('chat');
-            handleTabChange('messages');
+            setActiveTab('messages');
           }, 100);
           
           // รีเซ็ต state และปิดหน้าโปรไฟล์
@@ -3112,20 +3389,47 @@ function App() {
       if (messages.length > 0) {
         console.log('✅ Loaded chat history:', messages.length);
         
-        // อัปเดต selectedPrivateChat
-        setSelectedPrivateChat((prev: any) => ({
-          ...prev,
-          ...chatData,
-          messages: messages
-        }));
+        // อัปเดต selectedPrivateChat (ลบข้อความซ้ำก่อน)
+        const uniqueMessages = messages.filter((msg: any, index: number, arr: any[]) => {
+          return arr.findIndex(m => m._id === msg._id) === index;
+        });
         
-        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
+        console.log('🧹 Removed duplicate messages in selectedPrivateChat:', messages.length, '->', uniqueMessages.length);
+        
+        // ตรวจสอบว่าข้อความที่โหลดมาเหมือนกับที่มีอยู่แล้วหรือไม่
+        setSelectedPrivateChat((prev: any) => {
+          if (prev && prev.messages && prev.messages.length > 0) {
+            // ถ้ามีข้อความอยู่แล้ว ให้ใช้ข้อความที่มีอยู่แทน (ไม่ merge)
+            console.log('📭 Messages already exist, keeping existing messages to prevent duplicates');
+            return prev;
+          } else {
+            // ถ้าไม่มีข้อความอยู่ ให้ใช้ข้อความที่โหลดมา
+            console.log('📨 No existing messages, using loaded messages:', uniqueMessages.length);
+            return {
+              ...prev,
+              ...chatData,
+              messages: uniqueMessages
+            };
+          }
+        });
+        
+        // อัปเดตรายการแชทด้วยข้อความที่ดึงมา (ลบข้อความซ้ำก่อน)
         setPrivateChats(prev => {
-          const updatedChats = prev.map(c => 
-            c.id === chatId 
-              ? { ...c, messages: messages }
-              : c
-          );
+          const updatedChats = prev.map(c => {
+            if (c.id === chatId) {
+              // ตรวจสอบว่าข้อความที่โหลดมาเหมือนกับที่มีอยู่แล้วหรือไม่
+              if (c.messages && c.messages.length > 0) {
+                // ถ้ามีข้อความอยู่แล้ว ให้ใช้ข้อความที่มีอยู่แทน (ไม่ merge)
+                console.log('📭 Messages already exist in chat list, keeping existing messages to prevent duplicates');
+                return c;
+              } else {
+                // ถ้าไม่มีข้อความอยู่ ให้ใช้ข้อความที่โหลดมา
+                console.log('🧹 Using unique messages for chat list:', uniqueMessages.length);
+                return { ...c, messages: uniqueMessages };
+              }
+            }
+            return c;
+          });
           saveChatsToStorage(updatedChats);
           return updatedChats;
         });
@@ -3143,25 +3447,53 @@ function App() {
 
   const handleSelectPrivateChat = async (chat: any) => {
     console.log('📱 Selecting private chat:', chat);
-    setSelectedPrivateChat(chat);
-    setPrivateChatView('chat');
     
-    // ดึงข้อความจาก API เมื่อเลือกแชท
-    if (chat.id) {
-      await loadChatHistoryAndUpdateState(chat.id, chat);
+    // ตรวจสอบว่ามีข้อความอยู่แล้วหรือไม่
+    if (chat.messages && chat.messages.length > 0) {
+      console.log('📭 Chat already has messages, using existing messages to prevent duplicates');
+      setSelectedPrivateChat(chat);
+      setPrivateChatView('chat');
+    } else {
+      console.log('📨 Chat has no messages, loading from API');
+      setSelectedPrivateChat(chat);
+      setPrivateChatView('chat');
+      
+      // ดึงข้อความจาก API เมื่อเลือกแชท
+      if (chat.id) {
+        await loadChatHistoryAndUpdateState(chat.id, chat);
+      }
     }
   };
 
   const handleBackToPrivateChatList = () => {
+    console.log('📱 handleBackToPrivateChatList called');
     setChatType('private');
     setPrivateChatView('list');
-    setSelectedPrivateChat(null);
-    // ไม่ต้องเรียก fetchPrivateChats() เพราะข้อมูลยังคงอยู่
+    
+    // ไม่รีเซ็ต selectedPrivateChat เพื่อเก็บข้อมูลข้อความไว้
+    // setSelectedPrivateChat(null);
+    
+    // ตรวจสอบว่ามีข้อมูลแชทอยู่แล้วหรือไม่
+    if (privateChats.length === 0) {
+      console.log('📭 No chats in memory, loading from localStorage...');
+      const savedChats = loadChatsFromStorage();
+      if (savedChats.length > 0) {
+        console.log('✅ Loaded chats from localStorage:', savedChats.length);
+        const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+        setPrivateChats(uniqueStoredChats);
+      } else {
+        console.log('🔄 No chats in localStorage, fetching from API...');
+        fetchPrivateChats();
+      }
+    } else {
+      console.log('✅ Chats already in memory, no need to reload');
+    }
+    
     console.log('📱 Back to private chat list');
   };
 
 
-  // ฟังก์ชันลบแชทส่วนตัว (ลบเฉพาะสำหรับผู้ใช้ปัจจุบัน)
+  // ฟังก์ชันลบแชทส่วนตัว (ลบเฉพาะสำหรับผู้ใช้ปัจจุบัน) - ใช้ระบบใหม่แล้ว
   const handleDeletePrivateChat = async (chatId: string) => {
     console.log('🗑️ Deleting private chat:', chatId);
     
@@ -3196,7 +3528,9 @@ function App() {
         // ลบออกจาก UI ทันที (ไม่รอ API refresh)
         setPrivateChats(prev => {
           const updatedChats = prev.filter(chat => chat.id !== chatId);
+          // บันทึกลง localStorage ทันที
           saveChatsToStorage(updatedChats);
+          console.log('💾 Saved updated chats to localStorage after deletion');
           return updatedChats;
         });
         
@@ -3238,6 +3572,7 @@ function App() {
 
 
 
+  // ฟังก์ชันส่งข้อความส่วนตัว (ใช้ระบบใหม่แล้ว)
   const handleSendPrivateMessage = async (messageData: any) => {
     if (!selectedPrivateChat || !user) return;
     
@@ -3290,7 +3625,9 @@ function App() {
           }
           return chat;
         });
+        // บันทึกลง localStorage ทันที
         saveChatsToStorage(updatedChats);
+        console.log('💾 Saved updated chats to localStorage after reaction update');
         return updatedChats;
       });
       
@@ -3316,32 +3653,59 @@ function App() {
       image: messageData.image
     };
 
-    // แสดงข้อความชั่วคราวใน UI ทันที
+    // แสดงข้อความชั่วคราวใน UI ทันที (ตรวจสอบข้อความซ้ำก่อน)
     console.log('📝 Adding temporary message to UI immediately:', tempMessage);
     setSelectedPrivateChat((prev: any) => {
       console.log('📝 Previous messages count:', prev.messages?.length || 0);
+      
+      // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+      const existingMessages = prev.messages || [];
+      const isDuplicate = existingMessages.some((msg: any) => 
+        msg._id === tempMessage._id || 
+        (msg.content === tempMessage.content && msg.senderId === tempMessage.senderId && msg.isTemporary)
+      );
+      
+      if (isDuplicate) {
+        console.log('📨 Duplicate temporary message detected in selectedPrivateChat, skipping');
+        return prev;
+      }
+      
       const updatedChat = {
         ...prev,
-        messages: [...(prev.messages || []), tempMessage],
+        messages: [...existingMessages, tempMessage],
         lastMessage: tempMessage
       };
       console.log('📝 Updated messages count:', updatedChat.messages.length);
       return updatedChat;
     });
 
-    // อัปเดตรายการแชทด้วยข้อความชั่วคราว
+    // อัปเดตรายการแชทด้วยข้อความชั่วคราว (ตรวจสอบข้อความซ้ำก่อน)
     setPrivateChats(prev => {
       const updatedChats = prev.map(chat => {
         if (chat.id === selectedPrivateChat.id) {
+          // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+          const existingMessages = chat.messages || [];
+          const isDuplicate = existingMessages.some((msg: any) => 
+            msg._id === tempMessage._id || 
+            (msg.content === tempMessage.content && msg.senderId === tempMessage.senderId && msg.isTemporary)
+          );
+          
+          if (isDuplicate) {
+            console.log('📨 Duplicate temporary message detected, skipping');
+            return chat;
+          }
+          
           return { 
             ...chat, 
-            messages: [...(chat.messages || []), tempMessage], 
+            messages: [...existingMessages, tempMessage], 
             lastMessage: tempMessage 
           };
         }
         return chat;
       });
+      // บันทึกลง localStorage ทันที
       saveChatsToStorage(updatedChats);
+      console.log('💾 Saved updated chats to localStorage after sending message');
       return updatedChats;
     });
     
@@ -3393,18 +3757,32 @@ function App() {
         };
 
         // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
-        setSelectedPrivateChat((prev: any) => ({
-          ...prev,
-          messages: prev.messages.map((msg: any) => 
-            msg._id === tempMessage._id ? updatedMessage : msg
-          ),
-          lastMessage: updatedMessage
-        }));
+        setSelectedPrivateChat((prev: any) => {
+          const existingMessage = prev.messages.find((msg: any) => msg._id === updatedMessage._id);
+          if (existingMessage) {
+            console.log('📨 Message already exists, skipping duplicate');
+            return prev;
+          }
+          
+          return {
+            ...prev,
+            messages: prev.messages.map((msg: any) => 
+              msg._id === tempMessage._id ? updatedMessage : msg
+            ),
+            lastMessage: updatedMessage
+          };
+        });
 
         // อัปเดตรายการแชทด้วยข้อความจริง
         setPrivateChats(prev => {
           const updatedChats = prev.map(chat => {
             if (chat.id === selectedPrivateChat.id) {
+              const existingMessage = chat.messages.find((msg: any) => msg._id === updatedMessage._id);
+              if (existingMessage) {
+                console.log('📨 Message already exists in chat list, skipping duplicate');
+                return chat;
+              }
+              
               return {
                 ...chat,
                 messages: chat.messages.map((msg: any) => 
@@ -3415,7 +3793,9 @@ function App() {
             }
             return chat;
           });
+          // บันทึกลง localStorage ทันที
           saveChatsToStorage(updatedChats);
+          console.log('💾 Saved updated chats to localStorage after successful message');
           return updatedChats;
         });
       }
@@ -3443,7 +3823,9 @@ function App() {
           }
           return chat;
         });
+        // บันทึกลง localStorage ทันที
         saveChatsToStorage(updatedChats);
+        console.log('💾 Saved updated chats to localStorage after removing temp message');
         return updatedChats;
       });
     }
@@ -3458,8 +3840,7 @@ function App() {
         
         // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่ (อาจมาจาก custom event)
         const isDuplicate = existingMessages.some((msg: any) => 
-          msg._id === messageData.socketMessage._id || 
-          (msg.content === messageData.socketMessage.content && msg.senderId === messageData.socketMessage.senderId && !msg.isTemporary)
+          msg._id === messageData.socketMessage._id
         );
         
         if (isDuplicate) {
@@ -3467,23 +3848,22 @@ function App() {
           return prev;
         }
         
-        const updatedMessages = existingMessages.map((msg: any) => {
-          // หาข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+        // ลบข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+        const filteredMessages = existingMessages.filter((msg: any) => {
           if (msg.isTemporary && 
               msg.content === messageData.socketMessage.content && 
               msg.senderId === messageData.socketMessage.senderId) {
-            console.log('📨 Replacing temporary message with real message');
-            return messageData.socketMessage; // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
+            console.log('📨 Removing temporary message:', msg._id);
+            return false;
           }
-          return msg;
-        }).filter((msg: any, index: number, arr: any[]) => {
-          // ลบ duplicate messages โดยใช้ _id และ content เป็น unique identifier
-          return arr.findIndex(m => m._id === msg._id && m.content === msg.content) === index;
+          return true;
         });
+        
+        console.log('📨 Adding real message, total messages:', filteredMessages.length + 1);
         
         return {
           ...prev,
-          messages: updatedMessages,
+          messages: [...filteredMessages, messageData.socketMessage],
           lastMessage: messageData.socketMessage
         };
       });
@@ -3492,21 +3872,28 @@ function App() {
       setPrivateChats(prev => {
         const updatedChats = prev.map(chat => {
           if (chat.id === selectedPrivateChat.id) {
-            const updatedMessages = chat.messages?.map((msg: any) => {
-              // หาข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+            // ลบข้อความชั่วคราวที่มีเนื้อหาเดียวกันและเป็นของตัวเอง
+            const filteredMessages = chat.messages?.filter((msg: any) => {
               if (msg.isTemporary && 
                   msg.content === messageData.socketMessage.content && 
                   msg.senderId === messageData.socketMessage.senderId) {
-                return messageData.socketMessage; // แทนที่ข้อความชั่วคราวด้วยข้อความจริง
+                console.log('📨 Removing temporary message from chat list:', msg._id);
+                return false;
               }
-              return msg;
+              return true;
             }) || [];
             
-            return { ...chat, messages: updatedMessages, lastMessage: messageData.socketMessage };
+            return { 
+              ...chat, 
+              messages: [...filteredMessages, messageData.socketMessage], 
+              lastMessage: messageData.socketMessage 
+            };
           }
           return chat;
         });
+        // บันทึกลง localStorage ทันที
         saveChatsToStorage(updatedChats);
+        console.log('💾 Saved updated chats to localStorage after socket message update');
         return updatedChats;
       });
       
@@ -3529,25 +3916,53 @@ function App() {
         return;
       }
       
-      // อัปเดตแชทที่เลือกด้วยข้อความจาก Socket.IO ทันที
+      // อัปเดตแชทที่เลือกด้วยข้อความจาก Socket.IO ทันที (ตรวจสอบข้อความซ้ำก่อน)
       setSelectedPrivateChat((prev: any) => {
         console.log('📨 App.tsx - Updating selectedPrivateChat with new message');
+        
+        const existingMessages = prev.messages || [];
+        const isDuplicate = existingMessages.some((msg: any) => 
+          msg._id === messageData.socketMessage._id
+        );
+        
+        if (isDuplicate) {
+          console.log('📨 Duplicate message from Socket.IO detected, skipping');
+          return prev;
+        }
+        
         return {
           ...prev,
-          messages: [...(prev.messages || []), messageData.socketMessage],
+          messages: [...existingMessages, messageData.socketMessage],
           lastMessage: messageData.socketMessage
         };
       });
       
-      // อัปเดตรายการแชทด้วยข้อความจาก Socket.IO ทันที
+      // อัปเดตรายการแชทด้วยข้อความจาก Socket.IO ทันที (ตรวจสอบข้อความซ้ำก่อน)
       setPrivateChats(prev => {
         console.log('📨 App.tsx - Updating privateChats list with new message');
-        const updatedChats = prev.map(chat => 
-          chat.id === selectedPrivateChat.id 
-            ? { ...chat, messages: [...(chat.messages || []), messageData.socketMessage], lastMessage: messageData.socketMessage }
-            : chat
-        );
+        const updatedChats = prev.map(chat => {
+          if (chat.id === selectedPrivateChat.id) {
+            const existingMessages = chat.messages || [];
+            const isDuplicate = existingMessages.some((msg: any) => 
+              msg._id === messageData.socketMessage._id
+            );
+            
+            if (isDuplicate) {
+              console.log('📨 Duplicate message in chat list detected, skipping');
+              return chat;
+            }
+            
+            return { 
+              ...chat, 
+              messages: [...existingMessages, messageData.socketMessage], 
+              lastMessage: messageData.socketMessage 
+            };
+          }
+          return chat;
+        });
+        // บันทึกลง localStorage ทันที
         saveChatsToStorage(updatedChats);
+        console.log('💾 Saved updated chats to localStorage after socket message');
         return updatedChats;
       });
       
@@ -3916,11 +4331,11 @@ function App() {
         }
       }
       
-      // รีเฟรชรายการแชทส่วนตัวเพื่อให้แน่ใจว่ามีแชทใหม่
+      // รีเฟรชรายการแชทส่วนตัวเพื่อให้แน่ใจว่ามีแชทใหม่ (เพิ่ม debounce)
       setTimeout(() => {
         console.log('🔄 Refreshing private chats list after new chat');
         fetchPrivateChats();
-      }, 1000);
+      }, 1500);
     };
 
     // ฟัง custom event จาก PrivateChat component
@@ -3958,10 +4373,10 @@ function App() {
               detail: { recipientId, chatId, message, senderId }
             }));
             
-            // รีเฟรชรายการแชทส่วนตัว
+            // รีเฟรชรายการแชทส่วนตัว (เพิ่ม debounce)
             setTimeout(() => {
               fetchPrivateChats();
-            }, 500);
+            }, 800);
           }
         });
 
@@ -4346,6 +4761,37 @@ function App() {
           if (upgradeResult.success) {
             console.log('✅ Membership upgraded successfully')
 
+            // อัปเดตข้อมูลผู้ใช้ใน localStorage และ AuthContext
+            const updatedUserData = {
+              ...user,
+              membership: {
+                tier: upgradeResult.data.tier,
+                startDate: upgradeResult.data.startDate,
+                endDate: upgradeResult.data.endDate,
+                planId: upgradeResult.data.planId
+              },
+              // จัดการเหรียญจากทั้ง API response และ bypass mode
+              coins: upgradeResult.data.newCoinBalance || transactionData.coins || user.coins || 0,
+              // จัดการคะแนนโหวตจาก bypass mode
+              votePoints: transactionData.votePoints || user.votePoints || 0,
+              dailyUsage: {
+                ...user.dailyUsage,
+                chatCount: 0,
+                imageUploadCount: 0,
+                videoUploadCount: 0,
+                lastReset: new Date()
+              }
+            };
+
+            // บันทึกข้อมูลผู้ใช้ที่อัปเดตแล้วใน localStorage
+            localStorage.setItem('user', JSON.stringify(updatedUserData));
+
+            // อัปเดต AuthContext เพื่อให้ UI แสดงข้อมูลใหม่ทันที
+            if (window.updateAuthContext) {
+              window.updateAuthContext(updatedUserData);
+              console.log('🔄 Updated AuthContext with new membership data');
+            }
+
             // ส่ง Socket.IO event เพื่อแจ้งเตือนผู้ใช้อัพเกรดสำเร็จ
             if (window.socketManager) {
               window.socketManager.emit('user-upgraded', {
@@ -4356,6 +4802,8 @@ function App() {
                 transactionId: transactionData.transactionId
               })
             }
+
+            console.log('🎉 Membership upgrade completed and UI updated');
           } else {
             console.error('❌ Failed to upgrade membership via API')
             throw new Error('การอัพเกรดสมาชิกล้มเหลว')
@@ -6027,9 +6475,27 @@ function App() {
                           setChatType('private');
                           setChatView('list');
                           setPrivateChatView('list');
-                          console.log('🔄 Private chat tab clicked, fetching chats...');
-                          // รีเฟรชข้อมูลแชทส่วนตัวเมื่อเปลี่ยนไปหน้าแชทส่วนตัว
-                          fetchPrivateChats();
+                          console.log('🔄 Private chat tab clicked');
+                          
+                          // ตรวจสอบว่ามีข้อมูลแชทอยู่แล้วหรือไม่
+                          if (privateChats.length === 0) {
+                            console.log('📭 No chats in memory, loading from localStorage...');
+                            const savedChats = loadChatsFromStorage();
+                            if (savedChats.length > 0) {
+                              console.log('✅ Loaded chats from localStorage:', savedChats.length);
+                              const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+                              setPrivateChats(uniqueStoredChats);
+                            } else {
+                              console.log('🔄 No chats in localStorage, fetching from API...');
+                              if (user) {
+                                setTimeout(() => {
+                                  fetchPrivateChats();
+                                }, 100);
+                              }
+                            }
+                          } else {
+                            console.log('✅ Chats already in memory, no need to reload');
+                          }
                         }}
                         className={`flex-1 px-3 py-2 sm:px-4 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-all duration-200 ${
                           chatType === 'private'
