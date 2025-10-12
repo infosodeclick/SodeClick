@@ -36,6 +36,7 @@ const NewPrivateChatModal = lazy(() => import('./components/NewPrivateChatModal.
 const HeartVote = lazy(() => import('./components/HeartVote.jsx')) as any
 const VoteRanking = lazy(() => import('./components/VoteRanking.jsx')) as any
 const VoteRankingMini = lazy(() => import('./components/VoteRankingMini.jsx')) as any
+const LiveStream = lazy(() => import('./components/LiveStream.jsx')) as any
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 const TopVotedCarousel = lazy(() => import('./components/TopVotedCarousel.jsx')) as any
 import { useAuth } from './contexts/AuthContext'
@@ -54,7 +55,7 @@ import {
   faGem,
   faBell,
   faShoppingCart,
-  faTrophy
+  faHeadphones
 } from '@fortawesome/free-solid-svg-icons'
 
 import { 
@@ -268,11 +269,12 @@ function App() {
   const { success, error, warning, ToastContainer } = useToast()
   const { updateNotification } = useNotificationUpdates()
 
-  const [activeTab, setActiveTab] = useState<'discover' | 'matches' | 'messages' | 'ranking' | 'membership' | 'profile' | 'payment'>('discover')
+  const [activeTab, setActiveTab] = useState<'discover' | 'matches' | 'messages' | 'stream' | 'ranking' | 'membership' | 'profile' | 'payment'>('discover')
   
   // Vote ranking profile navigation states
   const [selectedVoteUser, setSelectedVoteUser] = useState<any>(null)
   const [showVoteUserProfile, setShowVoteUserProfile] = useState(false)
+  const [showRankingModal, setShowRankingModal] = useState(false)
   
   // Handle Google OAuth callback URL parameters
   useEffect(() => {
@@ -5846,6 +5848,7 @@ function App() {
                           voteType="popularity_combined" 
                           limit={5} 
                           onUserProfileClick={handleVoteUserProfileClick}
+                          onNavigateToRanking={() => setShowRankingModal(true)}
                         />
                       </ErrorBoundary>
                     </Suspense>
@@ -6285,11 +6288,20 @@ function App() {
                                 });
                               }}
                             />
-                          ) : null}
+                          ) : (
+                            // แสดง gradient background สำหรับกรณีที่ไม่มีรูปภาพ
+                            <div className="w-full h-full bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white">
+                              <span className="text-4xl font-bold">
+                                {(user as any).firstName?.charAt(0) || (user as any).username?.charAt(0) || 'U'}
+                              </span>
+                            </div>
+                          )}
                           
                           {/* Fallback element สำหรับรูปภาพที่โหลดไม่ได้ */}
-                          <div className={`absolute inset-0 ${(user as any).isOnline ? 'bg-gradient-to-r from-green-600 to-green-700' : 'bg-gradient-to-r from-gray-600 to-gray-700'} flex items-center justify-center text-white text-2xl font-bold hidden`}>
-                            <User className="h-12 w-12" />
+                          <div className={`absolute inset-0 bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white text-2xl font-bold hidden`}>
+                            <span className="text-4xl font-bold">
+                              {(user as any).firstName?.charAt(0) || (user as any).username?.charAt(0) || 'U'}
+                            </span>
                           </div>
                           
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
@@ -6773,6 +6785,12 @@ function App() {
                 </div>
               )}
             </TabsContent>
+            {/* Mobile-First Stream Tab */}
+            <TabsContent value="stream" className="p-0">
+              <Suspense fallback={<LoadingSpinner />}>
+                <LiveStream />
+              </Suspense>
+            </TabsContent>
             {/* Mobile-First Ranking Tab */}
             <TabsContent value="ranking" className="p-0">
               <Suspense fallback={<LoadingSpinner />}>
@@ -6920,15 +6938,15 @@ function App() {
                 <span className="text-xs font-medium">แชท</span>
               </TabsTrigger>
               <TabsTrigger 
-                value="ranking" 
+                value="stream" 
                 className="flex-1 h-full data-[state=active]:bg-pink-100 data-[state=active]:text-pink-700 rounded-none text-gray-500 data-[state=active]:border-t-2 data-[state=active]:border-pink-700 transition-all duration-300 flex flex-col items-center justify-center space-y-0.5 sm:space-y-1"
               >
                 <FontAwesomeIcon 
-                  icon={faTrophy} 
-                  className={`h-5 w-5 transition-all duration-300 ${activeTab === 'ranking' ? 'text-pink-700 drop-shadow-lg scale-105 animate-pulse' : 'text-gray-500'}`} 
-                  style={activeTab === 'ranking' ? { color: '#be185d' } : {}} 
+                  icon={faHeadphones} 
+                  className={`h-5 w-5 transition-all duration-300 ${activeTab === 'stream' ? 'text-pink-700 drop-shadow-lg scale-105 animate-pulse' : 'text-gray-500'}`} 
+                  style={activeTab === 'stream' ? { color: '#be185d' } : {}} 
                 />
-                <span className="text-xs font-medium">อันดับ</span>
+                <span className="text-xs font-medium">DJ</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="membership" 
@@ -7999,6 +8017,31 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Ranking Modal */}
+      <Dialog open={showRankingModal} onOpenChange={setShowRankingModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto [&>button]:hidden">
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowRankingModal(false)}
+                className="flex items-center gap-2"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                ปิด
+              </Button>
+            </div>
+            
+            <Suspense fallback={<LoadingSpinner />}>
+              <VoteRanking onUserProfileClick={handleVoteUserProfileClick} />
+            </Suspense>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Toast Container */}
       <ToastContainer />

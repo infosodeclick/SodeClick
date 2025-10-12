@@ -28,6 +28,7 @@ const AdminCreateChatRoom = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdRoom, setCreatedRoom] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [coinPaymentEnabled, setCoinPaymentEnabled] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -126,6 +127,7 @@ const AdminCreateChatRoom = () => {
             maxUses: -1
           }
         });
+        setCoinPaymentEnabled(false);
       } else {
         const error = await res.json();
         console.error('Failed to create chat room:', error.message);
@@ -326,6 +328,23 @@ const AdminCreateChatRoom = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                  <Switch
+                    id="coinPaymentEnabled"
+                    checked={coinPaymentEnabled}
+                    onCheckedChange={(checked) => {
+                      setCoinPaymentEnabled(checked);
+                      if (!checked) {
+                        handleInputChange('entryFee', 0);
+                      }
+                    }}
+                  />
+                  <Label htmlFor="coinPaymentEnabled" className="flex items-center gap-2 cursor-pointer">
+                    <Coins className="h-4 w-4" />
+                    จ่ายเหรียญ ({coinPaymentEnabled ? 'เปิด' : 'ปิด'})
+                  </Label>
+                </div>
+
                 <div>
                   <Label htmlFor="entryFee">ค่าเข้าห้อง (เหรียญ)</Label>
                   <Input
@@ -335,7 +354,12 @@ const AdminCreateChatRoom = () => {
                     value={formData.entryFee}
                     onChange={(e) => handleInputChange('entryFee', parseInt(e.target.value) || 0)}
                     placeholder="0"
+                    disabled={!coinPaymentEnabled}
+                    className={!coinPaymentEnabled ? 'bg-gray-100 cursor-not-allowed' : ''}
                   />
+                  {!coinPaymentEnabled && (
+                    <p className="text-xs text-gray-500 mt-1">เปิดสวิตช์ "จ่ายเหรียญ" เพื่อกำหนดค่าเข้าห้อง</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

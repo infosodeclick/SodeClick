@@ -371,6 +371,7 @@ const notificationsRoutes = require('./routes/notifications');
 const maintenanceRoutes = require('./routes/maintenance');
 // const oauthConfigRoutes = require('./routes/oauth-config'); // File not exists
 const usersRoutes = require('./routes/users');
+const streamRoutes = require('./routes/stream');
 // const privateMessagesRoutes = require('./routes/privateMessages'); // File not exists
 
 // Preflight OPTIONS handling
@@ -1038,6 +1039,7 @@ app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/settings', require('./routes/settings'));
 // app.use('/api/oauth-config', oauthConfigRoutes); // File not exists
 app.use('/api/users', usersRoutes);
+app.use('/api/stream', streamRoutes);
 // app.use('/api/private-messages', privateMessagesRoutes); // File not exists
 
 // Static file serving - removed duplicate (already configured above with cache headers)
@@ -2125,9 +2127,251 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('user-stop-typing', { userId });
   });
 
+  // ============ Stream Events ============
+  
+  // Join stream room
+  socket.on('join-stream', async (data) => {
+    try {
+      const { streamId, userId, token } = data;
+      
+      // Authenticate user
+      const authenticatedUser = await authenticateSocket(socket, token);
+      if (!authenticatedUser) {
+        socket.emit('stream-error', { message: 'Authentication required' });
+        return;
+      }
+      
+      // Note: Joining stream doesn't require admin, only viewing
+
+      const StreamRoom = require('./models/StreamRoom');
+      const stream = await StreamRoom.findById(streamId);
+      
+      if (!stream) {
+        socket.emit('stream-error', { message: 'Stream not found' });
+        return;
+      }
+
+      if (!stream.isLive) {
+        socket.emit('stream-error', { message: 'Stream is not live' });
+        return;
+      }
+
+      // Join stream room
+      socket.join(`stream-${streamId}`);
+      socket.streamId = streamId;
+      socket.userId = userId;
+
+      // Add viewer to stream
+      const existingViewer = stream.viewers.find(v => v.userId.toString() === userId);
+      if (!existingViewer) {
+        stream.viewers.push({
+          userId: userId,
+          username: authenticatedUser.username,
+          displayName: authenticatedUser.displayName || authenticatedUser.username,
+          avatar: authenticatedUser.profileImages?.[0] || '',
+          joinedAt: new Date()
+        });
+        stream.viewerCount = stream.viewers.length;
+        await stream.save();
+      }
+
+      console.log(`📺 User ${userId} joined stream ${streamId}`);
+
+      // Emit viewer joined event
+      io.to(`stream-${streamId}`).emit('stream-viewer-joined', {
+        streamId,
+        viewer: {
+          userId: userId,
+          username: authenticatedUser.username,
+          displayName: authenticatedUser.displayName || authenticatedUser.username,
+          avatar: authenticatedUser.profileImages?.[0] || ''
+        },
+        viewerCount: stream.viewerCount,
+        viewers: stream.viewers
+      });
+
+      // Send current stream data to the new viewer
+      socket.emit('stream-joined', {
+        streamId,
+        viewerCount: stream.viewerCount,
+        viewers: stream.viewers
+      });
+
+    } catch (error) {
+      console.error('Error joining stream:', error);
+      socket.emit('stream-error', { message: 'Failed to join stream' });
+    }
+  });
+
+  // Leave stream room
+  socket.on('leave-stream', async (data) => {
+    try {
+      const { streamId, userId } = data;
+      
+      socket.leave(`stream-${streamId}`);
+      
+      const StreamRoom = require('./models/StreamRoom');
+      const stream = await StreamRoom.findById(streamId);
+      
+      if (stream) {
+        // Remove viewer from stream
+        stream.viewers = stream.viewers.filter(v => v.userId.toString() !== userId);
+        stream.viewerCount = stream.viewers.length;
+        await stream.save();
+
+        console.log(`📺 User ${userId} left stream ${streamId}`);
+
+        // Emit viewer left event
+        io.to(`stream-${streamId}`).emit('stream-viewer-left', {
+          streamId,
+          userId,
+          viewerCount: stream.viewerCount,
+          viewers: stream.viewers
+        });
+      }
+    } catch (error) {
+      console.error('Error leaving stream:', error);
+    }
+  });
+
+  // Send stream message
+  socket.on('send-stream-message', async (data) => {
+    try {
+      const { streamId, userId, message, token } = data;
+
+      if (!message || message.trim() === '') {
+        socket.emit('stream-error', { message: 'Message cannot be empty' });
+        return;
+      }
+
+      // Authenticate user
+      const authenticatedUser = await authenticateSocket(socket, token);
+      if (!authenticatedUser) {
+        socket.emit('stream-error', { message: 'Authentication required' });
+        return;
+      }
+
+      const StreamRoom = require('./models/StreamRoom');
+      const StreamMessage = require('./models/StreamMessage');
+      
+      const stream = await StreamRoom.findById(streamId);
+      if (!stream || !stream.isLive) {
+        socket.emit('stream-error', { message: 'Stream is not live' });
+        return;
+      }
+
+      // Check if comments are allowed
+      if (!stream.settings.allowComments) {
+        socket.emit('stream-error', { message: 'Comments are disabled for this stream' });
+        return;
+      }
+
+      // Create message
+      const newMessage = new StreamMessage({
+        streamRoom: streamId,
+        sender: userId,
+        senderName: authenticatedUser.displayName || authenticatedUser.username,
+        senderAvatar: authenticatedUser.profileImages?.[0] || '',
+        message: message.trim(),
+        type: 'text'
+      });
+
+      await newMessage.save();
+
+      const messageData = {
+        _id: newMessage._id,
+        streamRoom: streamId,
+        sender: {
+          _id: userId,
+          username: authenticatedUser.username,
+          displayName: authenticatedUser.displayName || authenticatedUser.username,
+          profileImages: authenticatedUser.profileImages || [],
+          membership: authenticatedUser.membership
+        },
+        senderName: newMessage.senderName,
+        senderAvatar: newMessage.senderAvatar,
+        message: newMessage.message,
+        type: newMessage.type,
+        createdAt: newMessage.createdAt
+      };
+
+      console.log(`💬 Stream message sent in ${streamId} by ${userId}`);
+
+      // Broadcast message to all viewers
+      io.to(`stream-${streamId}`).emit('stream-message-received', messageData);
+
+    } catch (error) {
+      console.error('Error sending stream message:', error);
+      socket.emit('stream-error', { message: 'Failed to send message' });
+    }
+  });
+
+  // Stream like/reaction
+  socket.on('stream-like', async (data) => {
+    try {
+      const { streamId, userId, token } = data;
+
+      // Authenticate user
+      const authenticatedUser = await authenticateSocket(socket, token);
+      if (!authenticatedUser) {
+        socket.emit('stream-error', { message: 'Authentication required' });
+        return;
+      }
+
+      const StreamRoom = require('./models/StreamRoom');
+      const stream = await StreamRoom.findById(streamId);
+      
+      if (stream && stream.isLive) {
+        stream.likeCount += 1;
+        await stream.save();
+
+        // Broadcast like event
+        io.to(`stream-${streamId}`).emit('stream-liked', {
+          streamId,
+          userId,
+          username: authenticatedUser.displayName || authenticatedUser.username,
+          likeCount: stream.likeCount
+        });
+
+        console.log(`❤️ Stream ${streamId} liked by ${userId}, total: ${stream.likeCount}`);
+      }
+    } catch (error) {
+      console.error('Error liking stream:', error);
+    }
+  });
+
+  // ============ End Stream Events ============
+
   // Disconnect
   socket.on('disconnect', async (reason) => {
     console.log('👤 User disconnected:', socket.id, 'Reason:', reason);
+    
+    // Handle stream disconnect
+    if (socket.streamId && socket.userId) {
+      try {
+        const StreamRoom = require('./models/StreamRoom');
+        const stream = await StreamRoom.findById(socket.streamId);
+        
+        if (stream) {
+          // Remove viewer from stream
+          stream.viewers = stream.viewers.filter(v => v.userId.toString() !== socket.userId);
+          stream.viewerCount = stream.viewers.length;
+          await stream.save();
+
+          console.log(`📺 User ${socket.userId} left stream ${socket.streamId} (disconnect)`);
+
+          // Emit viewer left event
+          io.to(`stream-${socket.streamId}`).emit('stream-viewer-left', {
+            streamId: socket.streamId,
+            userId: socket.userId,
+            viewerCount: stream.viewerCount,
+            viewers: stream.viewers
+          });
+        }
+      } catch (error) {
+        console.error('Error handling stream disconnect:', error);
+      }
+    }
     
     // ตรวจสอบให้แน่ใจว่า socket มีข้อมูลที่จำเป็น
     if (socket.currentRoom && socket.userId && typeof socket.userId === 'string') {

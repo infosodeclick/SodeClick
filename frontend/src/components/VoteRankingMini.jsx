@@ -8,7 +8,8 @@ const VoteRankingMini = ({
   voteType = 'popularity_combined',
   limit = 5,
   className = '',
-  onUserProfileClick = null
+  onUserProfileClick = null,
+  onNavigateToRanking = null
 }) => {
   const [ranking, setRanking] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,6 +223,25 @@ const VoteRankingMini = ({
             <div className="w-2 h-2 bg-amber-400 rounded-full animate-ping" style={{animationDelay: '0.4s'}}></div>
           </div>
         </div>
+
+        {/* View All Rankings Button - Always show even when no data */}
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              // Navigate to rankings page
+              if (onNavigateToRanking) {
+                onNavigateToRanking();
+              } else {
+                window.location.href = '/ranking';
+              }
+            }}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white px-6 py-3 rounded-full font-semibold text-sm transition-all duration-300 transform hover:scale-105 hover:shadow-lg shadow-md"
+          >
+            <Trophy className="h-4 w-4" />
+            <span>ดูอันดับทั้งหมด</span>
+            <span className="text-xs opacity-90">→</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -312,15 +332,28 @@ const VoteRankingMini = ({
           const uniqueVoters = item.uniqueVoterCount || 0;
           const styling = getTop5Styling(index);
           const rank = index + 1;
+          
+          // Check if this is current user's profile
+          const isCurrentUser = currentUser.id && (
+            currentUser.id === item._id || 
+            currentUser.id === item.candidateId ||
+            currentUser._id === item._id ||
+            currentUser._id === item.candidateId
+          );
 
           return (
             <div
               key={item.candidateId || `ranking-${index}`}
-              className={`${styling.container} rounded-xl p-3 transition-all duration-500 hover:scale-105 hover:shadow-xl cursor-pointer transform`}
+              className={`${styling.container} rounded-xl p-3 transition-all duration-500 ${isCurrentUser ? 'cursor-default' : 'hover:scale-105 hover:shadow-xl cursor-pointer'} transform`}
               style={{
                 animation: `fadeInUp 0.6s ease-out ${index * 0.2}s forwards`
               }}
               onClick={() => {
+                // Check if this is current user's profile
+                if (isCurrentUser) {
+                  return; // Do nothing for current user
+                }
+                
                 // Check if user is logged in first
                 if (!isLoggedIn) {
                   warning('กรุณาเข้าสู่ระบบก่อน');
@@ -356,6 +389,12 @@ const VoteRankingMini = ({
                     <h4 className="text-base font-bold text-gray-900 truncate">
                       {item.displayName || item.username || 'ผู้ใช้ไม่ระบุชื่อ'}
                     </h4>
+                    {/* Current User Indicator */}
+                    {isCurrentUser && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                        คุณ
+                      </span>
+                    )}
                     {/* Online Status Indicator */}
                     <div className={`h-1.5 w-1.5 rounded-full ${item.isOnline ? 'bg-green-500' : 'bg-gray-400'}`} 
                          title={item.isOnline ? 'ออนไลน์' : 'ออฟไลน์'}></div>
@@ -399,6 +438,25 @@ const VoteRankingMini = ({
           </div>
         </div>
       )}
+
+      {/* View All Rankings Button */}
+      <div className="mt-6 text-center">
+        <button
+          onClick={() => {
+            // Navigate to rankings page
+            if (onNavigateToRanking) {
+              onNavigateToRanking();
+            } else {
+              window.location.href = '/ranking';
+            }
+          }}
+          className="inline-flex items-center space-x-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white px-6 py-3 rounded-full font-semibold text-sm transition-all duration-300 transform hover:scale-105 hover:shadow-lg shadow-md"
+        >
+          <Trophy className="h-4 w-4" />
+          <span>ดูอันดับทั้งหมด</span>
+          <span className="text-xs opacity-90">→</span>
+        </button>
+      </div>
     </div>
   );
 };

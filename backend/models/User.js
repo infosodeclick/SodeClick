@@ -756,14 +756,23 @@ userSchema.methods.addRoomPayment = function(roomId, amount) {
     currentPaidRooms: this.paidRooms.length
   });
   
-  this.paidRooms.push({
-    roomId: roomId,
-    amount: amount,
-    paidAt: new Date()
-  });
+  // เช็คว่ายังไม่มีการจ่ายห้องนี้อยู่แล้ว (ป้องกันการบันทึกซ้ำ)
+  const alreadyPaid = this.paidRooms.some(payment => 
+    payment.roomId && payment.roomId.toString() === roomId.toString()
+  );
   
-  console.log('💰 Room payment added. New paidRooms count:', this.paidRooms.length);
-  return this.save();
+  if (!alreadyPaid) {
+    this.paidRooms.push({
+      roomId: roomId,
+      amount: amount,
+      paidAt: new Date()
+    });
+    console.log('💰 Room payment added. New paidRooms count:', this.paidRooms.length);
+  } else {
+    console.log('⚠️ Payment already exists for this room, skipping...');
+  }
+  
+  // ไม่ save ที่นี่ ให้ caller save เอง เพื่อหลีกเลี่ยง race condition
 };
 
 // Method to get time until next daily bonus

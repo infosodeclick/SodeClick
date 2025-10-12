@@ -425,8 +425,8 @@ router.get('/:roomId/payment-status', auth, async (req, res) => {
 
     const hasPaid = user.hasPaidForRoom(roomId);
     const isOwner = chatRoom.owner.toString() === userId.toString();
-    const canJoin = chatRoom.type === 'public' || 
-                   (chatRoom.type === 'private' && (hasPaid || user.isAdmin() || isOwner));
+    // ตรวจสอบว่าสามารถเข้าห้องได้หรือไม่ (รองรับทั้ง public และ private ที่มี entryFee)
+    const canJoin = (chatRoom.entryFee === 0) || hasPaid || user.isAdmin() || isOwner;
 
     console.log('💰 Payment status check:', {
       roomId,
@@ -493,8 +493,8 @@ router.post('/:roomId/pay-entry', async (req, res) => {
       });
     }
 
-    // ตรวจสอบว่าเป็นห้องส่วนตัวที่มีค่าธรรมเนียม
-    if (chatRoom.type !== 'private' || chatRoom.entryFee <= 0) {
+    // ตรวจสอบว่าห้องมีค่าธรรมเนียมหรือไม่ (รองรับทั้งห้อง public และ private)
+    if (chatRoom.entryFee <= 0) {
       return res.status(400).json({
         success: false,
         message: 'This room does not require payment'
@@ -536,7 +536,20 @@ router.post('/:roomId/pay-entry', async (req, res) => {
 
     // หักเหรียญจากผู้ใช้
     user.coins -= amount;
+    
+    // บันทึกการจ่ายเหรียญใน user.paidRooms
+    user.addRoomPayment(chatRoom._id, amount);
+    
     await user.save();
+
+    // โอนเหรียญให้เจ้าของห้อง
+    const owner = await User.findById(chatRoom.owner);
+    if (owner) {
+      owner.coins += amount;
+      if (!chatRoom.stats) chatRoom.stats = {};
+      chatRoom.stats.totalCoinsReceived = (chatRoom.stats.totalCoinsReceived || 0) + amount;
+      await owner.save();
+    }
 
     // เพิ่มผู้ใช้เป็นสมาชิกห้องแชท
     chatRoom.addMember(userId, 'member');
@@ -616,27 +629,10 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // สำหรับห้องสาธารณะ - เข้าได้เลยโดยไม่ต้องเป็นสมาชิก
-    if (chatRoom.type === 'public') {
-      // เพิ่มเป็นสมาชิกถ้ายังไม่ได้เป็น
-      if (!chatRoom.isMember(userId)) {
-        chatRoom.addMember(userId);
-        await chatRoom.save();
-      }
-      
-      return res.json({
-        success: true,
-        message: 'Successfully joined the public chat room',
-        data: {
-          roomId: chatRoom._id,
-          roomName: chatRoom.name,
-          memberCount: chatRoom.memberCount
-        }
-      });
-    }
-
-    // ตรวจสอบว่าเป็นสมาชิกอยู่แล้วหรือไม่ (สำหรับห้องส่วนตัว)
-    if (chatRoom.isMember(userId)) {
+    // ตรวจสอบว่าเป็นสมาชิกอยู่แล้วหรือไม่
+    const isAlreadyMember = chatRoom.isMember(userId);
+    if (isAlreadyMember) {
+      console.log('✅ User is already a member');
       return res.json({
         success: true,
         message: 'Already a member of this chat room',
@@ -677,8 +673,8 @@ router.post('/:roomId/join', auth, async (req, res) => {
       });
     }
 
-    // ตรวจสอบค่าเข้าห้อง (สำหรับห้องแบบปิด) - SuperAdmin, Admin และเจ้าของห้องข้ามการตรวจสอบ
-    if (chatRoom.type === 'private' && chatRoom.entryFee > 0 && !user.isAdmin() && chatRoom.owner.toString() !== userId.toString()) {
+    // ตรวจสอบค่าเข้าห้อง (รองรับทั้งห้อง public และ private) - SuperAdmin, Admin และเจ้าของห้องข้ามการตรวจสอบ
+    if (chatRoom.entryFee > 0 && !user.isAdmin() && chatRoom.owner.toString() !== userId.toString()) {
       // ตรวจสอบว่าเคยจ่ายแล้วหรือยัง
       if (!user.hasPaidForRoom(chatRoom._id)) {
         if (user.coins < chatRoom.entryFee) {
@@ -721,7 +717,7 @@ router.post('/:roomId/join', auth, async (req, res) => {
         roomId: chatRoom._id,
         roomName: chatRoom.name,
         memberCount: chatRoom.memberCount,
-        entryFeePaid: chatRoom.type === 'private' ? chatRoom.entryFee : 0,
+        entryFeePaid: chatRoom.entryFee > 0 ? chatRoom.entryFee : 0,
         remainingCoins: user.coins
       }
     });

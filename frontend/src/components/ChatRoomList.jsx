@@ -176,8 +176,8 @@ const ChatRoomList = ({ currentUser, onSelectRoom, onCreatePrivateRoom, showWeba
       return;
     }
 
-    // ตรวจสอบสถานะการจ่ายเหรียญสำหรับห้องส่วนตัว
-    if (room.type === 'private' && room.entryFee > 0) {
+    // ตรวจสอบสถานะการจ่ายเหรียญสำหรับห้องที่มีค่าเข้าห้อง (รองรับทั้ง public และ private)
+    if (room.entryFee > 0) {
       try {
         const token = localStorage.getItem('token');
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chatroom/${room.id}/payment-status`, {

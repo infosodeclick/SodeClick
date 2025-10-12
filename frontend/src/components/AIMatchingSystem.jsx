@@ -1234,8 +1234,14 @@ const AIMatchingSystem = ({ currentUser }) => {
                   }
                 }
                 
-                // ไม่มีรูป - ไม่แสดงอะไรเลย (card จะเป็นสีพื้นหลัง gradient)
-                return null
+                // ไม่มีรูป - แสดง gradient background พร้อมตัวอักษรแรก
+                return (
+                  <div className="w-full h-full bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white">
+                    <span className="text-4xl font-bold">
+                      {displayName?.charAt(0) || 'U'}
+                    </span>
+                  </div>
+                )
               })()}
               
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>

@@ -313,26 +313,42 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
 
         {/* Rankings List */}
         <div className="space-y-3">
-          {rankings && rankings.length > 0 ? rankings.map((user, index) => (
-            <div
-              key={user.candidateId}
-              className={`bg-white rounded-lg shadow-md p-3 transition-all hover:shadow-lg cursor-pointer ${
-                user.rank <= 3 ? 'ring-2 ring-yellow-200' : ''
-              }`}
-              onClick={() => {
-                if (!isLoggedIn) {
-                  showError('กรุณาเข้าสู่ระบบก่อน');
-                  return;
-                }
-                
-                // ใช้ onUserProfileClick ที่มีการตรวจสอบสิทธิ์ตามระดับสมาชิก
-                if (onUserProfileClick && user) {
-                  onUserProfileClick(user);
-                } else {
-                  showError('ไม่สามารถเข้าถึงโปรไฟล์ได้');
-                }
-              }}
-            >
+          {rankings && rankings.length > 0 ? rankings.map((user, index) => {
+            // Check if this is current user's profile
+            const isCurrentUser = currentUser.id && (
+              currentUser.id === user._id || 
+              currentUser.id === user.candidateId ||
+              currentUser._id === user._id ||
+              currentUser._id === user.candidateId
+            );
+
+            return (
+              <div
+                key={user.candidateId}
+                className={`bg-white rounded-lg shadow-md p-3 transition-all ${
+                  isCurrentUser ? 'cursor-default' : 'hover:shadow-lg cursor-pointer'
+                } ${
+                  user.rank <= 3 ? 'ring-2 ring-yellow-200' : ''
+                }`}
+                onClick={() => {
+                  // Check if this is current user's profile
+                  if (isCurrentUser) {
+                    return; // Do nothing for current user
+                  }
+                  
+                  if (!isLoggedIn) {
+                    showError('กรุณาเข้าสู่ระบบก่อน');
+                    return;
+                  }
+                  
+                  // ใช้ onUserProfileClick ที่มีการตรวจสอบสิทธิ์ตามระดับสมาชิก
+                  if (onUserProfileClick && user) {
+                    onUserProfileClick(user);
+                  } else {
+                    showError('ไม่สามารถเข้าถึงโปรไฟล์ได้');
+                  }
+                }}
+              >
               <div className="flex items-center space-x-3">
                 {/* Rank */}
                 <div className="flex-shrink-0">
@@ -360,6 +376,12 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
                     <h3 className="text-base font-bold text-gray-800 truncate">
                       {user.displayName || `${user.firstName} ${user.lastName}` || user.username}
                     </h3>
+                    {/* Current User Indicator */}
+                    {isCurrentUser && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                        คุณ
+                      </span>
+                    )}
                     {getMembershipBadge(user.membership)}
                   </div>
                   <div className="flex items-center space-x-3 text-xs text-gray-600">
@@ -395,7 +417,8 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
                 </div>
               </div>
             </div>
-          )) : (
+            );
+          }) : (
             <div className="text-center py-12">
               <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-600 mb-2">ยังไม่มีข้อมูลคะแนนโหวต</h3>

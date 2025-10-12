@@ -210,12 +210,7 @@ chatRoomSchema.virtual('memberCount').get(function() {
 
 // Method สำหรับเช็คว่าผู้ใช้เป็นสมาชิกหรือไม่
 chatRoomSchema.methods.isMember = function(userId) {
-  // สำหรับห้องสาธารณะ - ถือว่าเป็นสมาชิกเสมอ
-  if (this.type === 'public') {
-    return true;
-  }
-  
-  // สำหรับห้องส่วนตัว - ตรวจสอบจากรายการสมาชิก
+  // ตรวจสอบจากรายการสมาชิกจริง (ทั้งห้อง public และ private)
   return this.members.some(member => member.user && member.user.toString() === userId.toString());
 };
 
