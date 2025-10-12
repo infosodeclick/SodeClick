@@ -127,22 +127,16 @@ function setupWindowsEnvironment(frontendDir, backendDir) {
 function startDevServers(rootDir, platform) {
   console.log('🚀 Starting development servers...');
   
-  let concurrentlyArgs;
+  let command, args;
   
   if (platform === 'win32') {
-    // Windows-specific concurrently configuration
-    concurrentlyArgs = [
-      'concurrently',
-      '--kill-others',
-      '--prefix-colors', 'blue,green',
-      '--prefix', '[{name}]',
-      '--names', 'frontend,backend',
-      '"npm run dev:frontend"',
-      '"npm run dev:backend"'
-    ];
+    // Windows: use native Node.js script without concurrently
+    command = 'node';
+    args = [path.join(__dirname, 'dev-windows-native.js')];
   } else {
-    // macOS/Unix-specific concurrently configuration
-    concurrentlyArgs = [
+    // macOS/Unix: use concurrently directly
+    command = 'npx';
+    args = [
       'concurrently',
       '--kill-others',
       '--prefix-colors', 'blue,green',
@@ -153,7 +147,7 @@ function startDevServers(rootDir, platform) {
     ];
   }
   
-  const concurrently = spawn('npx', concurrentlyArgs, {
+  const devProcess = spawn(command, args, {
     cwd: rootDir,
     stdio: 'inherit',
     shell: platform === 'win32', // Use shell on Windows
@@ -163,13 +157,13 @@ function startDevServers(rootDir, platform) {
   // Handle process termination
   process.on('SIGINT', () => {
     console.log('\n🛑 Stopping development servers...');
-    concurrently.kill('SIGINT');
+    devProcess.kill('SIGINT');
     process.exit(0);
   });
 
   process.on('SIGTERM', () => {
     console.log('\n🛑 Stopping development servers...');
-    concurrently.kill('SIGTERM');
+    devProcess.kill('SIGTERM');
     process.exit(0);
   });
 }

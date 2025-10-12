@@ -1544,4 +1544,100 @@ router.get('/private-chats-unread/:userId', auth, async (req, res) => {
   }
 });
 
+// POST /api/messages/remove-duplicates/:chatRoomId - ลบข้อความซ้ำ
+router.post('/remove-duplicates/:chatRoomId', auth, async (req, res) => {
+  try {
+    const { chatRoomId } = req.params;
+    const userId = req.user._id;
+
+    console.log('🧹 Removing duplicate messages for chat:', chatRoomId);
+    console.log('🧹 User ID:', userId);
+
+    // ตรวจสอบสิทธิ์การเข้าถึง
+    if (chatRoomId.startsWith('private_')) {
+      const chatParts = chatRoomId.split('_');
+      if (chatParts.length >= 3) {
+        const userId1 = chatParts[1];
+        const userId2 = chatParts[2];
+        const userIdStr = userId.toString();
+        const isAuthorized = userIdStr === userId1 || userIdStr === userId2;
+        
+        if (!isAuthorized) {
+          return res.status(403).json({
+            success: false,
+            message: 'You are not authorized to remove messages from this private chat'
+          });
+        }
+      }
+    }
+
+    // ดึงข้อความทั้งหมดจากห้องแชท
+    const messages = await Message.find({ chatRoom: chatRoomId }).sort({ createdAt: 1 });
+    console.log('🧹 Found messages:', messages.length);
+
+    if (messages.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No messages found',
+        removedCount: 0
+      });
+    }
+
+    // หาข้อความซ้ำโดยดูจาก content + sender + timestamp (ภายใน 10 วินาที)
+    const duplicatesToRemove = [];
+    const seenMessages = new Map();
+
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i];
+      const key = `${message.content}_${message.senderId}_${message.createdAt.getTime()}`;
+      
+      // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน
+      let isDuplicate = false;
+      for (let j = 0; j < i; j++) {
+        const prevMessage = messages[j];
+        if (prevMessage.content === message.content && 
+            prevMessage.senderId === message.senderId) {
+          const timeDiff = Math.abs(message.createdAt.getTime() - prevMessage.createdAt.getTime());
+          if (timeDiff < 10000) { // 10 วินาที
+            isDuplicate = true;
+            break;
+          }
+        }
+      }
+      
+      if (isDuplicate) {
+        duplicatesToRemove.push(message._id);
+        console.log('🧹 Marking duplicate for removal:', message._id, message.content);
+      }
+    }
+
+    // ลบข้อความซ้ำ
+    if (duplicatesToRemove.length > 0) {
+      const result = await Message.deleteMany({ _id: { $in: duplicatesToRemove } });
+      console.log('✅ Removed duplicate messages:', result.deletedCount);
+      
+      return res.json({
+        success: true,
+        message: `Removed ${result.deletedCount} duplicate messages`,
+        removedCount: result.deletedCount
+      });
+    } else {
+      console.log('✅ No duplicate messages found');
+      return res.json({
+        success: true,
+        message: 'No duplicate messages found',
+        removedCount: 0
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error removing duplicate messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove duplicate messages',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

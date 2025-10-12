@@ -6,8 +6,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "shx cp env.production .env && node server.js",
-    "dev": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && nodemon server.js",
+    "start": "node -e \"require('fs').copyFileSync('env.production', '.env')\" && node server.js",
+    "dev": "node -e \"require('fs').copyFileSync('env.development', '.env')\" && node node_modules/nodemon/bin/nodemon.js server.js",
     "start:dev": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node server.js",
     "seed": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/seedData.js",
     "create-admin": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/createAdmin.js",

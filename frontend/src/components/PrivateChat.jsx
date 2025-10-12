@@ -19,7 +19,8 @@ import {
   Star,
   Crown,
   Diamond,
-  Gem
+  Gem,
+  ArrowLeft
 } from 'lucide-react';
 import { getProfileImageUrl } from '../utils/profileImageUtils';
 import { membershipHelpers } from '../services/membershipAPI';
@@ -29,6 +30,7 @@ const PrivateChat = ({
   selectedChat, 
   onSendMessage, 
   onClose,
+  onBack,
   messages = [],
   isLoading = false,
   isTyping = false,
@@ -503,6 +505,27 @@ const PrivateChat = ({
             return;
           }
           
+          // ⚡ เพิ่มการตรวจสอบข้อความซ้ำโดยดูจาก content และ timestamp
+          const isRecentDuplicate = (msg) => {
+            if (!msg.content || !message.content) return false;
+            
+            // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+            const msgTime = new Date(msg.createdAt || msg.timestamp).getTime();
+            const messageTime = new Date(message.createdAt || message.timestamp).getTime();
+            const timeDiff = Math.abs(msgTime - messageTime);
+            
+            return msg.content === message.content && 
+                   msg.senderId === messageSenderId && 
+                   timeDiff < 5000; // 5 วินาที
+          };
+          
+          // ตรวจสอบว่ามีข้อความซ้ำใน messages ปัจจุบันหรือไม่
+          const hasDuplicate = messages.some(msg => isRecentDuplicate(msg));
+          if (hasDuplicate) {
+            console.log('⏭️ PrivateChat - Duplicate message detected, skipping socket message');
+            return;
+          }
+          
           console.log('✅ Message for current private chat - updating UI immediately');
           
           // อัปเดต UI ทันทีผ่าน custom event (ไม่ใช้ setMessages)
@@ -798,12 +821,26 @@ const PrivateChat = ({
       {/* Modern Chat Header - Professional Design */}
       <div className="flex items-center justify-between p-4 sm:p-5 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white flex-shrink-0">
         <div className="flex items-center space-x-3 sm:space-x-4">
-          <button
-            onClick={onClose}
-            className="lg:hidden p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px] flex items-center justify-center"
-          >
-            <X className="h-5 w-5 sm:h-6 sm:w-6" />
-          </button>
+          {/* Back Button */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px] flex items-center justify-center"
+              aria-label="กลับ"
+            >
+              <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
+          )}
+          
+          {/* Close Button - Only show on mobile when no back button */}
+          {onClose && !onBack && (
+            <button
+              onClick={onClose}
+              className="lg:hidden p-2 hover:bg-white/10 rounded-xl transition-all duration-200 min-h-[40px] min-w-[40px] flex items-center justify-center"
+            >
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
+          )}
 
           {/* User Info */}
           <div className="flex items-center space-x-3">

@@ -1566,6 +1566,40 @@ function App() {
     }
   };
 
+  // ฟังก์ชันลบข้อความซ้ำจากฐานข้อมูล
+  const removeDuplicateMessages = async (chatRoomId: string) => {
+    try {
+      console.log('🧹 Removing duplicate messages from database for chat:', chatRoomId);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.error('❌ No token found');
+        return false;
+      }
+
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/messages/remove-duplicates/${chatRoomId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Duplicate messages removed:', result);
+        return result.success;
+      } else {
+        console.error('❌ Failed to remove duplicate messages:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Error removing duplicate messages:', error);
+      return false;
+    }
+  };
+
   // ฟังก์ชันดึงข้อความจาก API
   const fetchMessages = async (chatRoomId: string) => {
     if (!user) return [];
@@ -1608,9 +1642,25 @@ function App() {
           isRead: message.isRead !== null ? message.isRead : false
         }));
         
-        // ลบข้อความซ้ำจาก API response
+        // ลบข้อความซ้ำจาก API response (ทั้ง ID และ content)
         const uniqueMessages = processedMessages.filter((msg: any, index: number, arr: any[]) => {
-          return arr.findIndex(m => m._id === msg._id) === index;
+          // ตรวจสอบซ้ำจาก ID
+          const duplicateById = arr.findIndex(m => m._id === msg._id) !== index;
+          
+          // ตรวจสอบซ้ำจาก content + sender + timestamp (ภายใน 10 วินาที)
+          const duplicateByContent = arr.findIndex(m => {
+            if (!m.content || !msg.content) return false;
+            
+            const mTime = new Date(m.createdAt || m.timestamp).getTime();
+            const msgTime = new Date(msg.createdAt || msg.timestamp).getTime();
+            const timeDiff = Math.abs(mTime - msgTime);
+            
+            return m.content === msg.content && 
+                   m.senderId === msg.senderId && 
+                   timeDiff < 10000; // 10 วินาที
+          }) !== index;
+          
+          return !duplicateById && !duplicateByContent;
         });
         
         console.log('🔄 Processed messages with metadata:', processedMessages.length, '-> unique:', uniqueMessages.length);
@@ -3390,14 +3440,34 @@ function App() {
   const loadChatHistoryAndUpdateState = async (chatId: string, chatData: any = null) => {
     try {
       console.log('🔄 Loading chat history for:', chatId);
+      
+      // ลบข้อความซ้ำจากฐานข้อมูลก่อนโหลดข้อความ
+      await removeDuplicateMessages(chatId);
+      
       const messages = await fetchMessages(chatId);
       
       if (messages.length > 0) {
         console.log('✅ Loaded chat history:', messages.length);
         
-        // ลบข้อความซ้ำจาก API response
+        // ลบข้อความซ้ำจาก API response (ทั้ง ID และ content)
         const uniqueMessages = messages.filter((msg: any, index: number, arr: any[]) => {
-          return arr.findIndex(m => m._id === msg._id) === index;
+          // ตรวจสอบซ้ำจาก ID
+          const duplicateById = arr.findIndex(m => m._id === msg._id) !== index;
+          
+          // ตรวจสอบซ้ำจาก content + sender + timestamp (ภายใน 10 วินาที)
+          const duplicateByContent = arr.findIndex(m => {
+            if (!m.content || !msg.content) return false;
+            
+            const mTime = new Date(m.createdAt || m.timestamp).getTime();
+            const msgTime = new Date(msg.createdAt || msg.timestamp).getTime();
+            const timeDiff = Math.abs(mTime - msgTime);
+            
+            return m.content === msg.content && 
+                   m.senderId === msg.senderId && 
+                   timeDiff < 10000; // 10 วินาที
+          }) !== index;
+          
+          return !duplicateById && !duplicateByContent;
         });
         
         console.log('🧹 Removed duplicate messages from API:', messages.length, '->', uniqueMessages.length);
@@ -3411,6 +3481,10 @@ function App() {
             messages: uniqueMessages
           };
         });
+        
+        // ล้าง localStorage เพื่อป้องกันข้อความซ้ำในอนาคต
+        console.log('🧹 Clearing localStorage to prevent future duplicates');
+        localStorage.removeItem('privateChats');
         
         // อัปเดตรายการแชทด้วยข้อความที่ดึงมา
         setPrivateChats(prev => {
@@ -3476,7 +3550,36 @@ function App() {
       const savedChats = loadChatsFromStorage();
       if (savedChats.length > 0) {
         console.log('✅ Loaded chats from localStorage:', savedChats.length);
-        const uniqueStoredChats = removeDuplicateChatsFromArray(savedChats);
+        
+        // ลบข้อความซ้ำจาก localStorage ก่อนใช้งาน
+        const cleanedChats = savedChats.map(chat => {
+          if (chat.messages && chat.messages.length > 0) {
+            const uniqueMessages = chat.messages.filter((msg: any, index: number, arr: any[]) => {
+              // ตรวจสอบซ้ำจาก ID
+              const duplicateById = arr.findIndex(m => m._id === msg._id) !== index;
+              
+              // ตรวจสอบซ้ำจาก content + sender + timestamp (ภายใน 10 วินาที)
+              const duplicateByContent = arr.findIndex(m => {
+                if (!m.content || !msg.content) return false;
+                
+                const mTime = new Date(m.createdAt || m.timestamp).getTime();
+                const msgTime = new Date(msg.createdAt || msg.timestamp).getTime();
+                const timeDiff = Math.abs(mTime - msgTime);
+                
+                return m.content === msg.content && 
+                       m.senderId === msg.senderId && 
+                       timeDiff < 10000; // 10 วินาที
+              }) !== index;
+              
+              return !duplicateById && !duplicateByContent;
+            });
+            
+            return { ...chat, messages: uniqueMessages };
+          }
+          return chat;
+        });
+        
+        const uniqueStoredChats = removeDuplicateChatsFromArray(cleanedChats);
         setPrivateChats(uniqueStoredChats);
       } else {
         console.log('🔄 No chats in localStorage, fetching from API...');
@@ -3655,14 +3758,26 @@ function App() {
     setSelectedPrivateChat((prev: any) => {
       console.log('📝 Previous messages count:', prev.messages?.length || 0);
       
-      // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+      // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่ (ทั้ง ID และ content)
       const existingMessages = prev.messages || [];
-      const isDuplicate = existingMessages.some((msg: any) => 
-        msg._id === tempMessage._id || 
-        (msg.content === tempMessage.content && msg.senderId === tempMessage.senderId && msg.isTemporary)
+      const isDuplicateById = existingMessages.some((msg: any) => 
+        msg._id === tempMessage._id
       );
       
-      if (isDuplicate) {
+      const isDuplicateByContent = existingMessages.some((msg: any) => {
+        if (!msg.content || !tempMessage.content) return false;
+        
+        // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+        const msgTime = new Date(msg.createdAt).getTime();
+        const tempTime = new Date(tempMessage.createdAt).getTime();
+        const timeDiff = Math.abs(msgTime - tempTime);
+        
+        return msg.content === tempMessage.content && 
+               msg.senderId === tempMessage.senderId && 
+               timeDiff < 5000; // 5 วินาที
+      });
+      
+      if (isDuplicateById || isDuplicateByContent) {
         console.log('📨 Duplicate temporary message detected in selectedPrivateChat, skipping');
         return prev;
       }
@@ -3680,14 +3795,26 @@ function App() {
     setPrivateChats(prev => {
       const updatedChats = prev.map(chat => {
         if (chat.id === selectedPrivateChat.id) {
-          // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+          // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่ (ทั้ง ID และ content)
           const existingMessages = chat.messages || [];
-          const isDuplicate = existingMessages.some((msg: any) => 
-            msg._id === tempMessage._id || 
-            (msg.content === tempMessage.content && msg.senderId === tempMessage.senderId && msg.isTemporary)
+          const isDuplicateById = existingMessages.some((msg: any) => 
+            msg._id === tempMessage._id
           );
           
-          if (isDuplicate) {
+          const isDuplicateByContent = existingMessages.some((msg: any) => {
+            if (!msg.content || !tempMessage.content) return false;
+            
+            // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+            const msgTime = new Date(msg.createdAt).getTime();
+            const tempTime = new Date(tempMessage.createdAt).getTime();
+            const timeDiff = Math.abs(msgTime - tempTime);
+            
+            return msg.content === tempMessage.content && 
+                   msg.senderId === tempMessage.senderId && 
+                   timeDiff < 5000; // 5 วินาที
+          });
+          
+          if (isDuplicateById || isDuplicateByContent) {
             console.log('📨 Duplicate temporary message detected, skipping');
             return chat;
           }
@@ -3757,8 +3884,21 @@ function App() {
 
         // แทนที่ข้อความชั่วคราวด้วยข้อความจริง (ตรวจสอบซ้ำก่อน)
         setSelectedPrivateChat((prev: any) => {
-          const existingMessage = prev.messages.find((msg: any) => msg._id === updatedMessage._id);
-          if (existingMessage) {
+          const existingMessageById = prev.messages.find((msg: any) => msg._id === updatedMessage._id);
+          const existingMessageByContent = prev.messages.find((msg: any) => {
+            if (!msg.content || !updatedMessage.content) return false;
+            
+            // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+            const msgTime = new Date(msg.createdAt).getTime();
+            const updatedTime = new Date(updatedMessage.createdAt).getTime();
+            const timeDiff = Math.abs(msgTime - updatedTime);
+            
+            return msg.content === updatedMessage.content && 
+                   msg.senderId === updatedMessage.senderId && 
+                   timeDiff < 5000; // 5 วินาที
+          });
+          
+          if (existingMessageById || existingMessageByContent) {
             console.log('📨 Message already exists in selectedPrivateChat, skipping duplicate');
             return prev;
           }
@@ -3777,8 +3917,21 @@ function App() {
         setPrivateChats(prev => {
           const updatedChats = prev.map(chat => {
             if (chat.id === selectedPrivateChat.id) {
-              const existingMessage = chat.messages.find((msg: any) => msg._id === updatedMessage._id);
-              if (existingMessage) {
+              const existingMessageById = chat.messages.find((msg: any) => msg._id === updatedMessage._id);
+              const existingMessageByContent = chat.messages.find((msg: any) => {
+                if (!msg.content || !updatedMessage.content) return false;
+                
+                // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+                const msgTime = new Date(msg.createdAt).getTime();
+                const updatedTime = new Date(updatedMessage.createdAt).getTime();
+                const timeDiff = Math.abs(msgTime - updatedTime);
+                
+                return msg.content === updatedMessage.content && 
+                       msg.senderId === updatedMessage.senderId && 
+                       timeDiff < 5000; // 5 วินาที
+              });
+              
+              if (existingMessageById || existingMessageByContent) {
                 console.log('📨 Message already exists in chat list, skipping duplicate');
                 return chat;
               }
@@ -4154,6 +4307,20 @@ function App() {
           return;
         }
         
+        // ⚡ เพิ่มการตรวจสอบข้อความซ้ำโดยดูจาก content และ timestamp
+        const isRecentDuplicate = (msg: any) => {
+          if (!msg.content || !message.content) return false;
+          
+          // ตรวจสอบข้อความที่เหมือนกันและส่งในเวลาใกล้เคียงกัน (ภายใน 5 วินาที)
+          const msgTime = new Date(msg.createdAt || msg.timestamp).getTime();
+          const messageTime = new Date(message.createdAt || message.timestamp).getTime();
+          const timeDiff = Math.abs(msgTime - messageTime);
+          
+          return msg.content === message.content && 
+                 msg.senderId === messageSenderId && 
+                 timeDiff < 5000; // 5 วินาที
+        };
+        
         // อัปเดต private chats ถ้าข้อความมาจากแชทที่กำลังดู
         if (selectedPrivateChat && selectedPrivateChat.id === chatRoomId) {
           console.log('📨 Updating current selected chat with socket message');
@@ -4176,13 +4343,17 @@ function App() {
               return true;
             });
             
-            // เช็ค duplicate โดยดูจาก message ID
-            const isDuplicate = filteredMessages.some((msg: any) => 
+            // เช็ค duplicate โดยดูจาก message ID และ content + timestamp
+            const isDuplicateById = filteredMessages.some((msg: any) => 
               msg._id === message._id
             );
             
-            if (isDuplicate) {
-              console.log('📨 Duplicate socket message detected (by ID), skipping');
+            const isDuplicateByContent = filteredMessages.some((msg: any) => 
+              isRecentDuplicate(msg)
+            );
+            
+            if (isDuplicateById || isDuplicateByContent) {
+              console.log('📨 Duplicate socket message detected, skipping');
               return prev;
             }
             
@@ -4206,9 +4377,11 @@ function App() {
         setPrivateChats(prev => {
           const updatedChats = prev.map(chat => {
             if (chat.id === chatRoomId) {
-              // เช็คว่ามีข้อความนี้อยู่แล้วหรือไม่
-              const messageExists = chat.messages?.some((msg: any) => msg._id === message._id);
-              if (messageExists) {
+              // เช็คว่ามีข้อความนี้อยู่แล้วหรือไม่ (ทั้ง ID และ content)
+              const messageExistsById = chat.messages?.some((msg: any) => msg._id === message._id);
+              const messageExistsByContent = chat.messages?.some((msg: any) => isRecentDuplicate(msg));
+              
+              if (messageExistsById || messageExistsByContent) {
                 console.log('📨 Message already exists in chat list, skipping');
                 return chat;
               }
@@ -6587,6 +6760,7 @@ function App() {
                           selectedChat={selectedPrivateChat}
                           onSendMessage={handleSendPrivateMessage}
                           onClose={handleBackToPrivateChatList}
+                          onBack={handleBackToPrivateChatList}
                           messages={selectedPrivateChat?.messages || []}
                           isLoading={false}
                           isTyping={false}
