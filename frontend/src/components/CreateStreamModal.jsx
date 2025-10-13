@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { X, Radio, Hash, Eye, EyeOff, Users, Settings, Mic, Camera, Palette } from 'lucide-react';
+import StreamCreatedModal from './StreamCreatedModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [showCreatedModal, setShowCreatedModal] = useState(false);
+  const [createdStream, setCreatedStream] = useState(null);
   
   // Check if user is admin
   const isAdmin = user && (user.isAdmin === true || user.isSuperAdmin === true || user.role === 'admin' || user.role === 'superadmin');
@@ -96,8 +99,13 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
       const data = await response.json();
 
       if (data.success) {
-        alert('สร้างห้องไลฟ์สำเร็จ! ตอนนี้สามารถเริ่มไลฟ์ได้');
-        onStreamCreated && onStreamCreated(data.data);
+        const stream = data.data;
+        
+        // Show custom modal instead of browser alert
+        setCreatedStream(stream);
+        setShowCreatedModal(true);
+        
+        onStreamCreated && onStreamCreated(stream);
         onClose();
         
         // Reset form
@@ -136,6 +144,11 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
   }
 
   if (!isOpen) return null;
+
+  const handleCreatedModalClose = () => {
+    setShowCreatedModal(false);
+    setCreatedStream(null);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -414,6 +427,13 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
           </div>
         </form>
       </div>
+
+      {/* Stream Created Modal */}
+      <StreamCreatedModal
+        isOpen={showCreatedModal}
+        onClose={handleCreatedModalClose}
+        stream={createdStream}
+      />
     </div>
   );
 };

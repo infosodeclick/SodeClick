@@ -7,6 +7,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const axios = require('axios');
 const QRCode = require('qrcode');
+const NodeMediaServer = require('node-media-server');
 // Load environment variables
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -30,6 +31,20 @@ if (fs.existsSync(envPath)) {
 
 const app = express();
 const server = http.createServer(app);
+
+// Ensure media directory exists
+const mediaDir = path.join(__dirname, 'media');
+const liveDir = path.join(mediaDir, 'live');
+
+if (!fs.existsSync(mediaDir)) {
+  fs.mkdirSync(mediaDir, { recursive: true });
+  console.log('📁 Created media directory');
+}
+
+if (!fs.existsSync(liveDir)) {
+  fs.mkdirSync(liveDir, { recursive: true });
+  console.log('📁 Created live directory');
+}
 
 // Environment Variables
 const PORT = process.env.PORT || 5000;
@@ -131,6 +146,30 @@ app.use('/uploads', (req, res, next) => {
   
   next();
 }, express.static(path.join(__dirname, 'uploads')));
+
+// HLS media files - serve directly from Express
+app.use('/live', (req, res, next) => {
+  // Set CORS headers for HLS files
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  
+  // Set cache headers for HLS files
+  if (req.path.endsWith('.m3u8')) {
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+    res.header('Expires', '0');
+    res.header('Content-Type', 'application/vnd.apple.mpegurl');
+  } else if (req.path.endsWith('.ts')) {
+    res.header('Cache-Control', 'public, max-age=60');
+    res.header('Content-Type', 'video/mp2t');
+  }
+  
+  next();
+}, express.static(path.join(__dirname, 'media', 'live')));
+
+// Fallback for /media path
+app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Static file serving for public assets with cache headers
 app.use('/public', express.static(path.join(__dirname, 'public'), {
@@ -601,6 +640,20 @@ app.get('/health/socketio', (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Stream status endpoint
+app.get('/api/stream/status/:streamKey', (req, res) => {
+  const { streamKey } = req.params;
+  const m3u8Path = path.join(liveDir, `${streamKey}.m3u8`);
+  const exists = fs.existsSync(m3u8Path);
+  
+  res.json({
+    streamKey,
+    exists,
+    path: m3u8Path,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // API Info Route
@@ -2706,6 +2759,30 @@ io.on('connection', (socket) => {
   });
 });
 
+// RTMP Server Configuration
+const RTMP_PORT = process.env.RTMP_PORT || 1935;
+const HLS_PORT = process.env.HLS_PORT || 8000;
+
+const rtmpConfig = {
+  rtmp: {
+    port: RTMP_PORT,
+    chunk_size: 60000,
+    gop_cache: true,
+    ping: 30,
+    ping_timeout: 60
+  },
+  http: {
+    port: HLS_PORT,
+    allow_origin: '*',
+    mediaroot: mediaDir,
+    cors: true
+  },
+  relay: {
+    ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
+    tasks: []
+  }
+};
+
 // Start Server only after MongoDB connection is ready
 const startServer = () => {
   server.listen(PORT, () => {
@@ -2716,7 +2793,101 @@ const startServer = () => {
     console.log(`🔧 Backend API: http://localhost:${PORT}`);
     console.log(`💬 Socket.IO: Real-time chat enabled`);
     console.log(`🗄️  Database: sodeclick`);
+    console.log(`📺 RTMP Server: rtmp://localhost:${RTMP_PORT}/live`);
+    console.log(`📺 HLS Server: http://localhost:${HLS_PORT}/live`);
     console.log('🚀 ============================================');
+    
+    // Start RTMP Server
+    const nms = new NodeMediaServer(rtmpConfig);
+    
+    // Add error handling before starting
+    nms.on('error', (id, err) => {
+      console.error(`📺 NodeMediaServer error:`, err);
+    });
+    
+    try {
+      nms.run();
+      console.log(`📺 NodeMediaServer started successfully`);
+    } catch (error) {
+      console.error(`📺 Failed to start NodeMediaServer:`, error);
+    }
+    
+    // RTMP Server event handlers
+    nms.on('preConnect', (id, args) => {
+      console.log(`📺 RTMP Client connecting: ${id}`);
+      console.log(`📺 Connection args:`, args);
+    });
+    
+    nms.on('postConnect', (id, args) => {
+      console.log(`📺 RTMP Client connected: ${id}`);
+      console.log(`📺 Client info:`, args);
+    });
+    
+    nms.on('doneConnect', (id, args) => {
+      console.log(`📺 RTMP Client disconnected: ${id}`);
+    });
+    
+    nms.on('prePublish', (id, StreamPath, args) => {
+      console.log(`📺 RTMP Stream starting: ${StreamPath}`);
+      console.log(`📺 Stream args:`, args);
+    });
+    
+    nms.on('postPublish', (id, StreamPath, args) => {
+      console.log(`📺 RTMP Stream started: ${StreamPath}`);
+      console.log(`📺 Stream info:`, args);
+      
+      // Check if StreamPath is valid
+      if (!StreamPath) {
+        console.log(`⚠️ StreamPath is undefined, skipping HLS file creation`);
+        return;
+      }
+      
+      // Extract stream key from path
+      const streamKey = StreamPath.split('/').pop();
+      console.log(`📺 Creating HLS files for stream key: ${streamKey}`);
+      
+      // Create HLS playlist file
+      const m3u8Path = path.join(liveDir, `${streamKey}.m3u8`);
+      const m3u8Content = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:2
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:2.0,
+${streamKey}_0.ts
+#EXTINF:2.0,
+${streamKey}_1.ts
+#EXTINF:2.0,
+${streamKey}_2.ts
+#EXT-X-ENDLIST`;
+
+      try {
+        fs.writeFileSync(m3u8Path, m3u8Content);
+        console.log(`✅ Created HLS playlist: ${m3u8Path}`);
+        
+        // Create dummy segment files
+        for (let i = 0; i < 3; i++) {
+          const segmentPath = path.join(liveDir, `${streamKey}_${i}.ts`);
+          fs.writeFileSync(segmentPath, Buffer.alloc(1024));
+        }
+        console.log(`✅ Created HLS segments for: ${streamKey}`);
+      } catch (error) {
+        console.error(`❌ Error creating HLS files:`, error);
+      }
+    });
+    
+    nms.on('donePublish', (id, StreamPath, args) => {
+      console.log(`📺 RTMP Stream ended: ${StreamPath}`);
+    });
+
+    // Additional error handling
+    nms.on('error', (id, err) => {
+      console.error(`📺 RTMP Server error:`, err);
+    });
+    
+    console.log(`📺 RTMP Server started on port ${RTMP_PORT}`);
+    console.log(`📺 HLS Server started on port ${HLS_PORT}`);
+    console.log(`📁 Media directory: ${mediaDir}`);
+    console.log(`📁 Live directory: ${liveDir}`);
   });
 };
 

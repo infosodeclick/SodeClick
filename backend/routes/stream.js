@@ -5,6 +5,27 @@ const StreamMessage = require('../models/StreamMessage');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 
+// Get all streams (live + offline)
+router.get('/all', async (req, res) => {
+  try {
+    const streams = await StreamRoom.find({})
+      .sort({ isLive: -1, viewerCount: -1, startTime: -1 })
+      .populate('streamer', 'username displayName profileImages mainProfileImageIndex gender')
+      .lean();
+
+    res.json({
+      success: true,
+      data: streams
+    });
+  } catch (error) {
+    console.error('Error fetching streams:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลไลฟ์สตรีม'
+    });
+  }
+});
+
 // Get all live streams
 router.get('/live', async (req, res) => {
   try {
@@ -464,6 +485,55 @@ router.get('/:streamId/analytics', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'เกิดข้อผิดพลาดในการดึงข้อมูลสถิติ'
+    });
+  }
+});
+
+// Delete stream room - Admin only
+router.delete('/:streamId', auth, async (req, res) => {
+  try {
+    const { streamId } = req.params;
+    const userId = req.user.id;
+    
+    // Check if user is admin
+    if (!req.user.isAdmin && !req.user.isSuperAdmin && req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'คุณไม่มีสิทธิ์ลบห้องไลฟ์สตรีม'
+      });
+    }
+
+    const stream = await StreamRoom.findById(streamId);
+    if (!stream) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบห้องไลฟ์สตรีมนี้'
+      });
+    }
+
+    // Check if user is the streamer or admin
+    if (stream.streamer.toString() !== userId.toString() && !req.user.isSuperAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'คุณไม่มีสิทธิ์ลบห้องไลฟ์สตรีมนี้'
+      });
+    }
+
+    // Delete stream and all related messages
+    await StreamRoom.findByIdAndDelete(streamId);
+    await StreamMessage.deleteMany({ streamRoom: streamId });
+
+    console.log(`🗑️ Stream room ${streamId} deleted by user ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'ลบห้องไลฟ์สตรีมสำเร็จ'
+    });
+  } catch (error) {
+    console.error('Error deleting stream:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการลบห้องไลฟ์สตรีม'
     });
   }
 });
