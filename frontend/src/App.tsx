@@ -6946,7 +6946,7 @@ function App() {
                   className={`h-5 w-5 transition-all duration-300 ${activeTab === 'stream' ? 'text-pink-700 drop-shadow-lg scale-105 animate-pulse' : 'text-gray-500'}`} 
                   style={activeTab === 'stream' ? { color: '#be185d' } : {}} 
                 />
-                <span className="text-xs font-medium">DJ</span>
+                <span className="text-xs font-medium">ดีเจ</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="membership" 

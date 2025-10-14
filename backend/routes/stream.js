@@ -97,7 +97,7 @@ router.post('/create', auth, async (req, res) => {
     if (existingStream) {
       return res.status(400).json({
         success: false,
-        message: 'คุณมีไลฟ์สตรีมที่กำลังออนไลน์อยู่แล้ว'
+        message: 'คุณมีไลฟ์สตรีมที่กำลังออนไลน์อยู่แล้ว กรุณาหยุดสตรีมเก่าก่อน'
       });
     }
 
@@ -343,6 +343,15 @@ router.post('/:streamId/message', auth, async (req, res) => {
       .populate('sender', 'username displayName profileImages membership')
       .lean();
 
+    // Emit message to stream room via Socket.IO
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`stream_${streamId}`).emit('stream-message', {
+        ...populatedMessage,
+        timestamp: populatedMessage.createdAt
+      });
+    }
+
     res.json({
       success: true,
       data: populatedMessage
@@ -383,7 +392,7 @@ router.put('/:streamId/settings', auth, async (req, res) => {
   try {
     const { streamId } = req.params;
     const userId = req.user.id;
-    const { settings } = req.body;
+    const { title, settings } = req.body;
     
     // Check if user is admin
     if (!req.user.isAdmin && !req.user.isSuperAdmin && req.user.role !== 'admin' && req.user.role !== 'superadmin') {
@@ -407,6 +416,11 @@ router.put('/:streamId/settings', auth, async (req, res) => {
         success: false,
         message: 'คุณไม่มีสิทธิ์แก้ไขการตั้งค่านี้'
       });
+    }
+
+    // Update title if provided
+    if (title !== undefined) {
+      stream.title = title;
     }
 
     // Update settings

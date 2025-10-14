@@ -13,6 +13,7 @@
     "create-admin": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/createAdmin.js",
     "create-chat-rooms": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && node scripts/createDefaultChatRooms.js",
     "assign:memberships": "node ./scripts/assignRandomMemberships.js",
+    "check-ffmpeg": "node check-ffmpeg.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev:windows": "shx cp env.development .env && (shx cp env.local .env.local 2>/dev/null || true) && nodemon server.js"
   },

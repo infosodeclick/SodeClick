@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Save, Eye, EyeOff, Users, MessageCircle, Clock } from 'lucide-react';
+import CustomAlert from './CustomAlert';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -11,15 +12,28 @@ const StreamSettingsModal = ({ isOpen, onClose, stream, onSettingsUpdated }) => 
     slowModeDelay: 5,
     requireFollowToChat: false
   });
+  const [title, setTitle] = useState('');
+  
+  // Custom Alert states
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: '',
+    confirmText: 'ตกลง'
+  });
 
   useEffect(() => {
-    if (stream && stream.settings) {
-      setSettings({
-        allowComments: stream.settings.allowComments ?? true,
-        slowMode: stream.settings.slowMode ?? true,
-        slowModeDelay: stream.settings.slowModeDelay ?? 5,
-        requireFollowToChat: stream.settings.requireFollowToChat ?? false
-      });
+    if (stream) {
+      setTitle(stream.title || '');
+      if (stream.settings) {
+        setSettings({
+          allowComments: stream.settings.allowComments ?? true,
+          slowMode: stream.settings.slowMode ?? true,
+          slowModeDelay: stream.settings.slowModeDelay ?? 5,
+          requireFollowToChat: stream.settings.requireFollowToChat ?? false
+        });
+      }
     }
   }, [stream]);
 
@@ -44,6 +58,7 @@ const StreamSettingsModal = ({ isOpen, onClose, stream, onSettingsUpdated }) => 
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
+          title: title,
           settings: settings
         })
       });
@@ -51,15 +66,33 @@ const StreamSettingsModal = ({ isOpen, onClose, stream, onSettingsUpdated }) => 
       const data = await response.json();
 
       if (data.success) {
-        alert('อัปเดตการตั้งค่าสำเร็จ!');
+        setAlertState({
+          isOpen: true,
+          type: 'success',
+          title: 'บันทึกสำเร็จ',
+          message: 'อัปเดตการตั้งค่าสำเร็จ!',
+          confirmText: 'ตกลง'
+        });
         onSettingsUpdated && onSettingsUpdated(data.data);
         onClose();
       } else {
-        alert(data.message || 'เกิดข้อผิดพลาดในการอัปเดตการตั้งค่า');
+        setAlertState({
+          isOpen: true,
+          type: 'error',
+          title: 'บันทึกไม่สำเร็จ',
+          message: data.message || 'เกิดข้อผิดพลาดในการอัปเดตการตั้งค่า',
+          confirmText: 'ตกลง'
+        });
       }
     } catch (error) {
       console.error('Error updating stream settings:', error);
-      alert('เกิดข้อผิดพลาดในการอัปเดตการตั้งค่า');
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'ข้อผิดพลาด',
+        message: 'เกิดข้อผิดพลาดในการอัปเดตการตั้งค่า',
+        confirmText: 'ตกลง'
+      });
     } finally {
       setLoading(false);
     }
@@ -100,14 +133,29 @@ const StreamSettingsModal = ({ isOpen, onClose, stream, onSettingsUpdated }) => 
             </h3>
             
             <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600">ชื่อห้อง:</span>
-                  <span className="text-sm text-gray-800">{stream.title}</span>
+              <div className="space-y-4">
+                {/* Room Title - Editable */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    ชื่อห้อง:
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    placeholder="กรอกชื่อห้อง..."
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600">Stream Key:</span>
-                  <span className="text-sm text-gray-800 font-mono">{stream.streamKey}</span>
+                
+                {/* Stream Key - Read Only */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Stream Key:
+                  </label>
+                  <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm font-mono text-gray-600">
+                    {stream?.streamKey}
+                  </div>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm font-medium text-gray-600">สถานะ:</span>
@@ -289,6 +337,16 @@ const StreamSettingsModal = ({ isOpen, onClose, stream, onSettingsUpdated }) => 
           </div>
         </form>
       </div>
+
+      {/* Custom Alert Modal */}
+      <CustomAlert
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        confirmText={alertState.confirmText}
+      />
     </div>
   );
 };

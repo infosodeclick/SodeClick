@@ -79,6 +79,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  img, video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    vertical-align: middle;
+  }
 }
 
 /* Prevent zoom on input focus - Mobile Safari */

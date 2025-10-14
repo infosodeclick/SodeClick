@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { X, Radio, Hash, Eye, EyeOff, Users, Settings, Mic, Camera, Palette } from 'lucide-react';
 import StreamCreatedModal from './StreamCreatedModal';
+import CustomAlert from './CustomAlert';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -10,6 +11,15 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
   const [loading, setLoading] = useState(false);
   const [showCreatedModal, setShowCreatedModal] = useState(false);
   const [createdStream, setCreatedStream] = useState(null);
+  
+  // Custom Alert states
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: '',
+    confirmText: 'ตกลง'
+  });
   
   // Check if user is admin
   const isAdmin = user && (user.isAdmin === true || user.isSuperAdmin === true || user.role === 'admin' || user.role === 'superadmin');
@@ -69,12 +79,24 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
     
     // Double check admin permission
     if (!isAdmin) {
-      alert('คุณไม่มีสิทธิ์สร้างห้องไลฟ์สตรีม');
+      setAlertState({
+        isOpen: true,
+        type: 'warning',
+        title: 'ไม่มีสิทธิ์',
+        message: 'คุณไม่มีสิทธิ์สร้างห้องไลฟ์สตรีม',
+        confirmText: 'ตกลง'
+      });
       return;
     }
     
     if (!formData.title.trim()) {
-      alert('กรุณาใส่ชื่อห้องไลฟ์');
+      setAlertState({
+        isOpen: true,
+        type: 'warning',
+        title: 'ข้อมูลไม่ครบถ้วน',
+        message: 'กรุณาใส่ชื่อห้องไลฟ์',
+        confirmText: 'ตกลง'
+      });
       return;
     }
 
@@ -122,11 +144,23 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
           thumbnail: ''
         });
       } else {
-        alert(data.message || 'เกิดข้อผิดพลาดในการสร้างห้องไลฟ์');
+        setAlertState({
+          isOpen: true,
+          type: 'error',
+          title: 'สร้างไม่สำเร็จ',
+          message: data.message || 'เกิดข้อผิดพลาดในการสร้างห้องไลฟ์',
+          confirmText: 'ตกลง'
+        });
       }
     } catch (error) {
       console.error('Error creating stream:', error);
-      alert('เกิดข้อผิดพลาดในการสร้างห้องไลฟ์');
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'ข้อผิดพลาด',
+        message: 'เกิดข้อผิดพลาดในการสร้างห้องไลฟ์',
+        confirmText: 'ตกลง'
+      });
     } finally {
       setLoading(false);
     }
@@ -433,6 +467,16 @@ const CreateStreamModal = ({ isOpen, onClose, onStreamCreated }) => {
         isOpen={showCreatedModal}
         onClose={handleCreatedModalClose}
         stream={createdStream}
+      />
+
+      {/* Custom Alert Modal */}
+      <CustomAlert
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        confirmText={alertState.confirmText}
       />
     </div>
   );

@@ -5,7 +5,29 @@ const StreamCreatedModal = ({ isOpen, onClose, stream }) => {
   const [copiedStreamKey, setCopiedStreamKey] = useState(false);
   const [copiedServerUrl, setCopiedServerUrl] = useState(false);
 
-  const serverUrl = 'rtmp://localhost:1935/live';
+  // Get RTMP server URL based on environment
+  const getRTMPServerUrl = () => {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+    
+    // Extract hostname from API URL
+    try {
+      const url = new URL(API_BASE_URL);
+      const hostname = url.hostname;
+      
+      // For localhost/127.0.0.1, use localhost
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'rtmp://localhost:1935/live';
+      }
+      
+      // For production or other IPs, use the hostname
+      return `rtmp://${hostname}:1935/live`;
+    } catch (error) {
+      // Fallback to localhost if URL parsing fails
+      return 'rtmp://localhost:1935/live';
+    }
+  };
+
+  const serverUrl = getRTMPServerUrl();
   const streamKey = stream?.streamKey || '';
 
   const copyToClipboard = async (text, type) => {

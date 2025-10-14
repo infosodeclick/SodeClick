@@ -2182,17 +2182,36 @@ io.on('connection', (socket) => {
 
   // ============ Stream Events ============
   
+  // Debug: Log all socket events
+  socket.onAny((eventName, ...args) => {
+    console.log(`🔍 [server.js] Socket event received: ${eventName}`, {
+      socketId: socket.id,
+      args: args.length,
+      eventName
+    });
+  });
+  
   // Join stream room
   socket.on('join-stream', async (data) => {
     try {
       const { streamId, userId, token } = data;
       
+      console.log('🔌 [server.js] Join stream request:', {
+        streamId,
+        userId,
+        hasToken: !!token,
+        socketId: socket.id
+      });
+      
       // Authenticate user
       const authenticatedUser = await authenticateSocket(socket, token);
       if (!authenticatedUser) {
+        console.error('❌ [server.js] Authentication failed for join-stream:', userId);
         socket.emit('stream-error', { message: 'Authentication required' });
         return;
       }
+      
+      console.log('✅ [server.js] User authenticated for join-stream:', authenticatedUser.username);
       
       // Note: Joining stream doesn't require admin, only viewing
 
@@ -2200,11 +2219,13 @@ io.on('connection', (socket) => {
       const stream = await StreamRoom.findById(streamId);
       
       if (!stream) {
+        console.error('❌ [server.js] Stream not found:', streamId);
         socket.emit('stream-error', { message: 'Stream not found' });
         return;
       }
 
       if (!stream.isLive) {
+        console.error('❌ [server.js] Stream not live:', streamId);
         socket.emit('stream-error', { message: 'Stream is not live' });
         return;
       }
@@ -2212,7 +2233,17 @@ io.on('connection', (socket) => {
       // Join stream room
       socket.join(`stream-${streamId}`);
       socket.streamId = streamId;
+      
+      console.log(`📺 [server.js] User ${authenticatedUser.username} joined stream room ${streamId}`);
+      console.log('📺 [server.js] Socket rooms:', Array.from(socket.rooms));
       socket.userId = userId;
+      
+      // Send confirmation back to client
+      socket.emit('stream-joined', {
+        streamId,
+        viewerCount: stream.viewerCount || 0,
+        viewers: stream.viewers || []
+      });
 
       // Add viewer to stream
       const existingViewer = stream.viewers.find(v => v.userId.toString() === userId);
@@ -2290,7 +2321,17 @@ io.on('connection', (socket) => {
   // Send stream message
   socket.on('send-stream-message', async (data) => {
     try {
-      const { streamId, userId, message, token } = data;
+      const { streamId, userId, message, token, tempId } = data;
+
+      console.log('📤 [server.js] Stream message received:', {
+        streamId,
+        userId,
+        message: message?.substring(0, 50) + '...',
+        tempId,
+        hasToken: !!token,
+        socketId: socket.id,
+        socketRooms: Array.from(socket.rooms)
+      });
 
       if (!message || message.trim() === '') {
         socket.emit('stream-error', { message: 'Message cannot be empty' });
@@ -2300,6 +2341,7 @@ io.on('connection', (socket) => {
       // Authenticate user
       const authenticatedUser = await authenticateSocket(socket, token);
       if (!authenticatedUser) {
+        console.error('❌ [server.js] Authentication failed for user:', userId);
         socket.emit('stream-error', { message: 'Authentication required' });
         return;
       }
@@ -2309,6 +2351,7 @@ io.on('connection', (socket) => {
       
       const stream = await StreamRoom.findById(streamId);
       if (!stream || !stream.isLive) {
+        console.error('❌ [server.js] Stream not found or not live:', streamId);
         socket.emit('stream-error', { message: 'Stream is not live' });
         return;
       }
@@ -2345,16 +2388,20 @@ io.on('connection', (socket) => {
         senderAvatar: newMessage.senderAvatar,
         message: newMessage.message,
         type: newMessage.type,
-        createdAt: newMessage.createdAt
+        createdAt: newMessage.createdAt,
+        tempId: tempId // Include tempId to help frontend prevent duplicates
       };
 
-      console.log(`💬 Stream message sent in ${streamId} by ${userId}`);
+      console.log(`💬 [server.js] Stream message sent in ${streamId} by ${userId}`, {
+        messageId: newMessage._id,
+        tempId
+      });
 
       // Broadcast message to all viewers
       io.to(`stream-${streamId}`).emit('stream-message-received', messageData);
 
     } catch (error) {
-      console.error('Error sending stream message:', error);
+      console.error('❌ [server.js] Error sending stream message:', error);
       socket.emit('stream-error', { message: 'Failed to send message' });
     }
   });
@@ -2393,7 +2440,76 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ============ End Stream Events ============
+  // ============ Stream Room Events ============
+  
+  // Join stream room for chat
+  socket.on('join-stream-room', async (data) => {
+    try {
+      const { streamId, userId, username } = data;
+      
+      // Join stream room
+      socket.join(`stream_${streamId}`);
+      socket.join(`user_${userId}`); // For notifications
+      socket.currentStreamRoom = streamId;
+      
+      console.log(`📺 User ${username} (${userId}) joined stream room ${streamId}`);
+      
+      // Broadcast to stream room
+      socket.to(`stream_${streamId}`).emit('user-joined-stream', {
+        userId,
+        username,
+        streamId
+      });
+      
+      // Get current viewer count
+      const streamRoom = io.sockets.adapter.rooms.get(`stream_${streamId}`);
+      const viewerCount = streamRoom ? streamRoom.size : 0;
+      
+      // Update viewer count for all viewers
+      io.to(`stream_${streamId}`).emit('viewer-count-update', {
+        streamId,
+        count: viewerCount
+      });
+      
+    } catch (error) {
+      console.error('Error joining stream room:', error);
+      socket.emit('error', { message: 'Failed to join stream room' });
+    }
+  });
+
+  // Leave stream room
+  socket.on('leave-stream-room', async (data) => {
+    try {
+      const { streamId, userId } = data;
+      
+      // Leave stream room
+      socket.leave(`stream_${streamId}`);
+      socket.leave(`user_${userId}`);
+      socket.currentStreamRoom = null;
+      
+      console.log(`📺 User ${userId} left stream room ${streamId}`);
+      
+      // Broadcast to stream room
+      socket.to(`stream_${streamId}`).emit('user-left-stream', {
+        userId,
+        streamId
+      });
+      
+      // Update viewer count
+      const streamRoom = io.sockets.adapter.rooms.get(`stream_${streamId}`);
+      const viewerCount = streamRoom ? streamRoom.size : 0;
+      
+      io.to(`stream_${streamId}`).emit('viewer-count-update', {
+        streamId,
+        count: viewerCount
+      });
+      
+    } catch (error) {
+      console.error('Error leaving stream room:', error);
+    }
+  });
+
+  // ============ End Stream Room Events ============
 
   // Disconnect
   socket.on('disconnect', async (reason) => {
@@ -2424,6 +2540,26 @@ io.on('connection', (socket) => {
       } catch (error) {
         console.error('Error handling stream disconnect:', error);
       }
+    }
+    
+    // Handle stream room disconnect
+    if (socket.userId && socket.currentStreamRoom) {
+      const streamId = socket.currentStreamRoom;
+      
+      // Broadcast user left
+      socket.to(`stream_${streamId}`).emit('user-left-stream', {
+        userId: socket.userId,
+        streamId
+      });
+      
+      // Update viewer count
+      const streamRoom = io.sockets.adapter.rooms.get(`stream_${streamId}`);
+      const viewerCount = streamRoom ? streamRoom.size - 1 : 0; // -1 because socket hasn't left yet
+      
+      io.to(`stream_${streamId}`).emit('viewer-count-update', {
+        streamId,
+        count: viewerCount
+      });
     }
     
     // ตรวจสอบให้แน่ใจว่า socket มีข้อมูลที่จำเป็น
@@ -2771,15 +2907,24 @@ const rtmpConfig = {
     ping: 30,
     ping_timeout: 60
   },
-  http: {
-    port: HLS_PORT,
-    allow_origin: '*',
-    mediaroot: mediaDir,
-    cors: true
-  },
-  relay: {
-    ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
-    tasks: []
+  // Disable Node Media Server HTTP - we'll use Express instead
+  // http: {
+  //   port: HLS_PORT,
+  //   allow_origin: '*',
+  //   mediaroot: liveDir,
+  //   cors: true
+  // },
+  trans: {
+    ffmpeg: process.env.FFMPEG_PATH || 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
+    tasks: [
+      {
+        app: 'live',
+        hls: true,
+        hlsFlags: '[hls_time=6:hls_list_size=6:hls_flags=delete_segments]',
+        hlsKeep: true,
+        dash: false
+      }
+    ]
   }
 };
 
@@ -2799,6 +2944,43 @@ const startServer = () => {
     
     // Start RTMP Server
     const nms = new NodeMediaServer(rtmpConfig);
+    
+    // Cleanup old HLS files every 5 minutes
+    const cleanupOldHLSFiles = () => {
+      try {
+        const liveDir = path.join(__dirname, 'media', 'live');
+        
+        if (!fs.existsSync(liveDir)) {
+          return;
+        }
+        
+        const files = fs.readdirSync(liveDir);
+        const now = Date.now();
+        const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+        let deletedCount = 0;
+        
+        for (const file of files) {
+          const filePath = path.join(liveDir, file);
+          const stats = fs.statSync(filePath);
+          const age = now - stats.mtime.getTime();
+          
+          if (age > maxAge) {
+            fs.unlinkSync(filePath);
+            deletedCount++;
+          }
+        }
+        
+        if (deletedCount > 0) {
+          console.log(`📺 Cleaned up ${deletedCount} old HLS files`);
+        }
+      } catch (error) {
+        console.error('📺 Error cleaning up HLS files:', error);
+      }
+    };
+    
+    // Run cleanup immediately and then every 5 minutes
+    cleanupOldHLSFiles();
+    setInterval(cleanupOldHLSFiles, 5 * 60 * 1000);
     
     // Add error handling before starting
     nms.on('error', (id, err) => {
@@ -2829,54 +3011,177 @@ const startServer = () => {
     
     nms.on('prePublish', (id, StreamPath, args) => {
       console.log(`📺 RTMP Stream starting: ${StreamPath}`);
-      console.log(`📺 Stream args:`, args);
+      console.log(`📺 Connection ID:`, id);
+      console.log(`📺 Stream Args:`, args);
     });
     
-    nms.on('postPublish', (id, StreamPath, args) => {
+    nms.on('postPublish', async (id, StreamPath, args) => {
       console.log(`📺 RTMP Stream started: ${StreamPath}`);
-      console.log(`📺 Stream info:`, args);
+      console.log(`📺 Connection ID:`, id);
+      console.log(`📺 Stream Args:`, args);
+      
+      // Get StreamPath from id object if StreamPath parameter is undefined
+      let actualStreamPath = StreamPath;
+      if (!actualStreamPath || actualStreamPath === 'undefined') {
+        actualStreamPath = id.streamPath;
+        console.log(`📺 Using StreamPath from id object: ${actualStreamPath}`);
+      }
       
       // Check if StreamPath is valid
-      if (!StreamPath) {
-        console.log(`⚠️ StreamPath is undefined, skipping HLS file creation`);
+      if (!actualStreamPath || actualStreamPath === 'undefined') {
+        console.log(`⚠️ StreamPath is undefined or invalid: ${actualStreamPath}`);
+        console.log(`📺 Available arguments:`, { id, StreamPath, args });
+        return;
+      }
+      
+      // Extract stream key from path (e.g., /live/stream_key -> stream_key)
+      const streamKey = actualStreamPath.split('/').pop();
+      console.log(`📺 Stream key: ${streamKey}`);
+      
+      // Manually spawn FFmpeg for HLS transcoding
+      const { spawn } = require('child_process');
+      const ffmpegPath = process.env.FFMPEG_PATH || 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe';
+      const inputUrl = `rtmp://localhost:${RTMP_PORT}${actualStreamPath}`;
+      const outputPath = path.join(liveDir, `${streamKey}.m3u8`);
+      
+      console.log(`🎬 Starting FFmpeg manually...`);
+      console.log(`   Input: ${inputUrl}`);
+      console.log(`   Output: ${outputPath}`);
+      
+      const ffmpegArgs = [
+        '-i', inputUrl,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-tune', 'zerolatency',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-f', 'hls',
+        '-hls_time', '6',
+        '-hls_list_size', '6',
+        '-hls_flags', 'delete_segments+append_list',
+        '-hls_segment_filename', path.join(liveDir, `${streamKey}_%03d.ts`),
+        outputPath
+      ];
+      
+      const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs);
+      
+      // Store FFmpeg process with session ID
+      if (!global.ffmpegProcesses) {
+        global.ffmpegProcesses = new Map();
+      }
+      global.ffmpegProcesses.set(id.id, ffmpegProcess);
+      
+      ffmpegProcess.stdout.on('data', (data) => {
+        console.log(`FFmpeg stdout: ${data.toString().substring(0, 100)}...`);
+      });
+      
+      ffmpegProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('frame=') || output.includes('time=')) {
+          // Only log periodic updates
+          if (Math.random() < 0.1) { // Log 10% of messages
+            console.log(`FFmpeg: ${output.substring(0, 80)}...`);
+          }
+        } else {
+          console.log(`FFmpeg stderr: ${output}`);
+        }
+      });
+      
+      ffmpegProcess.on('close', (code) => {
+        console.log(`⏹️  FFmpeg process exited with code ${code}`);
+        global.ffmpegProcesses.delete(id.id);
+      });
+      
+      ffmpegProcess.on('error', (error) => {
+        console.error(`❌ FFmpeg error:`, error);
+        global.ffmpegProcesses.delete(id.id);
+      });
+      
+      console.log(`✅ FFmpeg process spawned successfully (PID: ${ffmpegProcess.pid})`);
+      console.log(`📁 HLS files will be created in: ${outputPath}`);
+      
+      // Update stream status in database
+      try {
+        const StreamRoom = require('./models/StreamRoom');
+        const stream = await StreamRoom.findOne({ streamKey });
+        
+        if (stream && !stream.isLive) {
+          stream.isLive = true;
+          stream.startTime = new Date();
+          await stream.save();
+          
+          console.log(`✅ Updated stream status to LIVE in database`);
+          
+          // Emit socket event to notify clients
+          if (io) {
+            io.emit('stream-started', {
+              streamId: stream._id,
+              title: stream.title,
+              streamer: stream.streamerName,
+              streamKey: streamKey
+            });
+            console.log(`📡 Notified clients: Stream started`);
+          }
+        } else if (!stream) {
+          console.log(`⚠️ Stream not found in database with key: ${streamKey}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error updating stream status:`, error);
+      }
+    });
+    
+    nms.on('donePublish', async (id, StreamPath, args) => {
+      console.log(`📺 RTMP Stream ended: ${StreamPath}`);
+      
+      // Stop FFmpeg process if exists
+      if (global.ffmpegProcesses && global.ffmpegProcesses.has(id.id)) {
+        const ffmpegProcess = global.ffmpegProcesses.get(id.id);
+        console.log(`⏹️  Killing FFmpeg process (PID: ${ffmpegProcess.pid})`);
+        ffmpegProcess.kill('SIGTERM');
+        global.ffmpegProcesses.delete(id.id);
+      }
+      
+      // Get StreamPath from id object if needed
+      let actualStreamPath = StreamPath;
+      if (!actualStreamPath || actualStreamPath === 'undefined') {
+        actualStreamPath = id.streamPath;
+      }
+      
+      // Check if StreamPath is valid
+      if (!actualStreamPath || actualStreamPath === 'undefined') {
+        console.log(`⚠️ StreamPath is undefined or invalid: ${actualStreamPath}`);
         return;
       }
       
       // Extract stream key from path
-      const streamKey = StreamPath.split('/').pop();
-      console.log(`📺 Creating HLS files for stream key: ${streamKey}`);
+      const streamKey = actualStreamPath.split('/').pop();
+      console.log(`📺 Cleaning up stream: ${streamKey}`);
       
-      // Create HLS playlist file
-      const m3u8Path = path.join(liveDir, `${streamKey}.m3u8`);
-      const m3u8Content = `#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:2
-#EXT-X-MEDIA-SEQUENCE:0
-#EXTINF:2.0,
-${streamKey}_0.ts
-#EXTINF:2.0,
-${streamKey}_1.ts
-#EXTINF:2.0,
-${streamKey}_2.ts
-#EXT-X-ENDLIST`;
-
+      // Update stream status in database
       try {
-        fs.writeFileSync(m3u8Path, m3u8Content);
-        console.log(`✅ Created HLS playlist: ${m3u8Path}`);
+        const StreamRoom = require('./models/StreamRoom');
+        const stream = await StreamRoom.findOne({ streamKey });
         
-        // Create dummy segment files
-        for (let i = 0; i < 3; i++) {
-          const segmentPath = path.join(liveDir, `${streamKey}_${i}.ts`);
-          fs.writeFileSync(segmentPath, Buffer.alloc(1024));
+        if (stream && stream.isLive) {
+          stream.isLive = false;
+          stream.endTime = new Date();
+          await stream.save();
+          
+          console.log(`✅ Updated stream status to OFFLINE in database`);
+          
+          // Emit socket event to notify clients
+          if (io) {
+            io.emit('stream-ended', {
+              streamId: stream._id,
+              streamKey: streamKey,
+              message: 'ไลฟ์สตรีมสิ้นสุดแล้ว'
+            });
+            console.log(`📡 Notified clients: Stream ended`);
+          }
         }
-        console.log(`✅ Created HLS segments for: ${streamKey}`);
       } catch (error) {
-        console.error(`❌ Error creating HLS files:`, error);
+        console.error(`❌ Error updating stream status:`, error);
       }
-    });
-    
-    nms.on('donePublish', (id, StreamPath, args) => {
-      console.log(`📺 RTMP Stream ended: ${StreamPath}`);
     });
 
     // Additional error handling
@@ -2884,8 +3189,48 @@ ${streamKey}_2.ts
       console.error(`📺 RTMP Server error:`, err);
     });
     
+    // FFmpeg transcoding events
+    nms.on('preTranscode', (id, streamPath, args) => {
+      console.log(`🎬 FFmpeg transcoding starting for: ${streamPath}`);
+      console.log(`🎬 FFmpeg args:`, args);
+    });
+    
+    nms.on('postTranscode', (id, streamPath, args) => {
+      console.log(`✅ FFmpeg transcoding started for: ${streamPath}`);
+    });
+    
+    nms.on('doneTranscode', (id, streamPath, args) => {
+      console.log(`⏹️  FFmpeg transcoding ended for: ${streamPath}`);
+    });
+    
+    // Create separate HTTP server for HLS files
+    const express = require('express');
+    const hlsApp = express();
+    
+    // Enable CORS for HLS server
+    hlsApp.use((req, res, next) => {
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type');
+      if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+      } else {
+        next();
+      }
+    });
+    
+    // Serve static files from live directory
+    hlsApp.use('/live', express.static(liveDir));
+    
+    // Start HLS HTTP server
+    const hlsServer = http.createServer(hlsApp);
+    hlsServer.listen(HLS_PORT, () => {
+      console.log(`📺 HLS HTTP Server started on port ${HLS_PORT}`);
+      console.log(`📁 Serving files from: ${liveDir}`);
+      console.log(`🌐 Test URL: http://localhost:${HLS_PORT}/live/test.html`);
+    });
+    
     console.log(`📺 RTMP Server started on port ${RTMP_PORT}`);
-    console.log(`📺 HLS Server started on port ${HLS_PORT}`);
     console.log(`📁 Media directory: ${mediaDir}`);
     console.log(`📁 Live directory: ${liveDir}`);
   });
