@@ -12,7 +12,6 @@ import { Badge } from './components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './components/ui/tabs'
 import { Dialog, DialogContent, DialogTitle, DialogDescription, VisuallyHidden } from './components/ui/dialog'
 import LoginModal from './components/LoginModal'
-import IdleWarningModal from './components/IdleWarningModal'
 import { DataCacheProvider } from './hooks/useGlobalCache'
 import { useRealTimeUpdate, useNotificationUpdates } from './hooks/useRealTimeUpdates'
 import { getProfileImageUrl, getMainProfileImage } from './utils/profileImageUtils'
@@ -36,7 +35,7 @@ const NewPrivateChatModal = lazy(() => import('./components/NewPrivateChatModal.
 const HeartVote = lazy(() => import('./components/HeartVote.jsx')) as any
 const VoteRanking = lazy(() => import('./components/VoteRanking.jsx')) as any
 const VoteRankingMini = lazy(() => import('./components/VoteRankingMini.jsx')) as any
-const LiveStream = lazy(() => import('./components/LiveStream.jsx')) as any
+const DJPage = lazy(() => import('./components/DJPage.jsx')) as any
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 const TopVotedCarousel = lazy(() => import('./components/TopVotedCarousel.jsx')) as any
 import { useAuth } from './contexts/AuthContext'
@@ -265,7 +264,7 @@ const profiles: FeaturedProfile[] = [
 // Sample messages
 
 function App() {
-  const { user, login, logout, showIdleWarning, dismissIdleWarning } = useAuth()
+  const { user, login, logout } = useAuth()
   const { success, error, warning, ToastContainer } = useToast()
   const { updateNotification } = useNotificationUpdates()
 
@@ -6788,7 +6787,7 @@ function App() {
             {/* Mobile-First Stream Tab */}
             <TabsContent value="stream" className="p-0">
               <Suspense fallback={<LoadingSpinner />}>
-                <LiveStream />
+                <DJPage />
               </Suspense>
             </TabsContent>
             {/* Mobile-First Ranking Tab */}
@@ -7867,12 +7866,6 @@ function App() {
         isOpen={showLoginDialog}
         onClose={() => setShowLoginDialog(false)}
         onLoginSuccess={handleLoginSuccess}
-      />
-      {/* Idle Warning Modal */}
-      <IdleWarningModal 
-        isOpen={showIdleWarning}
-        onDismiss={dismissIdleWarning}
-        onLogout={logout}
       />
       {/* Create Private Room Modal */}
       <CreatePrivateRoomModal

@@ -9,6 +9,7 @@ import SystemMonitor from './SystemMonitor';
 import AdminChatManagement from './AdminChatManagement';
 import AdminCreateChatRoom from './AdminCreateChatRoom';
 import SuperAdminPanel from './SuperAdminPanel';
+import LiveStreamTest from './LiveStreamTest';
 import { 
   Users, 
   MessageCircle, 
@@ -26,7 +27,8 @@ import {
   Home,
   RefreshCw,
   Wrench,
-  Power
+  Power,
+  FlaskConical
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -286,6 +288,8 @@ const AdminDashboard = () => {
         return <Analytics />;
       case 'superadmin':
         return <SuperAdminPanel />;
+      case 'livetest':
+        return <LiveStreamTest />;
       default:
         return renderDashboard();
     }
@@ -312,6 +316,8 @@ const AdminDashboard = () => {
         return 'สถิติการใช้งาน';
       case 'superadmin':
         return 'SuperAdmin Panel';
+      case 'livetest':
+        return 'ทดสอบ Live Streaming';
       default:
         return 'Admin Dashboard';
     }
@@ -767,6 +773,14 @@ const AdminDashboard = () => {
              </Button>
              <Button 
                variant="outline" 
+               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+               onClick={() => setCurrentView('livetest')}
+             >
+               <FlaskConical size={16} className="mr-2" />
+               ทดสอบ Live Streaming
+             </Button>
+             <Button 
+               variant="outline" 
                className={`w-full justify-start border-slate-200 hover:bg-slate-50 ${
                  maintenanceMode ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-200'
                }`}
@@ -853,7 +867,7 @@ const AdminDashboard = () => {
              <p className="text-slate-600 mt-1">ยินดีต้อนรับ, {user?.username}</p>
            </div>
                        <div className="flex gap-3">
-              {(currentView === 'health' || currentView === 'monitor' || currentView === 'chat' || currentView === 'create-chat' || currentView === 'analytics') && (
+              {(currentView === 'health' || currentView === 'monitor' || currentView === 'chat' || currentView === 'create-chat' || currentView === 'analytics' || currentView === 'livetest') && (
                 <Button 
                   variant="outline" 
                   size="lg"

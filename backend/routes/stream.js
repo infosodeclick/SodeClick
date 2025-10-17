@@ -4,6 +4,8 @@ const StreamRoom = require('../models/StreamRoom');
 const StreamMessage = require('../models/StreamMessage');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const fs = require('fs');
+const path = require('path');
 
 // Get all streams (live + offline)
 router.get('/all', async (req, res) => {
@@ -548,6 +550,138 @@ router.delete('/:streamId', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'เกิดข้อผิดพลาดในการลบห้องไลฟ์สตรีม'
+    });
+  }
+});
+
+// HLS endpoint for testing (mock data)
+router.get('/hls/:streamKey.m3u8', (req, res) => {
+  const { streamKey } = req.params;
+  
+  // Check if it's a test stream key
+  if (streamKey.startsWith('test_')) {
+    // Generate mock HLS playlist with working video segments
+    const mockHlsContent = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-PLAYLIST-TYPE:EVENT
+#EXTINF:10.0,
+/api/stream/test/${streamKey}/segment0.ts
+#EXTINF:10.0,
+/api/stream/test/${streamKey}/segment1.ts
+#EXTINF:10.0,
+/api/stream/test/${streamKey}/segment2.ts
+#EXT-X-ENDLIST`;
+
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(mockHlsContent);
+  } else {
+    // For real streams, check if HLS file exists
+    const hlsPath = path.join(__dirname, '../hls', `${streamKey}.m3u8`);
+    
+    if (fs.existsSync(hlsPath)) {
+      res.sendFile(hlsPath);
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Stream not found or not live'
+      });
+    }
+  }
+});
+
+// Mock video segment endpoint for testing
+router.get('/test/:streamKey/segment:segmentNumber.ts', (req, res) => {
+  const { streamKey, segmentNumber } = req.params;
+  
+  // Check if it's a test stream key
+  if (streamKey.startsWith('test_')) {
+    // Create a minimal MPEG-TS segment (just for testing)
+    // This is a very basic TS segment that won't play but won't cause errors
+    const tsHeader = Buffer.from([
+      0x47, 0x40, 0x00, 0x10, 0x00, 0x00, 0xB0, 0x0D, 0x00, 0x00, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xE0,
+      0x00, 0x00, 0x80, 0x80, 0x05, 0x21, 0x00, 0x01, 0x00, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    ]);
+    
+    // Create a simple test pattern (188 bytes per TS packet)
+    const segmentData = Buffer.alloc(188 * 10); // 10 TS packets
+    for (let i = 0; i < 10; i++) {
+      tsHeader.copy(segmentData, i * 188);
+    }
+    
+    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(segmentData);
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'Test segment not found'
+    });
+  }
+});
+
+// DASH endpoint for testing (mock data)
+router.get('/dash/:streamKey.mpd', (req, res) => {
+  const { streamKey } = req.params;
+  
+  // Check if it's a test stream key
+  if (streamKey.startsWith('test_')) {
+    // Generate mock DASH manifest
+    const mockDashContent = `<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" mediaPresentationDuration="PT30S" minBufferTime="PT3S" profiles="urn:mpeg:dash:profile:isoff-live:2011">
+  <Period id="0" start="PT0S">
+    <AdaptationSet id="0" contentType="video" segmentAlignment="true">
+      <Representation id="0" mimeType="video/mp4" codecs="avc1.640028" width="1920" height="1080" frameRate="30" bandwidth="5000000">
+        <SegmentTemplate media="segment_$Number$.m4s" initialization="init.m4s" timescale="1000" startNumber="1">
+          <SegmentTimeline>
+            <S t="0" d="10000"/>
+            <S t="10000" d="10000"/>
+            <S t="20000" d="10000"/>
+          </SegmentTimeline>
+        </SegmentTemplate>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>`;
+
+    res.setHeader('Content-Type', 'application/dash+xml');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(mockDashContent);
+  } else {
+    // For real streams, check if DASH file exists
+    const dashPath = path.join(__dirname, '../dash', `${streamKey}.mpd`);
+    
+    if (fs.existsSync(dashPath)) {
+      res.sendFile(dashPath);
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Stream not found or not live'
+      });
+    }
+  }
+});
+
+// Test stream status endpoint
+router.get('/test/:streamKey/status', (req, res) => {
+  const { streamKey } = req.params;
+  
+  if (streamKey.startsWith('test_')) {
+    res.json({
+      success: true,
+      data: {
+        streamKey,
+        isLive: true,
+        status: 'mock_stream',
+        message: 'This is a mock stream for testing purposes'
+      }
+    });
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'Test stream not found'
     });
   }
 });

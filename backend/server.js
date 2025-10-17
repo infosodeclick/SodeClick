@@ -3254,6 +3254,9 @@ setTimeout(() => {
 const socketManager = require('./socket');
 socketManager.initializeSocket(io);
 
+// Initialize DJ socket handlers
+const { setupDJSocketHandlers } = require('./socket-handlers/dj-socket');
+setupDJSocketHandlers(io);
+
 // No need to export getSocketInstance from server.js anymore
-// Routes should import from socket.js instead
 // Routes should import from socket.js instead

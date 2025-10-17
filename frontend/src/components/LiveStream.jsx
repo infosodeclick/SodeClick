@@ -517,8 +517,8 @@ const LiveStream = () => {
     
     console.log('📤 [LiveStream] Sending message:', {
       message: messageText,
-      streamId: selectedStream._id,
-      userId: user.id,
+        streamId: selectedStream._id,
+        userId: user.id,
       socketRef: socketRef.current,
       socketConnected: !!socketRef.current,
       socketId: socketRef.current?.id,
@@ -564,22 +564,22 @@ const LiveStream = () => {
 
     // Add temporary message immediately
     setMessages(prev => [...prev, tempMessage]);
-    setMessageInput('');
-    
-    // Start cooldown (5 seconds)
-    setCanSendMessage(false);
-    setCountdown(5);
-    
-    const interval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setCanSendMessage(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      setMessageInput('');
+      
+      // Start cooldown (5 seconds)
+      setCanSendMessage(false);
+      setCountdown(5);
+      
+      const interval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setCanSendMessage(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
     // Send via socket
     if (socketRef.current && socketRef.current.connected) {
@@ -906,9 +906,9 @@ const LiveStream = () => {
                 <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-pink-500 to-purple-600 text-white">
                   <div className="flex items-center justify-between">
                     <h2 className="text-lg font-bold flex items-center gap-2">
-                      <Radio className="h-5 w-5 animate-pulse" />
-                      Live Streams
-                    </h2>
+            <Radio className="h-5 w-5 animate-pulse" />
+            Live Streams
+          </h2>
                     <button
                       onClick={() => setShowMobileMenu(false)}
                       className="p-1 bg-white/20 rounded"
@@ -916,67 +916,67 @@ const LiveStream = () => {
                       <X className="h-5 w-5" />
                     </button>
                   </div>
-                  <p className="text-xs text-white/80 mt-1">{liveRooms.length} ห้องกำลังไลฟ์</p>
-                </div>
-                
+          <p className="text-xs text-white/80 mt-1">{liveRooms.length} ห้องกำลังไลฟ์</p>
+        </div>
+        
                 <div className="p-2 overflow-y-auto h-full">
-                  {/* Create Stream Button - Admin Only */}
-                  {isAdmin && (
-                    <button
+          {/* Create Stream Button - Admin Only */}
+          {isAdmin && (
+            <button
                       onClick={() => {
                         setShowCreateModal(true);
                         setShowMobileMenu(false);
                       }}
-                      className="w-full p-3 mb-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2 shadow-lg"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span className="font-semibold">สร้างห้องไลฟ์</span>
-                    </button>
-                  )}
+              className="w-full p-3 mb-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2 shadow-lg"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="font-semibold">สร้างห้องไลฟ์</span>
+            </button>
+          )}
 
-                  {liveRooms.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Radio className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">ยังไม่มีไลฟ์สตรีม</p>
-                      {isAdmin && (
-                        <p className="text-xs mt-1">เริ่มต้นสร้างห้องไลฟ์ของคุณ</p>
-                      )}
-                    </div>
-                  ) : (
-                    liveRooms.map(room => (
-                      <div
-                        key={room._id}
-                        className={`p-3 rounded-lg mb-2 transition-all ${
-                          selectedStream?._id === room._id
-                            ? 'bg-gradient-to-r from-pink-100 to-purple-100 border-2 border-pink-500'
-                            : room.isLive 
-                              ? 'bg-green-50 border border-green-200' 
-                              : 'bg-gray-50 border border-gray-200'
-                        }`}
-                      >
+          {liveRooms.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Radio className="h-12 w-12 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">ยังไม่มีไลฟ์สตรีม</p>
+              {isAdmin && (
+                <p className="text-xs mt-1">เริ่มต้นสร้างห้องไลฟ์ของคุณ</p>
+              )}
+            </div>
+          ) : (
+            liveRooms.map(room => (
+              <div
+                key={room._id}
+                className={`p-3 rounded-lg mb-2 transition-all ${
+                  selectedStream?._id === room._id
+                    ? 'bg-gradient-to-r from-pink-100 to-purple-100 border-2 border-pink-500'
+                    : room.isLive 
+                      ? 'bg-green-50 border border-green-200' 
+                      : 'bg-gray-50 border border-gray-200'
+                }`}
+              >
                         <div className="mb-3">
-                          <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-semibold text-sm text-gray-800 truncate flex-1">
                               {room.title}
                             </h3>
-                            {room.isLive ? (
-                              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse">
-                                LIVE
-                              </span>
-                            ) : (
-                              <span className="text-xs bg-gray-400 text-white px-2 py-0.5 rounded-full">
-                                OFFLINE
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <Eye className="h-3 w-3" />
-                            <span>{room.viewerCount || 0}</span>
-                          </div>
-                        </div>
-                        
-                        {/* Action Buttons */}
-                        <div className="flex gap-2">
+                      {room.isLive ? (
+                        <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse">
+                          LIVE
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-gray-400 text-white px-2 py-0.5 rounded-full">
+                          OFFLINE
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Eye className="h-3 w-3" />
+                      <span>{room.viewerCount || 0}</span>
+                    </div>
+                  </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-2">
                           {isAdmin ? (
                             /* Admin: Show Manage button that opens popup */
                             <button
@@ -992,21 +992,21 @@ const LiveStream = () => {
                             </button>
                           ) : (
                             /* User: Show Join button */
-                            <button
-                              onClick={() => {
-                                selectStream(room);
-                                setViewMode('view');
+                  <button
+                    onClick={() => {
+                      selectStream(room);
+                      setViewMode('view');
                                 setShowMobileMenu(false);
-                              }}
+                    }}
                               disabled={!room.isLive}
-                              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                room.isLive
-                                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      room.isLive
+                        ? 'bg-green-500 hover:bg-green-600 text-white'
                                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              }`}
-                            >
+                    }`}
+                  >
                               เข้าร่วม
-                            </button>
+                  </button>
                           )}
                         </div>
                       </div>
@@ -1248,8 +1248,8 @@ const LiveStream = () => {
         /* Desktop Layout */
         <div className="min-h-screen flex bg-gray-100">
 
-          {/* Left Sidebar - Live Rooms List */}
-          <div className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
+      {/* Left Sidebar - Live Rooms List */}
+      <div className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-pink-500 to-purple-600">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Radio className="h-5 w-5 animate-pulse" />
@@ -1260,7 +1260,7 @@ const LiveStream = () => {
         
         <div className="p-2">
           {/* Create Stream Button - Admin Only */}
-          {isAdmin && (
+                  {isAdmin && (
             <button
               onClick={() => setShowCreateModal(true)}
               className="w-full p-3 mb-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2 shadow-lg"
@@ -1365,18 +1365,18 @@ const LiveStream = () => {
                     <h3 className="text-xl font-bold mb-2">กำลังเริ่มไลฟ์...</h3>
                     {isAdmin ? (
                       <>
-                        <p className="text-gray-400 mb-4">กรุณาเปิด OBS และเริ่มสตรีม</p>
-                        <div className="bg-green-900 bg-opacity-50 rounded-lg p-4 mt-4">
-                          <h4 className="font-semibold mb-2">สำหรับ DJ:</h4>
-                          <div className="text-sm space-y-1 text-left">
-                            <p>1. เปิด OBS Studio</p>
-                            <p>2. ตั้งค่า Server: rtmp://localhost:1935/live</p>
-                            <p>3. ตั้งค่า Stream Key: {selectedStream?.streamKey}</p>
-                            <p>4. กด "Start Streaming" ใน OBS</p>
-                            <p className="text-green-400">5. รอสักครู่ให้สตรีมเริ่มต้น (10-30 วินาที)</p>
-                            <p className="text-blue-400">6. วิดีโอจะแสดงอัตโนมัติเมื่อสตรีมเริ่มต้น</p>
-                          </div>
+                    <p className="text-gray-400 mb-4">กรุณาเปิด OBS และเริ่มสตรีม</p>
+                      <div className="bg-green-900 bg-opacity-50 rounded-lg p-4 mt-4">
+                        <h4 className="font-semibold mb-2">สำหรับ DJ:</h4>
+                        <div className="text-sm space-y-1 text-left">
+                          <p>1. เปิด OBS Studio</p>
+                          <p>2. ตั้งค่า Server: rtmp://localhost:1935/live</p>
+                          <p>3. ตั้งค่า Stream Key: {selectedStream?.streamKey}</p>
+                          <p>4. กด "Start Streaming" ใน OBS</p>
+                          <p className="text-green-400">5. รอสักครู่ให้สตรีมเริ่มต้น (10-30 วินาที)</p>
+                          <p className="text-blue-400">6. วิดีโอจะแสดงอัตโนมัติเมื่อสตรีมเริ่มต้น</p>
                         </div>
+                      </div>
                       </>
                     ) : (
                       <p className="text-gray-400 mb-4">กรุณารอสักครู่</p>
@@ -1384,13 +1384,13 @@ const LiveStream = () => {
                   </div>
                 </div>
               ) : selectedStream?.isLive ? (
-                <ErrorBoundary>
-                  <StreamPlayer 
-                    streamKey={selectedStream.streamKey}
-                    isLive={selectedStream.isLive}
-                    onError={(error) => console.error('Stream error:', error)}
-                  />
-                </ErrorBoundary>
+              <ErrorBoundary>
+                <StreamPlayer 
+                  streamKey={selectedStream.streamKey}
+                  isLive={selectedStream.isLive}
+                  onError={(error) => console.error('Stream error:', error)}
+                />
+              </ErrorBoundary>
               ) : (
                 <div className="flex items-center justify-center h-full bg-gray-900">
                   <div className="text-center text-white">
@@ -1398,18 +1398,18 @@ const LiveStream = () => {
                     <h3 className="text-xl font-bold mb-2">ไม่มีการไลฟ์ในขณะนี้</h3>
                     {isAdmin ? (
                       <>
-                        <p className="text-gray-400 mb-4">รอ DJ เริ่มไลฟ์ใน OBS</p>
-                        <div className="bg-blue-900 bg-opacity-50 rounded-lg p-4 mt-4">
-                          <h4 className="font-semibold mb-2">สำหรับ DJ:</h4>
-                          <div className="text-sm space-y-1 text-left">
-                            <p>1. เปิด OBS Studio</p>
-                            <p>2. ตั้งค่า Server: rtmp://localhost:1935/live</p>
-                            <p>3. ตั้งค่า Stream Key: {selectedStream?.streamKey}</p>
-                            <p>4. กด "Start Streaming" ใน OBS</p>
-                            <p>5. ระบบจะอัปเดตสถานะเป็น LIVE อัตโนมัติ</p>
-                            <p className="text-yellow-400">6. รอสักครู่ให้สตรีมเริ่มต้น (10-30 วินาที)</p>
-                          </div>
+                    <p className="text-gray-400 mb-4">รอ DJ เริ่มไลฟ์ใน OBS</p>
+                      <div className="bg-blue-900 bg-opacity-50 rounded-lg p-4 mt-4">
+                        <h4 className="font-semibold mb-2">สำหรับ DJ:</h4>
+                        <div className="text-sm space-y-1 text-left">
+                          <p>1. เปิด OBS Studio</p>
+                          <p>2. ตั้งค่า Server: rtmp://localhost:1935/live</p>
+                          <p>3. ตั้งค่า Stream Key: {selectedStream?.streamKey}</p>
+                          <p>4. กด "Start Streaming" ใน OBS</p>
+                          <p>5. ระบบจะอัปเดตสถานะเป็น LIVE อัตโนมัติ</p>
+                          <p className="text-yellow-400">6. รอสักครู่ให้สตรีมเริ่มต้น (10-30 วินาที)</p>
                         </div>
+                      </div>
                       </>
                     ) : (
                       <p className="text-gray-400 mb-4">กรุณารอสักครู่</p>
@@ -1481,14 +1481,14 @@ const LiveStream = () => {
                     <div className="bg-white p-3 rounded-lg border">
                       <p className="font-medium text-gray-700">Stream Key:</p>
                       <p className="text-gray-600 font-mono text-xs break-all">{selectedStream.streamKey}</p>
-                    </div>
+                      </div>
                     <div className="bg-white p-3 rounded-lg border">
                       <p className="font-medium text-gray-700">HLS URL:</p>
                       <p className="text-gray-600 font-mono text-xs break-all">
                         {import.meta.env.VITE_HLS_PORT || 8000}/live/{selectedStream.streamKey}.m3u8
                       </p>
-                    </div>
-                  </div>
+                      </div>
+                        </div>
                 </div>
               </div>
             )}
@@ -1498,10 +1498,10 @@ const LiveStream = () => {
               <div className="bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
                 <div className="max-w-4xl mx-auto">
                   {viewMode === 'manage' ? (
-                    <div className="text-center">
-                      <div className="text-6xl mb-4">⚙️</div>
-                      <h3 className="text-xl font-bold text-gray-800 mb-2">โหมดจัดการสตรีม</h3>
-                      <p className="text-gray-600 mb-6">คุณกำลังอยู่ในโหมดจัดการสตรีม สามารถควบคุมการไลฟ์ได้</p>
+                  <div className="text-center">
+                    <div className="text-6xl mb-4">⚙️</div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">โหมดจัดการสตรีม</h3>
+                    <p className="text-gray-600 mb-6">คุณกำลังอยู่ในโหมดจัดการสตรีม สามารถควบคุมการไลฟ์ได้</p>
                       
                       {/* Stream Control Buttons */}
                       <div className="flex gap-3 justify-center mb-6">
@@ -1547,53 +1547,53 @@ const LiveStream = () => {
                           <span className="font-medium">ลบ</span>
                         </button>
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <div className="bg-white p-4 rounded-lg shadow-sm">
-                          <h4 className="font-semibold text-gray-800 mb-2">🎮 การควบคุมสตรีม</h4>
-                          <ul className="text-sm text-gray-600 space-y-1">
-                            <li>• เริ่ม/จบการไลฟ์</li>
-                            <li>• ตั้งค่าห้องสตรีม</li>
-                            <li>• ลบห้องสตรีม</li>
-                          </ul>
-                        </div>
-                        
-                        <div className="bg-white p-4 rounded-lg shadow-sm">
-                          <h4 className="font-semibold text-gray-800 mb-2">📺 การดูสตรีม</h4>
-                          <ul className="text-sm text-gray-600 space-y-1">
-                            <li>• ดูสตรีมและแชท</li>
-                            <li>• ส่งข้อความในไลฟ์</li>
-                            <li>• เห็นผู้ชมทั้งหมด</li>
-                          </ul>
-                        </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      <div className="bg-white p-4 rounded-lg shadow-sm">
+                        <h4 className="font-semibold text-gray-800 mb-2">🎮 การควบคุมสตรีม</h4>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          <li>• เริ่ม/จบการไลฟ์</li>
+                          <li>• ตั้งค่าห้องสตรีม</li>
+                          <li>• ลบห้องสตรีม</li>
+                        </ul>
                       </div>
                       
-                      <button
-                        onClick={() => setViewMode('view')}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
-                      >
-                        <Eye className="h-4 w-4" />
-                        เปลี่ยนเป็นโหมดดู
-                      </button>
+                      <div className="bg-white p-4 rounded-lg shadow-sm">
+                        <h4 className="font-semibold text-gray-800 mb-2">📺 การดูสตรีม</h4>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          <li>• ดูสตรีมและแชท</li>
+                          <li>• ส่งข้อความในไลฟ์</li>
+                          <li>• เห็นผู้ชมทั้งหมด</li>
+                        </ul>
+                      </div>
                     </div>
+                    
+                    <button
+                      onClick={() => setViewMode('view')}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
+                    >
+                      <Eye className="h-4 w-4" />
+                      เปลี่ยนเป็นโหมดดู
+                    </button>
+                  </div>
                   ) : (
                     <div className="text-center">
                       <div className="text-4xl mb-4">👁️</div>
                       <h3 className="text-lg font-bold text-gray-800 mb-2">โหมดดูสตรีม</h3>
                       <p className="text-gray-600 mb-4">คุณกำลังอยู่ในโหมดดูสตรีม แชทอยู่ที่แถบขวา</p>
                       
-                      <button
+                <button
                         onClick={() => setViewMode('manage')}
                         className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center gap-2 mx-auto"
                       >
                         <Settings className="h-4 w-4" />
                         เปลี่ยนเป็นโหมดจัดการ
-                      </button>
-                    </div>
+                </button>
+              </div>
                   )}
                 </div>
-              </div>
-            )}
+                </div>
+              )}
 
             {/* Empty space for non-admin users */}
             {!isAdmin && (
@@ -1654,9 +1654,9 @@ const LiveStream = () => {
                     <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(msg.senderName)} flex items-center justify-center flex-shrink-0`}>
                       <span className="text-white font-bold text-xs">
                         {msg.senderName?.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-sm text-gray-800 truncate">
                           {msg.senderName}
@@ -1668,19 +1668,19 @@ const LiveStream = () => {
                         )}
                         <span className="text-xs text-gray-400">
                           {new Date(msg.createdAt).toLocaleTimeString('th-TH', { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
                         </span>
                         {msg.isTemporary && (
                           <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
                             กำลังส่ง...
                           </span>
                         )}
-                      </div>
-                      <p className="text-sm text-gray-700 break-words">{msg.message}</p>
-                    </div>
                   </div>
+                      <p className="text-sm text-gray-700 break-words">{msg.message}</p>
+                </div>
+              </div>
                 );
               })}
               <div ref={messagesEndRef} />
@@ -1718,7 +1718,7 @@ const LiveStream = () => {
                   ? "กรุณาเลือกห้องไลฟ์ก่อน" 
                   : `รอ ${countdown} วินาที...`
                 }
-              </div>
+      </div>
             )}
             
             <button
@@ -1754,19 +1754,19 @@ const LiveStream = () => {
     </div>
     )}
 
-    {/* Create Stream Modal */}
-    <CreateStreamModal
-      isOpen={showCreateModal}
-      onClose={() => setShowCreateModal(false)}
-      onStreamCreated={(newStream) => {
-        // Refresh the live streams list
-        fetchLiveStreams();
-        // Optionally select the new stream
-        if (newStream) {
-          selectStream(newStream);
-        }
-      }}
-    />
+      {/* Create Stream Modal */}
+      <CreateStreamModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onStreamCreated={(newStream) => {
+          // Refresh the live streams list
+          fetchLiveStreams();
+          // Optionally select the new stream
+          if (newStream) {
+            selectStream(newStream);
+          }
+        }}
+      />
 
       {/* Stream Settings Modal */}
       <StreamSettingsModal

@@ -13,78 +13,6 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [idleTimer, setIdleTimer] = useState(null);
-  const [warningTimer, setWarningTimer] = useState(null);
-  const [showIdleWarning, setShowIdleWarning] = useState(false);
-  const [isDismissing, setIsDismissing] = useState(false);
-
-  // Auto sign out after 15 minutes of inactivity
-  const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
-  const WARNING_TIME = 14 * 60 * 1000; // Show warning at 14 minutes
-
-  // Reset idle timer
-  const resetIdleTimer = () => {
-    // Clear all existing timers first
-    if (idleTimer) {
-      clearTimeout(idleTimer);
-      setIdleTimer(null);
-    }
-    if (warningTimer) {
-      clearTimeout(warningTimer);
-      setWarningTimer(null);
-    }
-    
-    // Hide warning modal if it's showing
-    if (showIdleWarning) {
-      // console.log('✅ Hiding idle warning during timer reset');
-      setShowIdleWarning(false);
-    }
-
-    // console.log('🔄 Resetting idle timer - fresh 15 minutes');
-    
-    // Set warning timer (14 minutes)
-    const warningTimerId = setTimeout(() => {
-      // Use functional update to get current state
-      setShowIdleWarning(prevShow => {
-        // ตรวจสอบว่าไม่ใช่ช่วงที่กำลัง dismiss และ modal ยังไม่ได้แสดงอยู่
-        if (!prevShow && !isDismissing) {
-          // console.log('⚠️ Idle warning: 1 minute left before auto sign out');
-          return true;
-        }
-        return prevShow;
-      });
-    }, WARNING_TIME);
-
-    // Set auto sign out timer (15 minutes)
-    const timerId = setTimeout(() => {
-      // console.log('🚪 Auto sign out due to inactivity');
-      logout();
-    }, IDLE_TIMEOUT);
-
-    setWarningTimer(warningTimerId);
-    setIdleTimer(timerId);
-  };
-
-  // Handle user activity with debouncing to prevent excessive timer resets
-  let activityTimeout = null;
-  const handleUserActivity = () => {
-    if (user) {
-      // Debounce activity detection - reset timer only once per second
-      if (activityTimeout) {
-        clearTimeout(activityTimeout);
-      }
-      
-      activityTimeout = setTimeout(() => {
-        // console.log('🔄 User activity detected, resetting idle timer');
-        // Hide warning modal immediately when user is active
-        if (showIdleWarning) {
-          // console.log('✅ Hiding idle warning due to user activity');
-          setShowIdleWarning(false);
-        }
-        resetIdleTimer();
-      }, 1000); // Reset timer max once per second
-    }
-  };
 
   useEffect(() => {
     // Check if user is logged in on app start
@@ -188,68 +116,6 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Set up idle timer when user logs in
-  useEffect(() => {
-    if (user) {
-      console.log('👤 User logged in, setting up idle timer');
-      resetIdleTimer();
-    } else {
-      console.log('👤 User logged out, clearing timers');
-      // Clear timers when user logs out
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        setIdleTimer(null);
-      }
-      if (warningTimer) {
-        clearTimeout(warningTimer);
-        setWarningTimer(null);
-      }
-      setShowIdleWarning(false);
-    }
-  }, [user]); // Only depend on user, not on timer functions
-
-  // Set up activity listeners
-  useEffect(() => {
-    if (user) {
-      // เพิ่ม event listeners มากขึ้นเพื่อตรวจจับ activity ได้ดีขึ้น
-      const events = [
-        'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
-        'keypress', 'keydown', 'keyup',
-        'scroll', 'wheel',
-        'touchstart', 'touchend', 'touchmove',
-        'click', 'dblclick',
-        'focus', 'blur',
-        'resize'
-      ];
-      
-      // ใช้ passive listeners เพื่อประสิทธิภาพที่ดีขึ้น
-      events.forEach(event => {
-        document.addEventListener(event, handleUserActivity, { passive: true, capture: true });
-      });
-
-      // ตรวจจับเมื่อผู้ใช้กลับมาใช้ tab/window (แยกต่างหากเพื่อจัดการพิเศษ)
-      const handleVisibilityChange = () => {
-        if (!document.hidden && user) {
-          console.log('👀 User returned to tab, resetting idle timer');
-          // Hide warning modal immediately when user returns to tab
-          if (showIdleWarning) {
-            console.log('✅ Hiding idle warning due to tab focus');
-            setShowIdleWarning(false);
-          }
-          handleUserActivity();
-        }
-      };
-
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      return () => {
-        events.forEach(event => {
-          document.removeEventListener(event, handleUserActivity, { passive: true, capture: true });
-        });
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-    }
-  }, [user, showIdleWarning]);
 
   const login = (userData) => {
     console.log('🔍 AuthContext login called with:', userData);
@@ -265,9 +131,6 @@ export const AuthProvider = ({ children }) => {
     window.dispatchEvent(new CustomEvent('userLoggedIn', { 
       detail: { user: userData.user || userData } 
     }));
-    
-    // Reset idle timer after login
-    resetIdleTimer();
     
     console.log('✅ Login successful, user state updated');
   };
@@ -338,42 +201,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Function to dismiss idle warning
-  const dismissIdleWarning = async () => {
-    console.log('✅ User dismissed idle warning, resetting timer');
-    console.log('🔍 Current timers before clearing - idleTimer:', idleTimer, 'warningTimer:', warningTimer);
-    
-    // ตั้ง flag เพื่อป้องกันไม่ให้ warning เด้งขึ้นซ้ำ
-    setIsDismissing(true);
-    
-    // Clear all existing timers first
-    if (idleTimer) {
-      console.log('🗑️ Clearing idle timer:', idleTimer);
-      clearTimeout(idleTimer);
-      setIdleTimer(null);
-    }
-    if (warningTimer) {
-      console.log('🗑️ Clearing warning timer:', warningTimer);
-      clearTimeout(warningTimer);
-      setWarningTimer(null);
-    }
-    
-    // Hide the warning modal immediately
-    console.log('👁️ Hiding warning modal');
-    setShowIdleWarning(false);
-    
-    // Reset the idle timer to start fresh - ใช้ resetIdleTimer แทนการตั้ง timer ใหม่เอง
-    console.log('🔄 Restarting idle timer after user confirmation');
-    resetIdleTimer();
-    
-    // รีเซ็ต flag หลังจากการตั้ง timer ใหม่แล้ว
-    setTimeout(() => {
-      setIsDismissing(false);
-      console.log('✅ Dismissing flag reset');
-    }, 2000);
-    
-    console.log('✅ Timers reset complete');
-  };
 
   // Function to update user data (for coin/vote updates)
   const updateUserData = (updatedUser) => {
@@ -398,8 +225,6 @@ export const AuthProvider = ({ children }) => {
     logout,
     validateUser,
     loading,
-    showIdleWarning,
-    dismissIdleWarning,
     updateUserData
   };
 
