@@ -536,6 +536,21 @@ const DJPage = ({
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
     
+    // Update audio element mute state
+    if (audioElementRef.current) {
+      audioElementRef.current.muted = newMutedState;
+      audioElementRef.current.volume = newMutedState ? 0 : 0.5;
+      console.log('🔊 Admin audio muted:', newMutedState);
+    }
+    
+    // Update media stream tracks mute state
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !newMutedState;
+        console.log('🎤 Audio track enabled:', !newMutedState);
+      });
+    }
+    
     socketRef.current.emit('dj control', {
       type: newMutedState ? 'mute' : 'unmute'
     });
@@ -658,6 +673,9 @@ const DJPage = ({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
       });
 
+      // Initialize queued ICE candidates array
+      peerConnectionRef.current.queuedIceCandidates = [];
+
       peerConnectionRef.current.ontrack = (event) => {
         console.log('🎵 Received audio track from DJ');
         if (listenerAudioRef.current) {
@@ -680,6 +698,20 @@ const DJPage = ({
       const answer = await peerConnectionRef.current.createAnswer();
       await peerConnectionRef.current.setLocalDescription(answer);
 
+      // Process queued ICE candidates
+      if (peerConnectionRef.current.queuedIceCandidates) {
+        console.log('🧊 Processing queued ICE candidates:', peerConnectionRef.current.queuedIceCandidates.length);
+        for (const candidate of peerConnectionRef.current.queuedIceCandidates) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(candidate);
+            console.log('🧊 Queued ICE candidate added');
+          } catch (error) {
+            console.error('❌ Error adding queued ICE candidate:', error);
+          }
+        }
+        peerConnectionRef.current.queuedIceCandidates = [];
+      }
+
       socketRef.current.emit('webrtc-answer', {
         answer: answer,
         targetId: data.senderId
@@ -697,6 +729,20 @@ const DJPage = ({
       if (peerConnectionRef.current) {
         await peerConnectionRef.current.setRemoteDescription(data.answer);
         console.log('✅ WebRTC connection established with listener');
+        
+        // Process queued ICE candidates
+        if (peerConnectionRef.current.queuedIceCandidates) {
+          console.log('🧊 Processing queued ICE candidates:', peerConnectionRef.current.queuedIceCandidates.length);
+          for (const candidate of peerConnectionRef.current.queuedIceCandidates) {
+            try {
+              await peerConnectionRef.current.addIceCandidate(candidate);
+              console.log('🧊 Queued ICE candidate added');
+            } catch (error) {
+              console.error('❌ Error adding queued ICE candidate:', error);
+            }
+          }
+          peerConnectionRef.current.queuedIceCandidates = [];
+        }
       }
     } catch (error) {
       console.error('❌ Error handling WebRTC answer:', error);
@@ -705,9 +751,19 @@ const DJPage = ({
 
   const handleICECandidate = async (data) => {
     try {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(data.candidate);
-        console.log('🧊 ICE candidate added');
+      if (peerConnectionRef.current && data.candidate) {
+        // Check if remote description is set before adding ICE candidate
+        if (peerConnectionRef.current.remoteDescription) {
+          await peerConnectionRef.current.addIceCandidate(data.candidate);
+          console.log('🧊 ICE candidate added');
+        } else {
+          // Queue the ICE candidate if remote description is not set yet
+          if (!peerConnectionRef.current.queuedIceCandidates) {
+            peerConnectionRef.current.queuedIceCandidates = [];
+          }
+          peerConnectionRef.current.queuedIceCandidates.push(data.candidate);
+          console.log('🧊 ICE candidate queued (remote description not set yet)');
+        }
       }
     } catch (error) {
       console.error('❌ Error adding ICE candidate:', error);
@@ -724,9 +780,40 @@ const DJPage = ({
         return;
       }
 
+      // Create audio element for admin monitoring
+      if (!audioElementRef.current) {
+        audioElementRef.current = new Audio();
+        console.log('🎵 Created audio element for admin');
+      }
+      
+      // Set up audio element for admin to hear their own audio
+      audioElementRef.current.srcObject = mediaStreamRef.current;
+      audioElementRef.current.muted = isMuted; // Use mute state
+      audioElementRef.current.volume = isMuted ? 0 : 0.5; // Set volume based on mute state
+      audioElementRef.current.autoplay = true;
+      audioElementRef.current.crossOrigin = 'anonymous';
+      
+      console.log('🎵 Audio element configured:', {
+        muted: audioElementRef.current.muted,
+        volume: audioElementRef.current.volume,
+        autoplay: audioElementRef.current.autoplay,
+        srcObject: !!audioElementRef.current.srcObject
+      });
+      
+      // Try to play audio for admin monitoring
+      try {
+        await audioElementRef.current.play();
+        console.log('✅ Admin audio started playing');
+      } catch (playError) {
+        console.log('⚠️ Admin audio play failed (expected if muted):', playError.message);
+      }
+
       peerConnectionRef.current = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
       });
+
+      // Initialize queued ICE candidates array
+      peerConnectionRef.current.queuedIceCandidates = [];
 
       mediaStreamRef.current.getTracks().forEach(track => {
         peerConnectionRef.current.addTrack(track, mediaStreamRef.current);

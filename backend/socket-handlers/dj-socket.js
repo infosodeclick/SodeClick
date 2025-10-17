@@ -24,7 +24,8 @@ const setupDJSocketHandlers = (io) => {
     socket.emit('current state', {
       currentSong,
       connectedUsers: Array.from(connectedUsers.values()),
-      currentDJ
+      currentDJ,
+      isDJStreaming: currentDJ !== null && currentSong.isPlaying
     });
 
     // Broadcast updated user count
@@ -80,8 +81,9 @@ const setupDJSocketHandlers = (io) => {
     // Handle DJ controls
     socket.on('dj control', (control) => {
       const user = connectedUsers.get(socket.id);
+      console.log(`🎛️ Received DJ control:`, { control, user: user?.username, isDJ: user?.isDJ });
       if (user && user.isDJ) {
-        console.log(`🎛️ DJ control from ${user.username}:`, control);
+        console.log(`🎛️ Processing DJ control from ${user.username}:`, control);
         
         switch (control.type) {
           case 'play':
@@ -92,6 +94,13 @@ const setupDJSocketHandlers = (io) => {
               type: control.type,
               isPlaying: currentSong.isPlaying,
               timestamp: currentSong.timestamp
+            });
+            
+            // Broadcast updated streaming status
+            io.emit('user update', {
+              users: Array.from(connectedUsers.values()),
+              currentDJ,
+              isDJStreaming: currentDJ !== null && currentSong.isPlaying
             });
             break;
             
@@ -104,12 +113,14 @@ const setupDJSocketHandlers = (io) => {
             break;
             
           case 'change song':
+            console.log('🎵 Admin changing song:', control.title);
             currentSong = {
               ...currentSong,
               title: control.title || currentSong.title,
               artist: control.artist || currentSong.artist,
               timestamp: Date.now()
             };
+            console.log('🎵 Broadcasting song change to all users:', currentSong);
             io.emit('song change', currentSong);
             break;
         }
@@ -173,9 +184,13 @@ const setupDJSocketHandlers = (io) => {
     // WebRTC Signaling
     socket.on('webrtc-offer', (data) => {
       console.log(`📡 WebRTC offer from ${socket.id} to ${data.targetId}`);
+      console.log(`📡 Connected users: ${connectedUsers.size}`);
       
       if (data.targetId === 'broadcast') {
         // Broadcast to all listeners (non-DJ users)
+        const listeners = Array.from(connectedUsers.values()).filter(user => user.id !== socket.id);
+        console.log(`📡 Broadcasting to ${listeners.length} listeners:`, listeners.map(u => u.username));
+        
         socket.broadcast.emit('webrtc-offer', {
           offer: data.offer,
           senderId: socket.id
@@ -192,6 +207,12 @@ const setupDJSocketHandlers = (io) => {
 
     socket.on('webrtc-answer', (data) => {
       console.log(`📡 WebRTC answer from ${socket.id} to ${data.targetId}`);
+      console.log(`📡 Answer details:`, {
+        targetId: data.targetId,
+        answerType: data.answer.type,
+        hasAnswer: !!data.answer
+      });
+      
       socket.to(data.targetId).emit('webrtc-answer', {
         answer: data.answer,
         senderId: socket.id
@@ -200,16 +221,22 @@ const setupDJSocketHandlers = (io) => {
 
     socket.on('webrtc-ice-candidate', (data) => {
       console.log(`🧊 ICE candidate from ${socket.id} to ${data.targetId}`);
+      console.log(`🧊 ICE candidate details:`, {
+        targetId: data.targetId,
+        hasCandidate: !!data.candidate,
+        candidateType: data.candidate?.type
+      });
       
       if (data.targetId === 'broadcast') {
         // Broadcast to all listeners (non-DJ users)
+        console.log(`🧊 Broadcasting ICE candidate to all listeners`);
         socket.broadcast.emit('webrtc-ice-candidate', {
           candidate: data.candidate,
           senderId: socket.id
         });
-        console.log(`🧊 Broadcasting ICE candidate to all listeners`);
       } else {
         // Send to specific target
+        console.log(`🧊 Sending ICE candidate to specific user: ${data.targetId}`);
         socket.to(data.targetId).emit('webrtc-ice-candidate', {
           candidate: data.candidate,
           senderId: socket.id
