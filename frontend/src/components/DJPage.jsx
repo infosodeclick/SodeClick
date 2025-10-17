@@ -33,6 +33,11 @@ const DJPage = ({
   const [microphoneStatus, setMicrophoneStatus] = useState('unknown');
   const [testingMixedMode, setTestingMixedMode] = useState(false);
   const [mixedModeStatus, setMixedModeStatus] = useState('unknown');
+  const [isListening, setIsListening] = useState(false);
+  const [listeningStatus, setListeningStatus] = useState('idle');
+  const [djStream, setDjStream] = useState(null);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [audioChunks, setAudioChunks] = useState([]);
   
   // Refs
   const socketRef = useRef(null);
@@ -41,6 +46,8 @@ const DJPage = ({
   const audioElementRef = useRef(null);
   const messagesEndRef = useRef(null);
   const audioLevelIntervalRef = useRef(null);
+  const listenerAudioRef = useRef(null);
+  const peerConnectionRef = useRef(null);
 
   // Initialize
   useEffect(() => {
@@ -96,7 +103,26 @@ const DJPage = ({
 
     socket.on('current state', (state) => {
       if (state.currentSong) {
-        setCurrentSong(state.currentSong.title);
+        // Check if we have a saved room name
+        const savedRoomName = localStorage.getItem('djRoomName');
+        if (savedRoomName && savedRoomName !== state.currentSong.title) {
+          // Use saved room name instead of server's default
+          setCurrentSong(savedRoomName);
+          setRoomName(savedRoomName);
+          console.log('Using saved room name instead of server default:', savedRoomName);
+          
+          // Send to backend if user is admin and DJ
+          if (isAdmin && isDJ) {
+            socket.emit('dj control', {
+              type: 'change song',
+              title: savedRoomName,
+              artist: 'DJ Mix'
+            });
+          }
+        } else {
+          setCurrentSong(state.currentSong.title);
+          setRoomName(state.currentSong.title);
+        }
       }
       if (state.connectedUsers) {
         setListeners(state.connectedUsers.length);
@@ -125,16 +151,56 @@ const DJPage = ({
 
     socket.on('song change', (song) => {
       setCurrentSong(song.title);
+      setRoomName(song.title);
     });
 
     socket.on('user update', (data) => {
       setListeners(data.users.length);
     });
+
+    // DJ Audio Streaming Events
+    socket.on('dj-streaming-started', (data) => {
+      console.log('🎧 DJ started streaming:', data);
+      setDjStream(data);
+      setListeningStatus('streaming');
+      if (!isAdmin) {
+        startListening();
+      }
+    });
+
+    socket.on('dj-streaming-stopped', (data) => {
+      console.log('🎧 DJ stopped streaming:', data);
+      setDjStream(null);
+      setListeningStatus('idle');
+      if (!isAdmin) {
+        stopListening();
+      }
+    });
+
+    // WebRTC Signaling Events
+    socket.on('webrtc-offer', async (data) => {
+      console.log('📡 Received WebRTC offer:', data);
+      if (!isAdmin) {
+        await handleWebRTCOffer(data);
+      }
+    });
+
+    socket.on('webrtc-answer', async (data) => {
+      console.log('📡 Received WebRTC answer:', data);
+      if (isAdmin) {
+        await handleWebRTCAnswer(data);
+      }
+    });
+
+    socket.on('webrtc-ice-candidate', async (data) => {
+      console.log('🧊 Received ICE candidate:', data);
+      await handleICECandidate(data);
+    });
   };
+
 
   // Check admin status
   const checkAdminStatus = () => {
-    // Check if user is admin (you can implement your own logic here)
     const token = localStorage.getItem('token');
     const userRole = localStorage.getItem('userRole');
     const userData = localStorage.getItem('user');
@@ -147,34 +213,25 @@ const DJPage = ({
     
     let isAdminUser = false;
     
-    // Method 1: Check userRole directly
     if (userRole === 'admin' || userRole === 'superadmin') {
       isAdminUser = true;
     }
     
-    // Method 2: Check user data if available
     if (userData) {
       try {
         const user = JSON.parse(userData);
         if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
           isAdminUser = true;
-      }
-    } catch (error) {
+        }
+      } catch (error) {
         console.error('Error parsing user data:', error);
       }
     }
     
-    // Method 3: Check if user has admin permissions
     const adminPermissions = localStorage.getItem('adminPermissions');
     if (adminPermissions === 'true') {
       isAdminUser = true;
     }
-    
-    // Method 4: For testing purposes - you can temporarily set this to true
-    // const isTestAdmin = true; // Uncomment this line for testing
-    // if (isTestAdmin) {
-    //   isAdminUser = true;
-    // }
     
     setIsAdmin(isAdminUser);
     
@@ -182,9 +239,6 @@ const DJPage = ({
       console.log('✅ User is admin - full DJ controls enabled');
     } else {
       console.log('❌ User is not admin - limited access');
-      console.log('To enable admin mode, set one of these in localStorage:');
-      console.log('- localStorage.setItem("userRole", "admin")');
-      console.log('- localStorage.setItem("adminPermissions", "true")');
     }
   };
 
@@ -196,51 +250,20 @@ const DJPage = ({
       mixedMode: false
     };
     
-    // Check if we're on HTTPS or localhost for system audio
     const isSecureContext = window.isSecureContext || 
                            window.location.protocol === 'https:' || 
                            window.location.hostname === 'localhost' ||
                            window.location.hostname === '127.0.0.1' ||
                            window.location.hostname === '0.0.0.0';
     
-    // Check if getDisplayMedia is available
     const hasGetDisplayMedia = !!navigator.mediaDevices?.getDisplayMedia;
     
-    // System audio requires both getDisplayMedia and secure context
     if (hasGetDisplayMedia && isSecureContext) {
       support.systemAudio = true;
       support.mixedMode = true;
     }
     
     setBrowserSupport(support);
-    
-    console.log('Browser support check:', {
-      ...support,
-      isSecureContext,
-      hasGetDisplayMedia,
-      protocol: window.location.protocol,
-      hostname: window.location.hostname,
-      port: window.location.port,
-      userAgent: navigator.userAgent,
-      isSecureContextValue: window.isSecureContext
-    });
-    
-    // Show warnings for unsupported features
-    if (!support.systemAudio) {
-      if (!hasGetDisplayMedia) {
-        console.warn('⚠️ getDisplayMedia not supported in this browser');
-      }
-      if (!isSecureContext) {
-        console.warn('⚠️ System audio requires HTTPS or localhost');
-        console.warn('Current context:', {
-          protocol: window.location.protocol,
-          hostname: window.location.hostname,
-          isSecureContext: window.isSecureContext
-        });
-      }
-    } else {
-      console.log('✅ System Audio and Mixed Mode are supported!');
-    }
   };
 
   // Audio functions
@@ -292,20 +315,6 @@ const DJPage = ({
           };
           mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
           console.log('✅ Microphone stream started successfully');
-          console.log('Audio tracks:', mediaStream.getAudioTracks());
-          
-          // Check if microphone stream has audio tracks
-          const audioTracks = mediaStream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            console.error('❌ Microphone stream has no audio tracks');
-            throw new Error('Microphone stream has no audio tracks. Please check your microphone connection.');
-          }
-          
-          console.log('Microphone track details:', audioTracks.map(track => ({
-            label: track.label,
-            enabled: track.enabled,
-            readyState: track.readyState
-          })));
         } catch (error) {
           console.error('❌ Microphone access failed:', error);
           if (error.name === 'NotAllowedError') {
@@ -318,9 +327,8 @@ const DJPage = ({
         }
         
       } else if (currentAudioSource === 'systemAudio') {
-        // System audio only - try multiple approaches
+        // System audio only
         try {
-          // Approach 1: Try with video: false, audio: true
           try {
             console.log('Trying system audio approach 1: video: false, audio: true');
             mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -329,8 +337,6 @@ const DJPage = ({
             });
           } catch (error1) {
             console.log('Approach 1 failed:', error1);
-            
-            // Approach 2: Try with video: true, audio: true (some browsers require video)
             try {
               console.log('Trying system audio approach 2: video: true, audio: true');
               mediaStream = await navigator.mediaDevices.getDisplayMedia({
@@ -339,26 +345,11 @@ const DJPage = ({
               });
             } catch (error2) {
               console.log('Approach 2 failed:', error2);
-              throw error2; // Use the last error
+              throw error2;
             }
           }
           
           console.log('System audio stream started');
-          console.log('Audio tracks:', mediaStream.getAudioTracks());
-          console.log('Video tracks:', mediaStream.getVideoTracks());
-          
-          // Check if system audio stream has audio tracks
-          const audioTracks = mediaStream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            console.error('❌ System audio stream has no audio tracks');
-            throw new Error('System audio stream has no audio tracks. Make sure to select "Share system audio" when prompted.');
-          }
-          
-          console.log('System audio track details:', audioTracks.map(track => ({
-            label: track.label,
-            enabled: track.enabled,
-            readyState: track.readyState
-          })));
           
         } catch (error) {
           console.error('System audio not available:', error);
@@ -375,7 +366,6 @@ const DJPage = ({
         // Mixed mode - both microphone and system audio
         console.log('🎵 Starting Mixed Mode...');
         
-        // First, try to get microphone stream
         let micStream = null;
         try {
           micStream = await navigator.mediaDevices.getUserMedia({
@@ -392,10 +382,8 @@ const DJPage = ({
           throw new Error('Microphone access failed in mixed mode');
         }
         
-        // Then try to get system audio stream
         let systemStream = null;
         try {
-          // Try multiple approaches for system audio
           try {
             systemStream = await navigator.mediaDevices.getDisplayMedia({
               video: false,
@@ -412,85 +400,43 @@ const DJPage = ({
           }
         } catch (systemError) {
           console.error('❌ System audio failed in mixed mode:', systemError);
-          // Use microphone only as fallback
           mediaStream = micStream;
           setAudioError('System audio failed in mixed mode, using microphone only');
           return;
         }
         
-        // If we have both streams, try to mix them
+        // Mix both streams
         if (micStream && systemStream) {
-          // Check if both streams have audio tracks
-          const micAudioTracks = micStream.getAudioTracks();
-          const systemAudioTracks = systemStream.getAudioTracks();
-          
-          console.log('Audio tracks check:', {
-            micTracks: micAudioTracks.length,
-            systemTracks: systemAudioTracks.length,
-            micTrackDetails: micAudioTracks.map(track => ({
-              label: track.label,
-              enabled: track.enabled,
-              readyState: track.readyState
-            })),
-            systemTrackDetails: systemAudioTracks.map(track => ({
-              label: track.label,
-              enabled: track.enabled,
-              readyState: track.readyState
-            }))
-          });
-          
-          if (micAudioTracks.length === 0) {
-            console.error('❌ Microphone stream has no audio tracks');
-            mediaStream = systemStream;
-            setAudioError('Microphone has no audio tracks, using system audio only');
-            return;
-          }
-          
-          if (systemAudioTracks.length === 0) {
-            console.error('❌ System audio stream has no audio tracks');
-            mediaStream = micStream;
-            setAudioError('System audio has no audio tracks, using microphone only');
-            return;
-          }
-          
           try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Create sources only if streams have audio tracks
             const micSource = audioContext.createMediaStreamSource(micStream);
             const systemSource = audioContext.createMediaStreamSource(systemStream);
             const destination = audioContext.createMediaStreamDestination();
             
-            // Mix both sources
             micSource.connect(destination);
             systemSource.connect(destination);
             
             mediaStream = destination.stream;
             console.log('✅ Mixed mode stream created successfully');
-            console.log('Mixed stream audio tracks:', mediaStream.getAudioTracks().length);
             
           } catch (audioContextError) {
             console.error('❌ AudioContext failed in mixed mode:', audioContextError);
-            // Fallback to microphone only
             mediaStream = micStream;
             setAudioError('Audio mixing failed, using microphone only');
           }
         } else {
-          // If we don't have both streams, use what we have
           mediaStream = micStream || systemStream;
           console.log('⚠️ Using single stream in mixed mode');
         }
       }
 
       if (mediaStream) {
-        // Stop previous stream if exists
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach(track => track.stop());
         }
         
         mediaStreamRef.current = mediaStream;
         
-        // Create new audio element for playback
         if (audioElementRef.current) {
           audioElementRef.current.pause();
           audioElementRef.current.srcObject = null;
@@ -498,18 +444,13 @@ const DJPage = ({
         
         audioElementRef.current = new Audio();
         audioElementRef.current.srcObject = mediaStreamRef.current;
-        audioElementRef.current.muted = true; // Prevent feedback
+        audioElementRef.current.muted = true;
         audioElementRef.current.play().catch(error => {
           console.error('Audio playback error:', error);
         });
         
         startAudioLevelMonitoring();
         console.log(`✅ Audio stream started with source: ${currentAudioSource}`);
-        console.log('Stream details:', {
-          audioTracks: mediaStream.getAudioTracks().length,
-          videoTracks: mediaStream.getVideoTracks().length,
-          active: mediaStream.active
-        });
       }
       
     } catch (error) {
@@ -529,7 +470,7 @@ const DJPage = ({
       audioElementRef.current.srcObject = null;
     }
     stopAudioLevelMonitoring();
-    setAudioError(null); // Clear any audio errors when stopping
+    setAudioError(null);
   };
 
   const startAudioLevelMonitoring = () => {
@@ -538,11 +479,9 @@ const DJPage = ({
     }
     
     audioLevelIntervalRef.current = setInterval(() => {
-      // Mock audio levels for demonstration
       const micLevel = Math.random() * 100;
       const systemLevel = Math.random() * 100;
       
-      // Update audio level bars if they exist
       const micLevelBar = document.getElementById('mic-level');
       const systemLevelBar = document.getElementById('system-level');
       
@@ -571,15 +510,23 @@ const DJPage = ({
 
     if (newPlayingState) {
       try {
-        setAudioError(null); // Clear previous errors
+        setAudioError(null);
         await startAudioStream();
-    } catch (error) {
+        
+        if (isAdmin) {
+          await startDJStreaming();
+        }
+      } catch (error) {
         console.error('Failed to start streaming:', error);
         setIsPlaying(false);
         setAudioError(`Failed to start streaming: ${error.message}`);
       }
     } else {
       stopAudioStream();
+      
+      if (isAdmin) {
+        stopDJStreaming();
+      }
     }
   };
 
@@ -607,280 +554,12 @@ const DJPage = ({
     socketRef.current.emit('toggle dj mode');
   };
 
-  const testMicrophone = async () => {
-    setTestingMicrophone(true);
-    setAudioError(null);
-    
-    try {
-      console.log('🎤 Testing microphone...');
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100
-        }
-      });
-      
-      console.log('✅ Microphone test successful!');
-      console.log('Audio tracks:', stream.getAudioTracks());
-      
-      // Test audio levels
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      source.connect(analyser);
-      
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(dataArray);
-      
-      const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-      console.log('Audio level:', average);
-      
-      // Stop the test stream
-      stream.getTracks().forEach(track => track.stop());
-      audioContext.close();
-      
-      setMicrophoneStatus('working');
-      setAudioError('✅ Microphone test successful! Your microphone is working.');
-      
-    } catch (error) {
-      console.error('❌ Microphone test failed:', error);
-      setMicrophoneStatus('failed');
-      
-      if (error.name === 'NotAllowedError') {
-        setAudioError('❌ Microphone access denied. Please allow microphone access in your browser settings.');
-      } else if (error.name === 'NotFoundError') {
-        setAudioError('❌ No microphone found. Please connect a microphone and try again.');
-      } else {
-        setAudioError(`❌ Microphone test failed: ${error.message}`);
-      }
-    } finally {
-      setTestingMicrophone(false);
-    }
-  };
-
-  const testMixedMode = async () => {
-    setTestingMixedMode(true);
-    setAudioError(null);
-    
-    try {
-      console.log('🎵 Testing Mixed Mode...');
-      
-      // Test microphone first
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100
-        }
-      });
-      console.log('✅ Microphone stream obtained for mixed mode test');
-      
-      // Test system audio
-      let systemStream;
-      try {
-        systemStream = await navigator.mediaDevices.getDisplayMedia({
-          video: false,
-          audio: true
-        });
-        console.log('✅ System audio stream obtained for mixed mode test');
-      } catch (systemError) {
-        console.error('❌ System audio failed in mixed mode test:', systemError);
-        // Stop microphone stream
-        micStream.getTracks().forEach(track => track.stop());
-        throw new Error('System audio failed in mixed mode test');
-      }
-      
-      // Check audio tracks before mixing
-      const micAudioTracks = micStream.getAudioTracks();
-      const systemAudioTracks = systemStream.getAudioTracks();
-      
-      console.log('Audio tracks check for mixed mode test:', {
-        micTracks: micAudioTracks.length,
-        systemTracks: systemAudioTracks.length,
-        micTrackDetails: micAudioTracks.map(track => ({
-          label: track.label,
-          enabled: track.enabled,
-          readyState: track.readyState
-        })),
-        systemTrackDetails: systemAudioTracks.map(track => ({
-          label: track.label,
-          enabled: track.enabled,
-          readyState: track.readyState
-        }))
-      });
-      
-      if (micAudioTracks.length === 0) {
-        throw new Error('Microphone stream has no audio tracks');
-      }
-      
-      if (systemAudioTracks.length === 0) {
-        throw new Error('System audio stream has no audio tracks');
-      }
-      
-      // Test AudioContext mixing
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const micSource = audioContext.createMediaStreamSource(micStream);
-      const systemSource = audioContext.createMediaStreamSource(systemStream);
-      const destination = audioContext.createMediaStreamDestination();
-      
-      // Mix both sources
-      micSource.connect(destination);
-      systemSource.connect(destination);
-      
-      const mixedStream = destination.stream;
-      console.log('✅ Mixed mode stream created successfully');
-      console.log('Mixed stream details:', {
-        audioTracks: mixedStream.getAudioTracks().length,
-        active: mixedStream.active
-      });
-      
-      // Stop all test streams
-      micStream.getTracks().forEach(track => track.stop());
-      systemStream.getTracks().forEach(track => track.stop());
-      audioContext.close();
-      
-      setMixedModeStatus('working');
-      setAudioError('✅ Mixed Mode test successful! You can now use Mixed Mode.');
-      
-    } catch (error) {
-      console.error('❌ Mixed mode test failed:', error);
-      setMixedModeStatus('failed');
-      setAudioError(`❌ Mixed Mode test failed: ${error.message}`);
-    } finally {
-      setTestingMixedMode(false);
-    }
-  };
-
-  const testSystemAudio = async () => {
-    setTestingSystemAudio(true);
-    setAudioError(null);
-    
-    try {
-      console.log('Testing system audio...');
-      console.log('Browser info:', {
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        isSecureContext: window.isSecureContext,
-        protocol: window.location.protocol,
-        hostname: window.location.hostname
-      });
-      
-      // First check if getDisplayMedia exists
-      if (!navigator.mediaDevices?.getDisplayMedia) {
-        throw new Error('getDisplayMedia is not available in this browser');
-      }
-      
-      // Try different approaches
-      let stream = null;
-      
-      // Approach 1: Try with video: false, audio: true
-      try {
-        console.log('Trying approach 1: video: false, audio: true');
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: false,
-          audio: true
-        });
-      } catch (error1) {
-        console.log('Approach 1 failed:', error1);
-        
-        // Approach 2: Try with video: true, audio: true (some browsers require video)
-        try {
-          console.log('Trying approach 2: video: true, audio: true');
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true
-          });
-        } catch (error2) {
-          console.log('Approach 2 failed:', error2);
-          
-          // Approach 3: Try with just audio constraint
-          try {
-            console.log('Trying approach 3: audio only');
-            stream = await navigator.mediaDevices.getDisplayMedia({
-              audio: true
-            });
-          } catch (error3) {
-            console.log('Approach 3 failed:', error3);
-            throw new Error(`All approaches failed. Last error: ${error3.message}`);
-          }
-        }
-      }
-      
-      console.log('✅ System audio test successful!');
-      console.log('Stream:', stream);
-      console.log('Audio tracks:', stream.getAudioTracks());
-      console.log('Video tracks:', stream.getVideoTracks());
-      
-      // Stop the test stream immediately
-      stream.getTracks().forEach(track => track.stop());
-      
-      setAudioError('✅ System Audio test successful! You can now use System Audio and Mixed Mode.');
-      
-      // Update browser support
-      setBrowserSupport(prev => ({
-        ...prev,
-        systemAudio: true,
-        mixedMode: true
-      }));
-      
-    } catch (error) {
-      console.error('❌ System audio test failed:', error);
-      setAudioError(`System Audio test failed: ${error.message}. This browser may not support system audio capture.`);
-    } finally {
-      setTestingSystemAudio(false);
-    }
-  };
-
   const selectAudioSource = (sourceType) => {
     if (!isDJ) return;
     
-    // Check if the source is supported with real-time check
-    const isSecureContext = window.isSecureContext || 
-                           window.location.protocol === 'https:' || 
-                           window.location.hostname === 'localhost' ||
-                           window.location.hostname === '127.0.0.1' ||
-                           window.location.hostname === '0.0.0.0';
-    
-    if (sourceType === 'systemAudio') {
-      if (!navigator.mediaDevices?.getDisplayMedia) {
-        setAudioError('System Audio is not supported in this browser');
-        return;
-      }
-      if (!isSecureContext) {
-        setAudioError('System Audio requires HTTPS or localhost');
-        return;
-      }
-    }
-    
-    if (sourceType === 'mixedMode') {
-      if (!navigator.mediaDevices?.getDisplayMedia) {
-        setAudioError('Mixed Mode requires system audio support');
-        return;
-      }
-      if (!isSecureContext) {
-        setAudioError('Mixed Mode requires HTTPS or localhost');
-        return;
-      }
-    }
-    
-    const previousSource = currentAudioSource;
     setCurrentAudioSource(sourceType);
-    setAudioError(null); // Clear any previous errors
+    setAudioError(null);
     
-    // Show notification about the change
-    const sourceNames = {
-      'microphone': 'Microphone Only',
-      'systemAudio': 'System Audio Only', 
-      'mixedMode': 'Mixed Mode (Microphone + System Audio)'
-    };
-    
-    console.log(`Audio source changed from ${sourceNames[previousSource]} to ${sourceNames[sourceType]}`);
-    
-    // If currently streaming, show a warning that they need to restart
     if (isPlaying) {
       console.warn('⚠️ Audio source changed while streaming. You may need to stop and restart streaming for the change to take effect.');
     }
@@ -903,9 +582,23 @@ const DJPage = ({
   const handleRoomNameSubmit = (e) => {
     e.preventDefault();
     if (roomName.trim()) {
-      setCurrentSong(roomName.trim());
+      const newRoomName = roomName.trim();
+      setCurrentSong(newRoomName);
       setIsEditingRoomName(false);
-      console.log('Room name changed to:', roomName.trim());
+      
+      // Save to localStorage
+      localStorage.setItem('djRoomName', newRoomName);
+      
+      // Send to backend via socket (only if user is DJ)
+      if (socketRef.current && isDJ) {
+        socketRef.current.emit('dj control', {
+          type: 'change song',
+          title: newRoomName,
+          artist: 'DJ Mix'
+        });
+      }
+      
+      console.log('Room name changed to:', newRoomName);
     }
   };
 
@@ -919,18 +612,182 @@ const DJPage = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Cleanup
+  // WebRTC Audio Streaming Functions
+  const startListening = async () => {
+    try {
+      console.log('🎧 Starting to listen to DJ stream...');
+      setListeningStatus('connecting');
+      setIsListening(true);
+      
+      if (!listenerAudioRef.current) {
+        listenerAudioRef.current = new Audio();
+        listenerAudioRef.current.autoplay = true;
+        listenerAudioRef.current.volume = 0.8;
+      }
+      
+      setListeningStatus('connected');
+      console.log('✅ Successfully started listening to DJ stream');
+    } catch (error) {
+      console.error('❌ Error starting to listen:', error);
+      setListeningStatus('error');
+      setIsListening(false);
+    }
+  };
+
+  const stopListening = () => {
+    console.log('🎧 Stopping DJ stream listening...');
+    setIsListening(false);
+    setListeningStatus('idle');
+    
+    if (listenerAudioRef.current) {
+      listenerAudioRef.current.pause();
+      listenerAudioRef.current.src = '';
+    }
+    
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+  };
+
+  const handleWebRTCOffer = async (data) => {
+    try {
+      console.log('📡 Handling WebRTC offer from DJ...');
+      
+      peerConnectionRef.current = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      peerConnectionRef.current.ontrack = (event) => {
+        console.log('🎵 Received audio track from DJ');
+        if (listenerAudioRef.current) {
+          listenerAudioRef.current.srcObject = event.streams[0];
+          listenerAudioRef.current.play().catch(console.error);
+        }
+      };
+
+      peerConnectionRef.current.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current.emit('webrtc-ice-candidate', {
+            candidate: event.candidate,
+            targetId: data.senderId
+          });
+        }
+      };
+
+      await peerConnectionRef.current.setRemoteDescription(data.offer);
+
+      const answer = await peerConnectionRef.current.createAnswer();
+      await peerConnectionRef.current.setLocalDescription(answer);
+
+      socketRef.current.emit('webrtc-answer', {
+        answer: answer,
+        targetId: data.senderId
+      });
+
+      console.log('✅ WebRTC connection established with DJ');
+    } catch (error) {
+      console.error('❌ Error handling WebRTC offer:', error);
+    }
+  };
+
+  const handleWebRTCAnswer = async (data) => {
+    try {
+      console.log('📡 Handling WebRTC answer from listener...');
+      if (peerConnectionRef.current) {
+        await peerConnectionRef.current.setRemoteDescription(data.answer);
+        console.log('✅ WebRTC connection established with listener');
+      }
+    } catch (error) {
+      console.error('❌ Error handling WebRTC answer:', error);
+    }
+  };
+
+  const handleICECandidate = async (data) => {
+    try {
+      if (peerConnectionRef.current) {
+        await peerConnectionRef.current.addIceCandidate(data.candidate);
+        console.log('🧊 ICE candidate added');
+      }
+    } catch (error) {
+      console.error('❌ Error adding ICE candidate:', error);
+    }
+  };
+
+  // DJ Streaming Functions
+  const startDJStreaming = async () => {
+    try {
+      console.log('🎧 Starting DJ streaming...');
+      
+      if (!mediaStreamRef.current) {
+        console.error('❌ No media stream available for DJ streaming');
+        return;
+      }
+
+      peerConnectionRef.current = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      mediaStreamRef.current.getTracks().forEach(track => {
+        peerConnectionRef.current.addTrack(track, mediaStreamRef.current);
+        console.log('🎵 Added track to peer connection:', track.kind);
+      });
+
+      peerConnectionRef.current.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current.emit('webrtc-ice-candidate', {
+            candidate: event.candidate,
+            targetId: 'broadcast'
+          });
+        }
+      };
+
+      const offer = await peerConnectionRef.current.createOffer();
+      await peerConnectionRef.current.setLocalDescription(offer);
+
+      socketRef.current.emit('webrtc-offer', {
+        offer: offer,
+        targetId: 'broadcast'
+      });
+
+      socketRef.current.emit('dj-streaming-started', {
+        djId: socketRef.current.id,
+        djName: 'DJ'
+      });
+
+      console.log('✅ DJ streaming started successfully');
+    } catch (error) {
+      console.error('❌ Error starting DJ streaming:', error);
+    }
+  };
+
+  const stopDJStreaming = () => {
+    console.log('🎧 Stopping DJ streaming...');
+    
+    socketRef.current.emit('dj-streaming-stopped', {
+      djId: socketRef.current.id
+    });
+
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    console.log('✅ DJ streaming stopped');
+  };
+
   const cleanup = () => {
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
     stopAudioStream();
+    stopListening();
   };
 
   return (
     <div className={`min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4 flex items-center justify-center ${className}`}>
       <div className="w-full max-w-4xl space-y-4">
-      {/* Header */}
+        {/* Header */}
         <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
@@ -941,11 +798,11 @@ const DJPage = ({
                   🔧 Admin
                 </span>
               )}
-          </div>
+            </div>
             <div className="flex items-center space-x-2 text-gray-300">
               <Users className="w-4 h-4" />
               <span className="text-sm">{listeners} listeners</span>
-        </div>
+            </div>
           </div>
 
           {/* Current Song */}
@@ -963,12 +820,12 @@ const DJPage = ({
                       placeholder="Enter room name..."
                       autoFocus
                     />
-            <button 
+                    <button 
                       type="submit"
                       className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors"
-            >
+                    >
                       ✓
-            </button>
+                    </button>
                     <button
                       type="button"
                       onClick={handleRoomNameCancel}
@@ -988,28 +845,28 @@ const DJPage = ({
                       >
                         ✏️
                       </button>
-            )}
-          </div>
+                    )}
+                  </div>
                 )}
-        </div>
+              </div>
               <div className="ml-3">
                 <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                          </div>
-                          </div>
-                        </div>
-                      </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        {/* Main Content - Two Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left Column - DJ Controls */}
-          <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-purple-300 mb-4 flex items-center">
-              <Music className="w-5 h-5 mr-2" />
-              {isAdmin ? 'DJ Controls' : 'Live Stream'}
-            </h2>
+        {/* Main Content - Two Columns for both Admin and User */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+          {/* Left Column - DJ Controls (Admin Only) */}
+          {isAdmin && (
+            <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
+              <h2 className="text-lg font-bold text-purple-300 mb-4 flex items-center">
+                <Music className="w-5 h-5 mr-2" />
+                DJ Controls
+              </h2>
 
-            {/* Admin DJ Mode Toggle */}
-            {isAdmin && (
+              {/* Admin DJ Mode Toggle */}
               <div className="mb-4">
                 <button
                   onClick={toggleDJMode}
@@ -1021,12 +878,111 @@ const DJPage = ({
                 >
                   {isDJ ? '🎧 Exit DJ Mode' : '🎧 Enter DJ Mode'}
                 </button>
-                      </div>
-                    )}
+              </div>
+                
+              {/* DJ Controls - Admin Only */}
+              {isDJ && (
+                <div className="space-y-4">
+                  {/* Audio Source Selection */}
+                  <div>
+                    <label className="text-sm text-gray-300 mb-2 block">Audio Source:</label>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        onClick={() => selectAudioSource('microphone')}
+                        className={`p-3 text-sm rounded-lg transition-colors text-left ${
+                          currentAudioSource === 'microphone' 
+                            ? 'bg-purple-600 text-white border-2 border-purple-400' 
+                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                        title="Microphone only - Voice input"
+                      >
+                        🎤 Microphone Only
+                      </button>
+                      <button
+                        onClick={() => selectAudioSource('systemAudio')}
+                        disabled={!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))}
+                        className={`p-3 text-sm rounded-lg transition-colors text-left ${
+                          (!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
+                            : currentAudioSource === 'systemAudio' 
+                              ? 'bg-purple-600 text-white border-2 border-purple-400' 
+                              : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                        title={(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
+                          ? "System audio not supported in this browser or requires HTTPS" 
+                          : "System audio only - Computer sounds"
+                        }
+                      >
+                        🖥️ System Audio Only {(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))) && '❌'}
+                      </button>
+                      <button
+                        onClick={() => selectAudioSource('mixedMode')}
+                        disabled={!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))}
+                        className={`p-3 text-sm rounded-lg transition-colors text-left ${
+                          (!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
+                            : currentAudioSource === 'mixedMode' 
+                              ? 'bg-purple-600 text-white border-2 border-purple-400' 
+                              : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                        title={(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
+                          ? "Mixed mode not supported in this browser or requires HTTPS" 
+                          : "Mixed mode - Microphone + System audio"
+                        }
+                      >
+                        🎵 Mixed Mode {(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))) && '❌'}
+                      </button>
+                    </div>
+                    
+                    <div className="mt-2 text-xs text-gray-400">
+                      <span className="text-purple-300">Current:</span> {
+                        currentAudioSource === 'microphone' ? '🎤 Microphone Only' :
+                        currentAudioSource === 'systemAudio' ? '🖥️ System Audio Only' :
+                        '🎵 Mixed Mode (Microphone + System Audio)'
+                      }
+                    </div>
+                  </div>
 
-            {/* User View - Vinyl Display */}
-            {!isAdmin && (
-              <div className="mb-4">
+                  {/* Main Controls */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={togglePlayPause}
+                      className="bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                    >
+                      {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                    </button>
+                    <button
+                      onClick={toggleMute}
+                      className="bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                    >
+                      {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                      <span>{isMuted ? 'Unmute' : 'Mute'}</span>
+                    </button>
+                  </div>
+                  
+                  {/* Audio Error Display */}
+                  {audioError && (
+                    <div className="p-3 bg-red-600/20 border border-red-500/30 rounded-lg">
+                      <p className="text-xs text-red-300">⚠️ {audioError}</p>
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* User Listening Status */}
+          {!isAdmin && (
+            <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
+              <h2 className="text-lg font-bold text-green-300 mb-4 flex items-center">
+                <Music className="w-5 h-5 mr-2" />
+                DJ Stream Status
+              </h2>
+              
+              {/* Vinyl Display */}
+              <div className="mb-6">
                 <div className="flex items-center justify-center">
                   <div className="relative">
                     {/* Vinyl Record */}
@@ -1044,7 +1000,7 @@ const DJPage = ({
                       <div className="absolute inset-6 rounded-full border border-gray-600"></div>
                       <div className="absolute inset-8 rounded-full border border-gray-600"></div>
                       <div className="absolute inset-10 rounded-full border border-gray-600"></div>
-                        </div>
+                    </div>
                     {/* Vinyl Label */}
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
@@ -1052,7 +1008,7 @@ const DJPage = ({
                       </div>
                     </div>
                   </div>
-                      </div>
+                </div>
                 <div className="text-center mt-4">
                   <p className="text-sm text-gray-400">
                     {isPlaying ? '🎵 Now Playing' : '⏸️ Paused'}
@@ -1060,325 +1016,153 @@ const DJPage = ({
                   <p className="text-xs text-gray-500 mt-1">
                     {isPlaying ? 'Vinyl is spinning' : 'Waiting for DJ to start'}
                   </p>
-                    </div>
-                  </div>
-                )}
-                
-            {/* DJ Controls - Admin Only */}
-            {isDJ && isAdmin && (
-              <div className="space-y-4">
-                {/* Audio Source Selection */}
-                <div>
-                  <label className="text-sm text-gray-300 mb-2 block">Audio Source:</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <button
-                      onClick={() => selectAudioSource('microphone')}
-                      className={`p-3 text-sm rounded-lg transition-colors text-left ${
-                        currentAudioSource === 'microphone' 
-                          ? 'bg-purple-600 text-white border-2 border-purple-400' 
-                          : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                      }`}
-                      title="Microphone only - Voice input"
-                    >
-                      🎤 Microphone Only
-                    </button>
-                    <button
-                      onClick={() => selectAudioSource('systemAudio')}
-                      disabled={!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))}
-                      className={`p-3 text-sm rounded-lg transition-colors text-left ${
-                        (!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
-                          ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
-                          : currentAudioSource === 'systemAudio' 
-                            ? 'bg-purple-600 text-white border-2 border-purple-400' 
-                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                      }`}
-                      title={(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
-                        ? "System audio not supported in this browser or requires HTTPS" 
-                        : "System audio only - Computer sounds"
-                      }
-                    >
-                      🖥️ System Audio Only {(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))) && '❌'}
-                    </button>
-                    <button
-                      onClick={() => selectAudioSource('mixedMode')}
-                      disabled={!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))}
-                      className={`p-3 text-sm rounded-lg transition-colors text-left ${
-                        (!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
-                          ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
-                          : currentAudioSource === 'mixedMode' 
-                            ? 'bg-purple-600 text-white border-2 border-purple-400' 
-                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                      }`}
-                      title={(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')))
-                        ? "Mixed mode not supported in this browser or requires HTTPS" 
-                        : "Mixed mode - Microphone + System audio"
-                      }
-                    >
-                      🎵 Mixed Mode {(!navigator.mediaDevices?.getDisplayMedia || (!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0'))) && '❌'}
-                    </button>
-                  </div>
-                  
-                  {/* Current Audio Source Status */}
-                  <div className="mt-2 text-xs text-gray-400">
-                    <span className="text-purple-300">Current:</span> {
-                      currentAudioSource === 'microphone' ? '🎤 Microphone Only' :
-                      currentAudioSource === 'systemAudio' ? '🖥️ System Audio Only' :
-                      '🎵 Mixed Mode (Microphone + System Audio)'
-                    }
-              </div>
-          </div>
-
-                {/* Main Controls */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={togglePlayPause}
-                    className="bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    <span>{isPlaying ? 'Pause' : 'Play'}</span>
-                  </button>
-                  <button
-                    onClick={toggleMute}
-                    className="bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
-                  >
-                    {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                    <span>{isMuted ? 'Unmute' : 'Mute'}</span>
-                  </button>
                 </div>
-                
-                {/* Audio Error Display */}
-                {audioError && (
-                  <div className="p-3 bg-red-600/20 border border-red-500/30 rounded-lg">
-                    <p className="text-xs text-red-300">⚠️ {audioError}</p>
-                    <p className="text-xs text-red-400 mt-1">
-                      {currentAudioSource === 'systemAudio' && 
-                        'Make sure to select "Share system audio" when prompted'
-                      }
-                      {currentAudioSource === 'mixedMode' && 
-                        'Make sure to allow both microphone and system audio access'
-                      }
-                    </p>
-                  </div>
-                )}
+              </div>
 
-                {/* Audio Testing */}
-                <div className="p-3 bg-yellow-600/20 border border-yellow-500/30 rounded-lg">
-                  <p className="text-xs text-yellow-300 mb-2">
-                    ⚠️ <strong>Audio Testing:</strong>
-                  </p>
-                  
-                  {/* Microphone Test */}
-                  <div className="mb-3">
-                    <p className="text-xs text-yellow-400 mb-1">Microphone Status:</p>
-                    <button
-                      onClick={testMicrophone}
-                      disabled={testingMicrophone}
-                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-xs rounded transition-colors"
-                    >
-                      {testingMicrophone ? 'Testing...' : '🎤 Test Microphone'}
-                    </button>
-                    {microphoneStatus === 'working' && (
-                      <p className="text-xs text-green-400 mt-1">✅ Microphone is working</p>
-                    )}
-                    {microphoneStatus === 'failed' && (
-                      <p className="text-xs text-red-400 mt-1">❌ Microphone test failed</p>
-                    )}
+              {/* Stream Status */}
+              <div className="p-4 bg-white/10 rounded-lg mb-4">
+                <h3 className="text-sm font-medium text-gray-300 mb-2">Stream Status</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Status:</span>
+                    <span className={`text-xs ${isPlaying ? 'text-green-400' : 'text-gray-500'}`}>
+                      {isPlaying ? '🔴 Live' : '⚫ Offline'}
+                    </span>
                   </div>
-                  
-                  {/* System Audio Test */}
-                  <div className="mb-3">
-                    <p className="text-xs text-yellow-400 mb-1">System Audio Status:</p>
-                    <div className="text-xs text-yellow-400 space-y-1 mb-2">
-                      <p>• Browser: {navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Edge') ? 'Edge' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Other'}</p>
-                      <p>• Secure Context: {window.isSecureContext ? '✅ Yes' : '❌ No'}</p>
-                      <p>• getDisplayMedia: {navigator.mediaDevices?.getDisplayMedia ? '✅ Available' : '❌ Not Available'}</p>
-                    </div>
-                    
-                    <button
-                      onClick={testSystemAudio}
-                      disabled={testingSystemAudio}
-                      className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white text-xs rounded transition-colors"
-                    >
-                      {testingSystemAudio ? 'Testing...' : '🧪 Test System Audio'}
-                    </button>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Listeners:</span>
+                    <span className="text-xs text-gray-300">{listeners}</span>
                   </div>
-                  
-                  {/* Mixed Mode Test */}
-                  <div className="mb-3">
-                    <p className="text-xs text-yellow-400 mb-1">Mixed Mode Status:</p>
-                    <button
-                      onClick={testMixedMode}
-                      disabled={testingMixedMode}
-                      className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white text-xs rounded transition-colors"
-                    >
-                      {testingMixedMode ? 'Testing...' : '🎵 Test Mixed Mode'}
-                    </button>
-                    {mixedModeStatus === 'working' && (
-                      <p className="text-xs text-green-400 mt-1">✅ Mixed Mode is working</p>
-                    )}
-                    {mixedModeStatus === 'failed' && (
-                      <p className="text-xs text-red-400 mt-1">❌ Mixed Mode test failed</p>
-                    )}
-                  </div>
-                  
-                  {/* Requirements and Tips */}
-                  <div className="mt-2">
-                    <p className="text-xs text-yellow-300 mb-1">
-                      <strong>Requirements:</strong>
-                    </p>
-                    {!navigator.mediaDevices?.getDisplayMedia && (
-                      <p className="text-xs text-yellow-400">• ❌ getDisplayMedia not supported</p>
-                    )}
-                    {(!(window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0')) && (
-                      <p className="text-xs text-yellow-400">• ❌ System Audio requires HTTPS or localhost</p>
-                    )}
-                    <p className="text-xs text-yellow-400">• 💡 Try using Chrome/Edge on HTTPS</p>
-                    <p className="text-xs text-yellow-400">• 🎤 Test microphone first, then system audio</p>
-                    <p className="text-xs text-yellow-400">• 🎵 Mixed Mode requires both to work</p>
-                    <p className="text-xs text-yellow-400">• ⚠️ Make sure to select "Share system audio" when prompted</p>
-                    <p className="text-xs text-yellow-400">• 🔧 If Mixed Mode fails, it will fallback to Microphone only</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Connection:</span>
+                    <span className={`text-xs ${connectionStatus ? 'text-green-400' : 'text-red-400'}`}>
+                      {connectionStatus ? '🟢 Connected' : '🔴 Disconnected'}
+                    </span>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* User View - Stream Status */}
-            {!isAdmin && (
-              <div className="space-y-4">
-                <div className="p-4 bg-white/10 rounded-lg">
-                  <h3 className="text-sm font-medium text-gray-300 mb-2">Stream Status</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">Status:</span>
-                      <span className={`text-xs ${isPlaying ? 'text-green-400' : 'text-gray-500'}`}>
-                        {isPlaying ? '🔴 Live' : '⚫ Offline'}
-                      </span>
+              {/* User Mode */}
+              <div className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg mb-4">
+                <p className="text-xs text-blue-300 mb-2">
+                  💡 <strong>User Mode</strong>
+                </p>
+                <p className="text-xs text-blue-400">
+                  You are viewing as a listener. Only admins can control the stream.
+                </p>
               </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">Listeners:</span>
-                      <span className="text-xs text-gray-300">{listeners}</span>
+              
+              {/* Listening Status */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-300">Listening Status:</span>
+                  <span className={`text-sm font-medium ${
+                    listeningStatus === 'connected' ? 'text-green-400' :
+                    listeningStatus === 'connecting' ? 'text-yellow-400' :
+                    listeningStatus === 'error' ? 'text-red-400' :
+                    'text-gray-400'
+                  }`}>
+                    {listeningStatus === 'connected' ? '🎧 Connected' :
+                     listeningStatus === 'connecting' ? '🔄 Connecting...' :
+                     listeningStatus === 'error' ? '❌ Error' :
+                     '💤 Idle'}
+                  </span>
+                </div>
+                
+                {djStream && (
+                  <div className="p-3 bg-green-600/20 border border-green-500/30 rounded-lg">
+                    <p className="text-sm text-green-300">
+                      🎧 <strong>DJ is Live!</strong>
+                    </p>
+                    <p className="text-xs text-green-400 mt-1">
+                      Listening to: {djStream.djName}
+                    </p>
+                  </div>
+                )}
+                
+                {!djStream && listeningStatus === 'idle' && (
+                  <div className="p-3 bg-gray-600/20 border border-gray-500/30 rounded-lg">
+                    <p className="text-sm text-gray-300">
+                      💤 <strong>No DJ Streaming</strong>
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Waiting for DJ to start streaming...
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">Audio Source:</span>
-                      <span className="text-xs text-gray-300">
-                        {currentAudioSource === 'microphone' ? '🎤 Microphone' :
-                         currentAudioSource === 'systemAudio' ? '🖥️ System Audio' :
-                         '🎵 Mixed Mode'}
-                      </span>
-                    </div>
-                    </div>
-                  </div>
-                
-                <div className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg">
-                  <p className="text-xs text-blue-300 mb-2">
-                    💡 <strong>User Mode</strong>
-                  </p>
-                  <p className="text-xs text-blue-400 mb-3">
-                    You are viewing as a listener. Only admins can control the stream.
-                  </p>
-                  
-                  {/* Admin Mode Toggle for Testing */}
-                  <div className="space-y-2">
-                    <p className="text-xs text-blue-300">
-                      <strong>Testing Admin Mode:</strong>
-                    </p>
-                    <button
-                      onClick={() => {
-                        localStorage.setItem('userRole', 'admin');
-                        setIsAdmin(true);
-                        console.log('✅ Admin mode enabled for testing');
-                      }}
-                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors"
-                    >
-                      🔧 Enable Admin Mode (Test)
-                    </button>
-                    <button
-                      onClick={() => {
-                        localStorage.removeItem('userRole');
-                        localStorage.removeItem('adminPermissions');
-                        setIsAdmin(false);
-                        console.log('❌ Admin mode disabled');
-                      }}
-                      className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
-                    >
-                      👤 Disable Admin Mode
-                    </button>
-                  </div>
-                </div>
-              </div>
-              )}
-        </div>
+          )}
 
           {/* Right Column - Chat */}
           <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-blue-300 mb-4 flex items-center">
-              <MessageCircle className="w-5 h-5 mr-2" />
-              Live Chat
-            </h2>
-          
-            {/* Messages */}
-            <div className="max-h-60 overflow-y-auto mb-4 space-y-2">
-              {messages.length === 0 ? (
-              <div className="text-center py-8">
-                <MessageCircle className="w-12 h-12 text-gray-500 mx-auto mb-3" />
-                  <p className="text-sm text-gray-400">No messages yet</p>
-                  <p className="text-xs text-gray-500">Start the conversation!</p>
-              </div>
-            ) : (
-                messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`text-sm p-3 rounded-lg ${
-                      message.isDJ
-                        ? 'bg-purple-600/30 border-l-2 border-purple-400'
-                        : 'bg-white/10'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className={`font-medium ${
-                        message.isDJ ? 'text-purple-300' : 'text-gray-300'
-                      }`}>
-                        {message.username}
-                      </span>
-                      <span className="text-gray-500 text-xs">{message.timestamp}</span>
-                    </div>
-                    <p className="text-white">{message.text}</p>
+              <h2 className="text-lg font-bold text-blue-300 mb-4 flex items-center">
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Live Chat
+              </h2>
+            
+              {/* Messages */}
+              <div className="max-h-60 overflow-y-auto mb-4 space-y-2">
+                {messages.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageCircle className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+                    <p className="text-sm text-gray-400">No messages yet</p>
+                    <p className="text-xs text-gray-500">Start the conversation!</p>
                   </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-          </div>
-          
-            {/* Message Input */}
-            <form onSubmit={handleSendMessage} className="flex space-x-2">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 bg-white/20 text-white placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
+                ) : (
+                  messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className={`text-sm p-3 rounded-lg ${
+                        message.isDJ
+                          ? 'bg-purple-600/30 border-l-2 border-purple-400'
+                          : 'bg-white/10'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`font-medium ${
+                          message.isDJ ? 'text-purple-300' : 'text-gray-300'
+                        }`}>
+                          {message.username}
+                        </span>
+                        <span className="text-gray-500 text-xs">{message.timestamp}</span>
+                      </div>
+                      <p className="text-white">{message.text}</p>
+                    </div>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              
+              {/* Message Input */}
+              <form onSubmit={handleSendMessage} className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1 bg-white/20 text-white placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
 
-            {/* Status Indicator */}
-            <div className="flex items-center justify-center space-x-2 text-xs text-gray-400 mt-4">
-              <div className={`w-2 h-2 rounded-full ${
-                connectionStatus ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-              }`}></div>
-              <span>{connectionStatus ? 'Connected' : 'Disconnected'}</span>
-            </div>
+              {/* Status Indicator */}
+              <div className="flex items-center justify-center space-x-2 text-xs text-gray-400 mt-4">
+                <div className={`w-2 h-2 rounded-full ${
+                  connectionStatus ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                }`}></div>
+                <span>{connectionStatus ? 'Connected' : 'Disconnected'}</span>
               </div>
-              </div>
-              </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default DJPage;
-

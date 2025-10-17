@@ -173,10 +173,21 @@ const setupDJSocketHandlers = (io) => {
     // WebRTC Signaling
     socket.on('webrtc-offer', (data) => {
       console.log(`📡 WebRTC offer from ${socket.id} to ${data.targetId}`);
-      socket.to(data.targetId).emit('webrtc-offer', {
-        offer: data.offer,
-        senderId: socket.id
-      });
+      
+      if (data.targetId === 'broadcast') {
+        // Broadcast to all listeners (non-DJ users)
+        socket.broadcast.emit('webrtc-offer', {
+          offer: data.offer,
+          senderId: socket.id
+        });
+        console.log(`📡 Broadcasting WebRTC offer to all listeners`);
+      } else {
+        // Send to specific target
+        socket.to(data.targetId).emit('webrtc-offer', {
+          offer: data.offer,
+          senderId: socket.id
+        });
+      }
     });
 
     socket.on('webrtc-answer', (data) => {
@@ -189,10 +200,21 @@ const setupDJSocketHandlers = (io) => {
 
     socket.on('webrtc-ice-candidate', (data) => {
       console.log(`🧊 ICE candidate from ${socket.id} to ${data.targetId}`);
-      socket.to(data.targetId).emit('webrtc-ice-candidate', {
-        candidate: data.candidate,
-        senderId: socket.id
-      });
+      
+      if (data.targetId === 'broadcast') {
+        // Broadcast to all listeners (non-DJ users)
+        socket.broadcast.emit('webrtc-ice-candidate', {
+          candidate: data.candidate,
+          senderId: socket.id
+        });
+        console.log(`🧊 Broadcasting ICE candidate to all listeners`);
+      } else {
+        // Send to specific target
+        socket.to(data.targetId).emit('webrtc-ice-candidate', {
+          candidate: data.candidate,
+          senderId: socket.id
+        });
+      }
     });
   });
 };
