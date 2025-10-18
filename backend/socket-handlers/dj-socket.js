@@ -166,19 +166,29 @@ const setupDJSocketHandlers = (io) => {
     });
 
     // WebRTC Audio Streaming Events
-    socket.on('dj-streaming-started', () => {
-      console.log(`🎧 DJ ${socket.id} started streaming`);
-      socket.broadcast.emit('dj-streaming-started', {
+    socket.on('dj-streaming-started', (data) => {
+      console.log(`🎧 DJ ${socket.id} started streaming:`, data);
+      
+      const djData = {
         djId: socket.id,
-        djName: connectedUsers.get(socket.id)?.username || 'DJ'
-      });
+        djName: data?.djName || connectedUsers.get(socket.id)?.username || 'DJ'
+      };
+      
+      // Broadcast to all users including the admin who started streaming
+      console.log(`🎧 Broadcasting dj-streaming-started to all users:`, djData);
+      io.emit('dj-streaming-started', djData);
     });
 
-    socket.on('dj-streaming-stopped', () => {
-      console.log(`🎧 DJ ${socket.id} stopped streaming`);
-      socket.broadcast.emit('dj-streaming-stopped', {
+    socket.on('dj-streaming-stopped', (data) => {
+      console.log(`🎧 DJ ${socket.id} stopped streaming:`, data);
+      
+      const djData = {
         djId: socket.id
-      });
+      };
+      
+      // Broadcast to all users including the admin who stopped streaming
+      console.log(`🎧 Broadcasting dj-streaming-stopped to all users:`, djData);
+      io.emit('dj-streaming-stopped', djData);
     });
 
     // User ready for stream

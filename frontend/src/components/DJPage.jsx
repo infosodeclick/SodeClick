@@ -186,13 +186,40 @@ const DJPage = ({
       console.log('🎧 DJ started streaming:', data);
       setDjStream(data);
       setListeningStatus('streaming');
-      if (!isAdmin) {
+      
+      // Check admin status from localStorage to avoid stale closure
+      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
+      const userRole = localStorage.getItem('userRole');
+      let isAdminUser = false;
+      
+      if (userRole === 'admin' || userRole === 'superadmin') {
+        isAdminUser = true;
+      }
+      
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+            isAdminUser = true;
+          }
+        } catch (error) {
+          console.log('Error parsing user data:', error);
+        }
+      }
+      
+      const isActuallyAdmin = isAdminUser || adminPermissions;
+      
+      if (!isActuallyAdmin) {
+        console.log('🎧 User (non-admin) received DJ stream, starting to listen and requesting connection');
         startListening();
         // Notify admin that this user is ready for connection
         socket.emit('user-ready-for-stream', {
           userId: socket.id,
           djId: data.djId
         });
+      } else {
+        console.log('🎧 Admin received own DJ stream event - no action needed');
       }
     });
 
@@ -200,8 +227,35 @@ const DJPage = ({
       console.log('🎧 DJ stopped streaming:', data);
       setDjStream(null);
       setListeningStatus('idle');
-      if (!isAdmin) {
+      
+      // Check admin status from localStorage to avoid stale closure
+      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
+      const userRole = localStorage.getItem('userRole');
+      let isAdminUser = false;
+      
+      if (userRole === 'admin' || userRole === 'superadmin') {
+        isAdminUser = true;
+      }
+      
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+            isAdminUser = true;
+          }
+        } catch (error) {
+          console.log('Error parsing user data:', error);
+        }
+      }
+      
+      const isActuallyAdmin = isAdminUser || adminPermissions;
+      
+      if (!isActuallyAdmin) {
+        console.log('🎧 User (non-admin) received DJ stream stopped, stopping listener');
         stopListening();
+      } else {
+        console.log('🎧 Admin received own DJ stream stopped event - no action needed');
       }
     });
 
