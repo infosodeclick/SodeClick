@@ -181,6 +181,16 @@ const setupDJSocketHandlers = (io) => {
       });
     });
 
+    // User ready for stream
+    socket.on('user-ready-for-stream', (data) => {
+      console.log(`🎧 User ${socket.id} ready for stream from DJ ${data.djId}`);
+      // Forward to the specific DJ
+      socket.to(data.djId).emit('user-ready-for-stream', {
+        userId: socket.id,
+        username: connectedUsers.get(socket.id)?.username || 'User'
+      });
+    });
+
     // WebRTC Signaling
     socket.on('webrtc-offer', (data) => {
       console.log(`📡 WebRTC offer from ${socket.id} to ${data.targetId}`);
@@ -213,9 +223,10 @@ const setupDJSocketHandlers = (io) => {
         hasAnswer: !!data.answer
       });
       
+      // Send answer back to the admin (targetId is the admin's socket.id)
       socket.to(data.targetId).emit('webrtc-answer', {
         answer: data.answer,
-        senderId: socket.id
+        senderId: socket.id  // This is the user who sent the answer
       });
     });
 

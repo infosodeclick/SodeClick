@@ -2915,7 +2915,7 @@ const rtmpConfig = {
   //   cors: true
   // },
   trans: {
-    ffmpeg: process.env.FFMPEG_PATH || 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe',
+    ffmpeg: process.env.FFMPEG_PATH || (process.platform === 'win32' ? 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe' : 'ffmpeg'),
     tasks: [
       {
         app: 'live',
@@ -2930,7 +2930,7 @@ const rtmpConfig = {
 
 // Start Server only after MongoDB connection is ready
 const startServer = () => {
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 ============================================');
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌍 Environment: ${NODE_ENV}`);
@@ -2942,8 +2942,22 @@ const startServer = () => {
     console.log(`📺 HLS Server: http://localhost:${HLS_PORT}/live`);
     console.log('🚀 ============================================');
     
-    // Start RTMP Server
-    const nms = new NodeMediaServer(rtmpConfig);
+    // Start RTMP Server (might not work in Railway due to port restrictions)
+    let nms;
+    try {
+      nms = new NodeMediaServer(rtmpConfig);
+      
+      // Only start RTMP server if not in Railway environment or if explicitly enabled
+      if (!process.env.RAILWAY_ENVIRONMENT || process.env.ENABLE_RTMP === 'true') {
+        nms.run();
+        console.log(`📺 RTMP Server started successfully`);
+      } else {
+        console.log(`⚠️ RTMP Server disabled in Railway environment`);
+      }
+    } catch (error) {
+      console.error(`📺 Failed to start NodeMediaServer:`, error);
+      console.log(`⚠️ Continuing without RTMP server...`);
+    }
     
     // Cleanup old HLS files every 5 minutes
     const cleanupOldHLSFiles = () => {
@@ -2982,25 +2996,20 @@ const startServer = () => {
     cleanupOldHLSFiles();
     setInterval(cleanupOldHLSFiles, 5 * 60 * 1000);
     
-    // Add error handling before starting
-    nms.on('error', (id, err) => {
-      console.error(`📺 NodeMediaServer error:`, err);
-    });
-    
-    try {
-      nms.run();
-      console.log(`📺 NodeMediaServer started successfully`);
-    } catch (error) {
-      console.error(`📺 Failed to start NodeMediaServer:`, error);
-    }
-    
-    // RTMP Server event handlers
-    nms.on('preConnect', (id, args) => {
-      console.log(`📺 RTMP Client connecting: ${id}`);
-      console.log(`📺 Connection args:`, args);
-    });
-    
-    nms.on('postConnect', (id, args) => {
+    // RTMP Server event handlers (only if nms is available)
+    if (nms) {
+      // Add error handling
+      nms.on('error', (id, err) => {
+        console.error(`📺 NodeMediaServer error:`, err);
+      });
+      
+      // RTMP Server event handlers
+      nms.on('preConnect', (id, args) => {
+        console.log(`📺 RTMP Client connecting: ${id}`);
+        console.log(`📺 Connection args:`, args);
+      });
+      
+      nms.on('postConnect', (id, args) => {
       console.log(`📺 RTMP Client connected: ${id}`);
       console.log(`📺 Client info:`, args);
     });
@@ -3202,6 +3211,7 @@ const startServer = () => {
     nms.on('doneTranscode', (id, streamPath, args) => {
       console.log(`⏹️  FFmpeg transcoding ended for: ${streamPath}`);
     });
+    } // End of if (nms) block
     
     // Create separate HTTP server for HLS files
     const express = require('express');
@@ -3224,7 +3234,7 @@ const startServer = () => {
     
     // Start HLS HTTP server
     const hlsServer = http.createServer(hlsApp);
-    hlsServer.listen(HLS_PORT, () => {
+    hlsServer.listen(HLS_PORT, '0.0.0.0', () => {
       console.log(`📺 HLS HTTP Server started on port ${HLS_PORT}`);
       console.log(`📁 Serving files from: ${liveDir}`);
       console.log(`🌐 Test URL: http://localhost:${HLS_PORT}/live/test.html`);
