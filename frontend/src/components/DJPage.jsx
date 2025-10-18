@@ -183,7 +183,11 @@ const DJPage = ({
 
     // DJ Audio Streaming Events
     socket.on('dj-streaming-started', (data) => {
-      console.log('🎧 DJ started streaming:', data);
+      console.log('🎧 DJ started streaming event received:', data);
+      console.log('🎧 Current socket info:', {
+        socketId: socket.id,
+        connected: socket.connected
+      });
       setDjStream(data);
       setListeningStatus('streaming');
       
@@ -214,6 +218,11 @@ const DJPage = ({
         console.log('🎧 User (non-admin) received DJ stream, starting to listen and requesting connection');
         startListening();
         // Notify admin that this user is ready for connection
+        console.log('📡 User emitting user-ready-for-stream:', {
+          userId: socket.id,
+          djId: data.djId,
+          connected: socket.connected
+        });
         socket.emit('user-ready-for-stream', {
           userId: socket.id,
           djId: data.djId
@@ -324,7 +333,11 @@ const DJPage = ({
 
     // User ready for stream
     socket.on('user-ready-for-stream', async (data) => {
-      console.log('🎧 User ready for stream:', data);
+      console.log('🎧 User ready for stream event received:', data);
+      console.log('🎧 Admin socket info when received user-ready:', {
+        socketId: socket.id,
+        connected: socket.connected
+      });
       
       // Check admin status from localStorage to avoid stale closure
       const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
@@ -1379,12 +1392,17 @@ const DJPage = ({
   // Function to initiate connection with a new user
   const initiateConnectionWithUser = async (userId) => {
     try {
+      console.log('📡 ===== INITIATING CONNECTION WITH USER =====');
       console.log('📡 Initiating connection with user:', userId);
       console.log('📡 Media stream check:', {
         hasMediaStream: !!mediaStreamRef.current,
         isPlaying,
         isDJ,
         isAdmin
+      });
+      console.log('📡 Socket info:', {
+        socketId: socketRef.current?.id,
+        connected: socketRef.current?.connected
       });
       
       // Check if we have a media stream ready
@@ -1768,12 +1786,17 @@ const DJPage = ({
       // Don't create broadcast offer - we'll create individual connections when users connect
       console.log('📡 Ready to create individual peer connections when users connect');
 
+      console.log('📡 About to emit dj-streaming-started event:', {
+        socketId: socketRef.current.id,
+        connected: socketRef.current.connected
+      });
+      
       socketRef.current.emit('dj-streaming-started', {
         djId: socketRef.current.id,
         djName: 'DJ'
       });
 
-      console.log('✅ DJ streaming started successfully');
+      console.log('✅ DJ streaming started successfully and event emitted');
     } catch (error) {
       console.error('❌ Error starting DJ streaming:', error);
     }

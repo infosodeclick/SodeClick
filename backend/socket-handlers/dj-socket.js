@@ -193,12 +193,21 @@ const setupDJSocketHandlers = (io) => {
 
     // User ready for stream
     socket.on('user-ready-for-stream', (data) => {
-      console.log(`🎧 User ${socket.id} ready for stream from DJ ${data.djId}`);
+      console.log(`🎧 BACKEND: User ${socket.id} ready for stream from DJ ${data.djId}`);
+      console.log(`🎧 BACKEND: Data received:`, data);
+      console.log(`🎧 BACKEND: Connected users count:`, connectedUsers.size);
+      
+      // Check if target DJ is connected
+      const targetDJ = Array.from(connectedUsers.keys()).find(userId => userId === data.djId);
+      console.log(`🎧 BACKEND: Target DJ found:`, !!targetDJ, 'Target ID:', data.djId);
+      
       // Forward to the specific DJ
       socket.to(data.djId).emit('user-ready-for-stream', {
         userId: socket.id,
         username: connectedUsers.get(socket.id)?.username || 'User'
       });
+      
+      console.log(`🎧 BACKEND: user-ready-for-stream forwarded to DJ ${data.djId}`);
     });
 
     // WebRTC Signaling
