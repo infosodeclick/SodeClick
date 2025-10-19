@@ -138,10 +138,26 @@ const DJPage = ({
   // Send user-ready-for-stream when DJ stream is available and user is not admin
   useEffect(() => {
     if (djStream && djStream.djId && (!isAdmin || isAdminListener) && socketRef.current && socketRef.current.connected) {
-      console.log('🎧 User detected DJ stream, sending user-ready-for-stream');
+      console.log('🎧 User detected DJ stream, sending user-ready-for-stream', {
+        djStream: djStream,
+        isAdmin: isAdmin,
+        isAdminListener: isAdminListener,
+        socketConnected: socketRef.current.connected,
+        socketId: socketRef.current.id,
+        djId: djStream.djId
+      });
       socketRef.current.emit('user-ready-for-stream', {
         userId: socketRef.current.id,
         djId: djStream.djId
+      });
+    } else {
+      console.log('🎧 User-ready-for-stream conditions not met:', {
+        hasDjStream: !!djStream,
+        djStreamDjId: djStream?.djId,
+        isAdmin: isAdmin,
+        isAdminListener: isAdminListener,
+        socketConnected: socketRef.current?.connected,
+        socketId: socketRef.current?.id
       });
     }
   }, [djStream, isAdmin, isAdminListener]);
@@ -165,11 +181,40 @@ const DJPage = ({
 
   // Socket connection
   const initializeSocket = () => {
-    const url = socketUrl || (window.location.hostname === 'localhost' 
-      ? 'http://localhost:5000' 
-      : window.location.origin);
+    let url;
     
-    socketRef.current = io(url);
+    if (socketUrl) {
+      url = socketUrl;
+    } else {
+      // Use environment variable for API base URL, fallback to localhost for development
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+      if (apiBaseUrl) {
+        url = apiBaseUrl;
+      } else {
+        url = window.location.hostname === 'localhost' 
+          ? 'http://localhost:5000' 
+          : window.location.origin;
+      }
+    }
+    
+    console.log('🔌 DJ Socket connecting to:', url);
+    console.log('🌍 Environment info:', {
+      hostname: window.location.hostname,
+      origin: window.location.origin,
+      apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+      nodeEnv: import.meta.env.NODE_ENV || import.meta.env.MODE
+    });
+    
+    socketRef.current = io(url, {
+      transports: ['websocket', 'polling'],
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      maxReconnectionAttempts: 5
+    });
     setupSocketListeners();
   };
 
@@ -177,7 +222,9 @@ const DJPage = ({
     const socket = socketRef.current;
     
     socket.on('connect', () => {
-      console.log('Connected to server:', socket.id);
+      console.log('✅ Connected to server:', socket.id);
+      console.log('🌐 Socket URL:', socket.io.uri);
+      console.log('🔌 Socket transport:', socket.io.engine.transport.name);
       setConnectionStatus(true);
       onConnect && onConnect(socket.id);
       
@@ -215,10 +262,29 @@ const DJPage = ({
       }
     });
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Disconnected from server:', reason);
       setConnectionStatus(false);
       onDisconnect && onDisconnect();
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket connection error:', error);
+      setConnectionStatus(false);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('✅ Socket reconnected after', attemptNumber, 'attempts');
+      setConnectionStatus(true);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('❌ Socket reconnection error:', error);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('❌ Socket reconnection failed - giving up');
+      setConnectionStatus(false);
     });
 
     socket.on('current state', (state) => {
@@ -303,6 +369,15 @@ const DJPage = ({
       }
       
       // Handle DJ streaming state sync - auto-start listening if DJ is streaming
+      console.log('🎧 DJ Streaming Check:', {
+        isDJStreaming: state.isDJStreaming,
+        currentDJ: state.currentDJ,
+        isAdmin: isAdmin,
+        isAdminListener: isAdminListener,
+        socketConnected: socketRef.current?.connected,
+        socketId: socketRef.current?.id
+      });
+      
       if (state.isDJStreaming && state.currentDJ && (!isAdmin || isAdminListener)) {
         console.log('🎧 DJ is currently streaming, setting up stream connection');
         setDjStream({
@@ -316,6 +391,13 @@ const DJPage = ({
         setTimeout(() => {
           startListening();
         }, 1000); // Small delay to ensure state is set
+      } else {
+        console.log('🎧 DJ streaming conditions not met for user:', {
+          isDJStreaming: state.isDJStreaming,
+          hasCurrentDJ: !!state.currentDJ,
+          isAdmin: isAdmin,
+          isAdminListener: isAdminListener
+        });
       }
     });
 
@@ -385,7 +467,12 @@ const DJPage = ({
       console.log('🎧 DJ started streaming event received:', data);
       console.log('🎧 Current socket info:', {
         socketId: socket.id,
-        connected: socket.connected
+        connected: socket.connected,
+        transport: socket.io?.engine?.transport?.name
+      });
+      console.log('🎧 User role check before setting up:', {
+        isAdmin: isAdmin,
+        isAdminListener: isAdminListener
       });
       setDjStream(data);
       setListeningStatus('streaming');
@@ -1516,13 +1603,21 @@ const DJPage = ({
       console.log('📡 Offer data:', {
         hasOffer: !!data.offer,
         offerType: data.offer?.type,
-        senderId: data.senderId
+        senderId: data.senderId,
+        fullData: data
       });
       console.log('📡 Current user status:', {
         isAdmin,
         listeningStatus,
         djStream: !!djStream,
-        djStreamDetails: djStream
+        djStreamDetails: djStream,
+        socketConnected: socketRef.current?.connected,
+        socketId: socketRef.current?.id
+      });
+      console.log('🌍 Environment debug:', {
+        hostname: window.location.hostname,
+        userAgent: navigator.userAgent,
+        webrtcSupported: !!window.RTCPeerConnection
       });
       
       // Clear connection timeout
