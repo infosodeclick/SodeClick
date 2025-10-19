@@ -11,14 +11,14 @@ const bypassMembershipRestrictions = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.id || decoded.userId);
 
     if (!user) {
       return next(); // Continue with normal restrictions
     }
 
-    // If user is admin or superadmin, bypass membership restrictions
-    if (['admin', 'superadmin'].includes(user.role)) {
+    // If user is admin, superadmin, or DJ, bypass membership restrictions
+    if (['admin', 'superadmin', 'dj'].includes(user.role)) {
       req.user = user;
       req.isAdmin = true;
       req.adminPrivileges = {

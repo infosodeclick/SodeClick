@@ -294,7 +294,7 @@ router.put('/users/:id', requireAdmin, async (req, res) => {
     
     const updateData = {};
     
-    if (role && ['user', 'admin', 'superadmin'].includes(role)) {
+    if (role && ['user', 'dj', 'admin', 'superadmin'].includes(role)) {
       updateData.role = role;
     }
     

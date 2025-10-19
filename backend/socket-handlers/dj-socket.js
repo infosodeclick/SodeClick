@@ -1,4 +1,7 @@
 // Socket.IO logic for DirectorJoox DJ Feature
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
 let connectedUsers = new Map();
 let currentDJ = null;
 let chatMessages = []; // Store chat messages
@@ -9,17 +12,87 @@ let currentSong = {
   timestamp: Date.now()
 };
 
+// DJ Socket authentication middleware
+const authenticateDJSocket = async (socket, token) => {
+  try {
+    if (!token) {
+      return null;
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user || !user.isActive) {
+      return null;
+    }
+
+    return user;
+  } catch (error) {
+    console.error('DJ Socket authentication error:', error);
+    return null;
+  }
+};
+
 const setupDJSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     console.log(`🎧 DJ Feature - User connected: ${socket.id}`);
     
-    // Add user to connected users
-    connectedUsers.set(socket.id, {
-      id: socket.id,
-      username: `User_${socket.id.slice(0, 6)}`,
-      isDJ: false,
-      connectedAt: new Date()
+    let authenticatedUser = null;
+    
+    // Handle authentication
+    socket.on('dj-auth', async (data) => {
+      try {
+        const { token } = data;
+        authenticatedUser = await authenticateDJSocket(socket, token);
+        
+        if (!authenticatedUser) {
+          console.log(`🎧 DJ Auth failed for socket: ${socket.id}`);
+          socket.emit('dj-auth-error', { message: 'Authentication failed' });
+          return;
+        }
+        
+        // Check if user can access DJ mode
+        if (!authenticatedUser.canAccessDJMode()) {
+          console.log(`🎧 DJ access denied for user: ${authenticatedUser.username}, role: ${authenticatedUser.role}`);
+          socket.emit('dj-auth-error', { message: 'DJ access required' });
+          return;
+        }
+        
+        console.log(`🎧 DJ Auth successful for user: ${authenticatedUser.username}, role: ${authenticatedUser.role}`);
+        
+        // Update connected user with authenticated info
+        connectedUsers.set(socket.id, {
+          id: socket.id,
+          username: authenticatedUser.username,
+          userId: authenticatedUser._id,
+          role: authenticatedUser.role,
+          isDJ: false,
+          connectedAt: new Date()
+        });
+        
+        socket.emit('dj-auth-success', {
+          user: {
+            id: authenticatedUser._id,
+            username: authenticatedUser.username,
+            role: authenticatedUser.role
+          }
+        });
+        
+      } catch (error) {
+        console.error('DJ Auth error:', error);
+        socket.emit('dj-auth-error', { message: 'Authentication error' });
+      }
     });
+    
+    // Add user to connected users (temporary until authenticated)
+    if (!connectedUsers.has(socket.id)) {
+      connectedUsers.set(socket.id, {
+        id: socket.id,
+        username: `User_${socket.id.slice(0, 6)}`,
+        isDJ: false,
+        connectedAt: new Date()
+      });
+    }
 
     // Send current state to new user
     socket.emit('current state', {
@@ -72,6 +145,13 @@ const setupDJSocketHandlers = (io) => {
     socket.on('toggle dj mode', (data) => {
       const user = connectedUsers.get(socket.id);
       if (!user) return;
+
+      // Check if user has DJ access permission (must be authenticated with DJ role, admin, or superadmin)
+      if (!authenticatedUser || !authenticatedUser.canAccessDJMode()) {
+        console.log(`🎧 DJ mode toggle denied - user not authorized: ${user.username}`);
+        socket.emit('dj-auth-error', { message: 'DJ access required to enter DJ mode' });
+        return;
+      }
 
       const isRequestingDJ = data?.isDJ ?? (!user.isDJ);
       
@@ -130,6 +210,14 @@ const setupDJSocketHandlers = (io) => {
     socket.on('dj control', (control) => {
       const user = connectedUsers.get(socket.id);
       console.log(`🎛️ Received DJ control:`, { control, user: user?.username, isDJ: user?.isDJ });
+      
+      // Check authentication and DJ access
+      if (!authenticatedUser || !authenticatedUser.canAccessDJMode()) {
+        console.log(`🎛️ DJ control denied - user not authorized: ${user?.username}`);
+        socket.emit('dj-auth-error', { message: 'DJ access required for controls' });
+        return;
+      }
+      
       if (user && user.isDJ) {
         console.log(`🎛️ Processing DJ control from ${user.username}:`, control);
         

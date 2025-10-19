@@ -358,7 +358,7 @@ const UserManagement = () => {
         { label: 'สนใจใน', value: createForm.lookingFor === 'male' ? 'ชาย' : createForm.lookingFor === 'female' ? 'หญิง' : 'ทั้งสองเพศ' },
         { label: 'ที่อยู่', value: createForm.location },
         { label: 'วันเกิด', value: createForm.dateOfBirth },
-        { label: 'ระดับ', value: createForm.role === 'admin' ? 'แอดมิน' : 'ผู้ใช้' },
+        { label: 'ระดับ', value: createForm.role === 'admin' ? 'แอดมิน' : createForm.role === 'dj' ? 'DJ Control' : 'ผู้ใช้' },
         { label: 'สมาชิก', value: createForm.membership.tier.toUpperCase() }
       ],
       onConfirm: () => createUser()
@@ -424,7 +424,7 @@ const UserManagement = () => {
           `Username: ${createForm.username}\n` +
           `อีเมล: ${createForm.email}\n` +
           `ชื่อ: ${createForm.firstName} ${createForm.lastName}\n` +
-          `ระดับ: ${createForm.role === 'admin' ? 'แอดมิน' : 'ผู้ใช้'}\n` +
+          `ระดับ: ${createForm.role === 'admin' ? 'แอดมิน' : createForm.role === 'dj' ? 'DJ Control' : 'ผู้ใช้'}\n` +
           `สมาชิก: ${createForm.membership.tier.toUpperCase()}`, 8000);
       } else {
         const errorData = await res.json();
@@ -619,10 +619,21 @@ const UserManagement = () => {
   const getRoleBadge = (role) => {
     const colors = {
       user: 'bg-blue-100 text-blue-800',
+      dj: 'bg-green-100 text-green-800',
       admin: 'bg-purple-100 text-purple-800',
       // superadmin: 'bg-red-100 text-red-800' // ซ่อน SuperAdmin
     };
-    return <Badge className={`${colors[role] || 'bg-gray-100 text-gray-800'} hover:bg-opacity-100`}>{role}</Badge>;
+    
+    const roleLabels = {
+      user: 'ผู้ใช้',
+      dj: 'DJ Control',
+      admin: 'แอดมิน',
+      superadmin: 'SuperAdmin'
+    };
+    
+    return <Badge className={`${colors[role] || 'bg-gray-100 text-gray-800'} hover:bg-opacity-100`}>
+      {roleLabels[role] || role}
+    </Badge>;
   };
 
   const getMembershipBadge = (tier) => {
@@ -1023,6 +1034,7 @@ const UserManagement = () => {
                 className="w-full p-2 border border-slate-200 rounded-md"
               >
                 <option value="user">ผู้ใช้</option>
+                <option value="dj">DJ Control</option>
                 <option value="admin">แอดมิน</option>
                 {/* ซ่อน SuperAdmin จากตัวเลือก */}
                 {/* <option value="superadmin">ซูเปอร์แอดมิน</option> */}
@@ -1358,6 +1370,7 @@ const UserManagement = () => {
                    className="w-full h-9 p-2 border border-slate-200 rounded-md text-sm"
                  >
                    <option value="user">ผู้ใช้</option>
+                   <option value="dj">DJ Control</option>
                    <option value="admin">แอดมิน</option>
                  </select>
                </div>
@@ -1439,7 +1452,7 @@ const UserManagement = () => {
                         </div>
                         <div className="flex items-center justify-between bg-white/60 px-3 py-2 rounded-md">
                           <span className="font-medium text-gray-700">ระดับ:</span>
-                          <span className="text-gray-900 font-semibold">{createForm.role === 'admin' ? 'แอดมิน' : 'ผู้ใช้'}</span>
+                          <span className="text-gray-900 font-semibold">{createForm.role === 'admin' ? 'แอดมิน' : createForm.role === 'dj' ? 'DJ Control' : 'ผู้ใช้'}</span>
                         </div>
                         <div className="flex items-center justify-between bg-white/60 px-3 py-2 rounded-md col-span-2">
                           <span className="font-medium text-gray-700">สมาชิก:</span>

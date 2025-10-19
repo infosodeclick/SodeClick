@@ -32,6 +32,8 @@ const DJPage = ({
   const [roomName, setRoomName] = useState('Summer Vibes - DJ Mix');
   const [isEditingRoomName, setIsEditingRoomName] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminSuperAdmin, setIsAdminSuperAdmin] = useState(false);
+  const [isDJRole, setIsDJRole] = useState(false);
   const [vinylRotation, setVinylRotation] = useState(0);
   const [testingMicrophone, setTestingMicrophone] = useState(false);
   const [microphoneStatus, setMicrophoneStatus] = useState('unknown');
@@ -57,7 +59,32 @@ const DJPage = ({
   const listenerAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
-  // Utility function to check if current user is admin (not cached)
+  // Utility function to check if current user can access DJ mode (not cached)
+  const getCurrentUserDJAccessStatus = () => {
+    const userRole = localStorage.getItem('userRole');
+    const userData = localStorage.getItem('user');
+    
+    let canAccessDJ = false;
+    
+    if (userRole === 'admin' || userRole === 'superadmin' || userRole === 'dj') {
+      canAccessDJ = true;
+    }
+    
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'dj' || user.isAdmin) {
+          canAccessDJ = true;
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+    
+    return canAccessDJ;
+  };
+
+  // Utility function to check if current user is admin (not cached) - for backward compatibility
   const getCurrentUserAdminStatus = () => {
     const userRole = localStorage.getItem('userRole');
     const userData = localStorage.getItem('user');
@@ -80,6 +107,54 @@ const DJPage = ({
     }
     
     return isAdminUser;
+  };
+
+  // Utility function to check if current user is admin/superadmin (excluding DJ role)
+  const getCurrentUserAdminSuperAdminStatus = () => {
+    const userRole = localStorage.getItem('userRole');
+    const userData = localStorage.getItem('user');
+    
+    let isAdminSuperAdmin = false;
+    
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      isAdminSuperAdmin = true;
+    }
+    
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'admin' || user.role === 'superadmin') {
+          isAdminSuperAdmin = true;
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+    
+    return isAdminSuperAdmin;
+  };
+
+  // Utility function to check if current user is DJ role only
+  const getCurrentUserDJRoleStatus = () => {
+    const userRole = localStorage.getItem('userRole');
+    const userData = localStorage.getItem('user');
+    
+    if (userRole === 'dj') {
+      return true;
+    }
+    
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'dj') {
+          return true;
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+    
+    return false;
   };
 
   // Initialize
@@ -123,11 +198,11 @@ const DJPage = ({
       console.log('🔄 Admin session reset after page refresh');
     };
     
-    // Check if current user is actually admin (not cached adminPermissions)
-    const isAdminUser = getCurrentUserAdminStatus();
+    // Check if current user is actually admin/superadmin (not cached adminPermissions)
+    const isAdminSuperAdminUser = getCurrentUserAdminSuperAdminStatus();
     
-    // Only reset admin session for actual admins
-    if (isAdminUser) {
+    // Only reset admin session for actual admins/superadmins
+    if (isAdminSuperAdminUser) {
       console.log('🔄 Actual admin detected, resetting admin session');
       resetAdminSession();
     } else {
@@ -163,9 +238,9 @@ const DJPage = ({
     };
   }, [isPlaying, isAdmin]);
 
-  // Send user-ready-for-stream when DJ stream is available and user is not admin
+  // Send user-ready-for-stream when DJ stream is available and user is not admin/superadmin (or is in listener mode)
   useEffect(() => {
-    if (djStream && djStream.djId && (!isAdmin || isAdminListener) && socketRef.current && socketRef.current.connected) {
+    if (djStream && djStream.djId && (!isAdminSuperAdmin || isAdminListener || isDJRole) && socketRef.current && socketRef.current.connected) {
       console.log('🎧 User detected DJ stream, sending user-ready-for-stream', {
         djStream: djStream,
         isAdmin: isAdmin,
@@ -188,7 +263,7 @@ const DJPage = ({
         socketId: socketRef.current?.id
       });
     }
-  }, [djStream, isAdmin, isAdminListener]);
+  }, [djStream, isAdminSuperAdmin, isAdminListener, isDJRole]);
 
   // ESC key listener for custom alert
   useEffect(() => {
@@ -256,6 +331,15 @@ const DJPage = ({
       setConnectionStatus(true);
       onConnect && onConnect(socket.id);
       
+      // Authenticate DJ socket connection
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.log('🎧 Sending DJ authentication...');
+        socket.emit('dj-auth', { token });
+      } else {
+        console.log('⚠️ No token found for DJ authentication');
+      }
+      
       // For admin: Send stop streaming signal on connect to clean up previous session
       const isActuallyAdmin = getCurrentUserAdminStatus();
       
@@ -298,18 +382,35 @@ const DJPage = ({
       setConnectionStatus(false);
     });
 
+    // DJ Authentication handlers
+    socket.on('dj-auth-success', (data) => {
+      console.log('✅ DJ Authentication successful:', data);
+      const canAccessDJ = getCurrentUserDJAccessStatus();
+      if (!canAccessDJ) {
+        console.log('⚠️ User does not have DJ access permissions');
+        setAlertMessage('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
+        setShowAlert(true);
+      }
+    });
+
+    socket.on('dj-auth-error', (data) => {
+      console.error('❌ DJ Authentication failed:', data.message);
+      setAlertMessage(`DJ Authentication Error: ${data.message}`);
+      setShowAlert(true);
+    });
+
     socket.on('current state', (state) => {
       console.log('🎧 Received current state:', state);
       
       // Sync playing status from server state - only for users, not admin after refresh
       if (state.currentSong && state.currentSong.isPlaying !== undefined) {
-        // Check if this is admin - if so, don't sync playing status
-        // Admin should start fresh after refresh
-        const isActuallyAdmin = getCurrentUserAdminStatus();
+        // Check if this is admin/superadmin - if so, don't sync playing status
+        // Admin/superadmin should start fresh after refresh, but DJ role should sync like user
+        const isActuallyAdminSuperAdmin = getCurrentUserAdminSuperAdminStatus();
         
-        if (!isActuallyAdmin) {
-          // Only sync for users, not admin
-          console.log('🎧 User: Syncing playing status from server:', state.currentSong.isPlaying);
+        if (!isActuallyAdminSuperAdmin || getCurrentUserDJRoleStatus()) {
+          // Only sync for users and DJ role, not admin/superadmin
+          console.log('🎧 User/DJ: Syncing playing status from server:', state.currentSong.isPlaying);
           setIsPlaying(state.currentSong.isPlaying);
         } else {
           console.log('🎧 Admin: Not syncing playing status after refresh - starting fresh');
@@ -372,7 +473,7 @@ const DJPage = ({
         socketId: socketRef.current?.id
       });
       
-      if (state.isDJStreaming && state.currentDJ && (!isAdmin || isAdminListener)) {
+      if (state.isDJStreaming && state.currentDJ && (!isAdminSuperAdmin || isAdminListener || isDJRole)) {
         console.log('🎧 DJ is currently streaming, setting up stream connection');
         setDjStream({
           djId: state.currentDJ,
@@ -471,17 +572,19 @@ const DJPage = ({
       setDjStream(data);
       setListeningStatus('streaming');
       
-      // Check admin status from localStorage to avoid stale closure
-      const isActuallyAdmin = getCurrentUserAdminStatus();
+      // Check admin/superadmin status from localStorage to avoid stale closure
+      const isActuallyAdminSuperAdmin = getCurrentUserAdminSuperAdminStatus();
+      const isActuallyDJRole = getCurrentUserDJRoleStatus();
       
       // Check if this admin is in listener mode
-      const isAdminInListenerMode = isActuallyAdmin && isAdminListener;
+      const isAdminInListenerMode = isActuallyAdminSuperAdmin && isAdminListener;
       
-      if (!isActuallyAdmin || isAdminInListenerMode) {
+      if (!isActuallyAdminSuperAdmin || isAdminInListenerMode || isActuallyDJRole) {
         console.log('🎧 User/Admin listener received DJ stream, starting to listen and requesting connection', {
-          isActuallyAdmin,
+          isActuallyAdminSuperAdmin,
           isAdminListener,
-          isAdminInListenerMode
+          isAdminInListenerMode,
+          isActuallyDJRole
         });
         startListening();
         // Notify admin that this user is ready for connection
@@ -504,14 +607,14 @@ const DJPage = ({
       setDjStream(null);
       setListeningStatus('idle');
       
-      // Check admin status from localStorage to avoid stale closure
-      const isActuallyAdmin = getCurrentUserAdminStatus();
+      // Check admin/superadmin status from localStorage to avoid stale closure
+      const isActuallyAdminSuperAdmin = getCurrentUserAdminSuperAdminStatus();
       
-      if (!isActuallyAdmin) {
-        console.log('🎧 User (non-admin) received DJ stream stopped, stopping listener');
+      if (!isActuallyAdminSuperAdmin && !getCurrentUserDJRoleStatus()) {
+        console.log('🎧 User received DJ stream stopped, stopping listener');
         stopListening();
       } else {
-        console.log('🎧 Admin received own DJ stream stopped event - no action needed');
+        console.log('🎧 Admin/DJ received DJ stream stopped event - no action needed');
       }
     });
 
@@ -636,18 +739,18 @@ const DJPage = ({
     
     let isAdminUser = false;
     
-    // Only check actual user data, not stored adminPermissions
-    if (userRole === 'admin' || userRole === 'superadmin') {
+    // Check for admin, superadmin, or DJ roles
+    if (userRole === 'admin' || userRole === 'superadmin' || userRole === 'dj') {
       isAdminUser = true;
-      console.log('✅ Admin role detected from userRole:', userRole);
+      console.log('✅ Admin/DJ role detected from userRole:', userRole);
     }
     
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+        if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'dj' || user.isAdmin) {
           isAdminUser = true;
-          console.log('✅ Admin role detected from user data:', {
+          console.log('✅ Admin/DJ role detected from user data:', {
             role: user.role,
             isAdmin: user.isAdmin
           });
@@ -657,16 +760,19 @@ const DJPage = ({
       }
     }
     
-    // Only set adminPermissions if user is actually admin
+    // Set adminPermissions if user has DJ access (admin, superadmin, or DJ role)
     if (isAdminUser) {
       localStorage.setItem('adminPermissions', 'true');
-      console.log('✅ User is admin - full DJ controls enabled');
+      console.log('✅ User has DJ access - DJ controls enabled');
     } else {
       localStorage.removeItem('adminPermissions');
-      console.log('❌ User is not admin - limited access, cleared admin permissions');
+      console.log('❌ User does not have DJ access - limited access, cleared admin permissions');
     }
     
+    // Set separate states for different role types
     setIsAdmin(isAdminUser);
+    setIsAdminSuperAdmin(getCurrentUserAdminSuperAdminStatus());
+    setIsDJRole(getCurrentUserDJRoleStatus());
   };
 
   // Incognito/Private mode detection
@@ -1262,6 +1368,13 @@ const DJPage = ({
   };
 
   const toggleDJMode = () => {
+    // Check if user has DJ access permissions before allowing toggle
+    const canAccessDJ = getCurrentUserDJAccessStatus();
+    if (!canAccessDJ) {
+      showCustomAlert('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
+      return;
+    }
+
     // If trying to enter DJ mode, check if another admin is already active
     if (!isDJ && isDJActive) {
       showCustomAlert('มี DJ กำลังรัน Session อยู่');
@@ -1395,11 +1508,11 @@ const DJPage = ({
 
   // Auto-start listening for users when DJ is streaming
   useEffect(() => {
-    if ((!isAdmin || isAdminListener) && djStream && listeningStatus === 'idle') {
+    if ((!isAdminSuperAdmin || isAdminListener || isDJRole) && djStream && listeningStatus === 'idle') {
       console.log('🎧 Auto-starting listening for user...');
       startListening();
     }
-  }, [djStream, isAdmin, isAdminListener, listeningStatus]);
+  }, [djStream, isAdminSuperAdmin, isAdminListener, isDJRole, listeningStatus]);
 
   // WebRTC Audio Streaming Functions
   const startListening = async () => {
@@ -2223,7 +2336,7 @@ const DJPage = ({
                 </span>
               )}
             </div>
-            {isAdmin && !isAdminListener && (
+            {isAdminSuperAdmin && !isAdminListener && (
               <div className="flex items-center space-x-2 text-gray-300">
                 <Users className="w-4 h-4" />
                 <span className="text-sm">{listeners} listeners</span>
@@ -2315,8 +2428,8 @@ const DJPage = ({
 
         {/* Main Content - Two Columns for both Admin and User */}
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-          {/* Left Column - DJ Controls (Admin Only) */}
-          {isAdmin && !isAdminListener && (
+          {/* Left Column - DJ Controls (Admin/DJ Only) */}
+          {(isAdminSuperAdmin || isDJRole) && !isAdminListener && (
             <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
               <h2 className="text-lg font-bold text-purple-300 mb-4 flex items-center">
                 <Music className="w-5 h-5 mr-2" />
@@ -2511,7 +2624,7 @@ const DJPage = ({
           )}
 
           {/* User Listening Status */}
-          {(!isAdmin || isAdminListener) && (
+          {(!isAdminSuperAdmin || isAdminListener || isDJRole) && (
             <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
               <h2 className="text-lg font-bold text-green-300 mb-4 flex items-center">
                 <Music className="w-5 h-5 mr-2" />
@@ -2605,7 +2718,7 @@ const DJPage = ({
               </div>
 
               {/* Stream Status - Hidden for users */}
-              {isAdmin && !isAdminListener && (
+              {isAdminSuperAdmin && !isAdminListener && (
                 <div className="p-4 bg-white/10 rounded-lg mb-4">
                   <h3 className="text-sm font-medium text-gray-300 mb-2">Stream Status</h3>
                   <div className="space-y-2">
@@ -2642,7 +2755,7 @@ const DJPage = ({
               )}
               
               {/* Listening Status - Hidden for users */}
-              {isAdmin && !isAdminListener && (
+              {isAdminSuperAdmin && !isAdminListener && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-300">Listening Status:</span>

@@ -66,7 +66,46 @@ const requireSuperAdmin = async (req, res, next) => {
   }
 };
 
+// Middleware to check if user can access DJ mode (DJ, Admin, or SuperAdmin)
+const requireDJAccess = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      console.log('❌ No token provided for DJ access');
+      return res.status(401).json({ message: 'Access token required' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      console.log('❌ User not found for DJ access check:', decoded.id);
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    console.log('🔍 DJ access check - User:', user.username, 'Role:', user.role, 'IsActive:', user.isActive);
+
+    if (!user.canAccessDJMode()) {
+      console.log('❌ DJ access denied - User role:', user.role);
+      return res.status(403).json({ message: 'DJ access required' });
+    }
+
+    if (!user.isActive) {
+      console.log('❌ DJ access denied - User inactive');
+      return res.status(403).json({ message: 'Account is inactive' });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.log('❌ Token verification error for DJ access:', error.message);
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
 module.exports = {
   requireAdmin,
-  requireSuperAdmin
+  requireSuperAdmin,
+  requireDJAccess
 };

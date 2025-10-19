@@ -62,6 +62,39 @@ const requireAdminPermissions = (permissions = []) => {
   };
 };
 
+// Middleware to check DJ permissions (DJ, Admin, or SuperAdmin can access)
+const requireDJPermissions = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'Access token required' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    // Check if user can access DJ mode
+    if (!user.canAccessDJMode()) {
+      return res.status(403).json({ message: 'DJ access required' });
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'Account is inactive' });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
 // Admin permissions constants
 const ADMIN_PERMISSIONS = {
   USER_MANAGEMENT: 'user_management',
@@ -74,5 +107,6 @@ const ADMIN_PERMISSIONS = {
 
 module.exports = {
   requireAdminPermissions,
+  requireDJPermissions,
   ADMIN_PERMISSIONS
 };

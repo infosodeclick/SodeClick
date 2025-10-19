@@ -328,7 +328,7 @@ const userSchema = new mongoose.Schema({
   // Admin Role
   role: {
     type: String,
-    enum: ['user', 'admin', 'superadmin'],
+    enum: ['user', 'admin', 'superadmin', 'dj'],
     default: 'user'
   },
   
@@ -495,6 +495,16 @@ userSchema.methods.isSuperAdmin = function() {
 // Method to check if user is Admin or SuperAdmin
 userSchema.methods.isAdmin = function() {
   return this.role === 'admin' || this.role === 'superadmin';
+};
+
+// Method to check if user is DJ
+userSchema.methods.isDJ = function() {
+  return this.role === 'dj';
+};
+
+// Method to check if user can access DJ mode (DJ, Admin, or SuperAdmin)
+userSchema.methods.canAccessDJMode = function() {
+  return this.role === 'dj' || this.role === 'admin' || this.role === 'superadmin';
 };
 
 // Method to get membership limits based on tier
