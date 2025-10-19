@@ -57,14 +57,55 @@ const DJPage = ({
   const listenerAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
+  // Utility function to check if current user is admin (not cached)
+  const getCurrentUserAdminStatus = () => {
+    const userRole = localStorage.getItem('userRole');
+    const userData = localStorage.getItem('user');
+    
+    let isAdminUser = false;
+    
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      isAdminUser = true;
+    }
+    
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+          isAdminUser = true;
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+    
+    return isAdminUser;
+  };
+
   // Initialize
   useEffect(() => {
+    // Clear any stale state first
+    setIsDJ(false);
+    setIsPlaying(false);
+    setIsListening(false);
+    setListeningStatus('idle');
+    setDjStream(null);
+    setIsAdminListener(false);
+    setIsAdmin(false);
+    
+    // Clean up any existing media streams
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+    
+    console.log('🔄 Clearing all DJ session state on component mount');
+    
     initializeSocket();
     checkBrowserSupport();
     checkAdminStatus();
     
-    // Reset admin session state on page refresh
-    // This ensures admin starts fresh after refresh
+    // Reset admin session state on page refresh - only for actual admins
     const resetAdminSession = () => {
       setIsDJ(false);
       setIsPlaying(false);
@@ -82,28 +123,15 @@ const DJPage = ({
       console.log('🔄 Admin session reset after page refresh');
     };
     
-    // Only reset for admin users
-    const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-    const userRole = localStorage.getItem('userRole');
-    const userData = localStorage.getItem('user');
+    // Check if current user is actually admin (not cached adminPermissions)
+    const isAdminUser = getCurrentUserAdminStatus();
     
-    let isAdminUser = false;
-    if (userRole === 'admin' || userRole === 'superadmin') {
-      isAdminUser = true;
-    }
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-          isAdminUser = true;
-        }
-      } catch (error) {
-        console.log('Error parsing user data:', error);
-      }
-    }
-    
-    if (isAdminUser || adminPermissions) {
+    // Only reset admin session for actual admins
+    if (isAdminUser) {
+      console.log('🔄 Actual admin detected, resetting admin session');
       resetAdminSession();
+    } else {
+      console.log('🔄 Non-admin user detected, ensuring clean state');
     }
     
     // Check for incognito mode
@@ -229,26 +257,9 @@ const DJPage = ({
       onConnect && onConnect(socket.id);
       
       // For admin: Send stop streaming signal on connect to clean up previous session
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      const userData = localStorage.getItem('user');
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
-      let isAdminUser = false;
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      if (isAdminUser || adminPermissions) {
+      if (isActuallyAdmin) {
         console.log('🔄 Admin connected - sending stop streaming signal to clean up previous session');
         // Small delay to ensure socket is fully ready
         setTimeout(() => {
@@ -294,26 +305,9 @@ const DJPage = ({
       if (state.currentSong && state.currentSong.isPlaying !== undefined) {
         // Check if this is admin - if so, don't sync playing status
         // Admin should start fresh after refresh
-        const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-        const userRole = localStorage.getItem('userRole');
-        const userData = localStorage.getItem('user');
+        const isActuallyAdmin = getCurrentUserAdminStatus();
         
-        let isAdminUser = false;
-        if (userRole === 'admin' || userRole === 'superadmin') {
-          isAdminUser = true;
-        }
-        if (userData) {
-          try {
-            const user = JSON.parse(userData);
-            if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-              isAdminUser = true;
-            }
-          } catch (error) {
-            console.log('Error parsing user data:', error);
-          }
-        }
-        
-        if (!isAdminUser && !adminPermissions) {
+        if (!isActuallyAdmin) {
           // Only sync for users, not admin
           console.log('🎧 User: Syncing playing status from server:', state.currentSong.isPlaying);
           setIsPlaying(state.currentSong.isPlaying);
@@ -478,33 +472,20 @@ const DJPage = ({
       setListeningStatus('streaming');
       
       // Check admin status from localStorage to avoid stale closure
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      let isAdminUser = false;
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
+      // Check if this admin is in listener mode
+      const isAdminInListenerMode = isActuallyAdmin && isAdminListener;
       
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      const isActuallyAdmin = isAdminUser || adminPermissions;
-      
-      if (!isActuallyAdmin) {
-        console.log('🎧 User (non-admin) received DJ stream, starting to listen and requesting connection');
+      if (!isActuallyAdmin || isAdminInListenerMode) {
+        console.log('🎧 User/Admin listener received DJ stream, starting to listen and requesting connection', {
+          isActuallyAdmin,
+          isAdminListener,
+          isAdminInListenerMode
+        });
         startListening();
         // Notify admin that this user is ready for connection
-        console.log('📡 User emitting user-ready-for-stream:', {
+        console.log('📡 User/Admin listener emitting user-ready-for-stream:', {
           userId: socket.id,
           djId: data.djId,
           connected: socket.connected
@@ -524,27 +505,7 @@ const DJPage = ({
       setListeningStatus('idle');
       
       // Check admin status from localStorage to avoid stale closure
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      let isAdminUser = false;
-      
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
-      
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      const isActuallyAdmin = isAdminUser || adminPermissions;
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
       if (!isActuallyAdmin) {
         console.log('🎧 User (non-admin) received DJ stream stopped, stopping listener');
@@ -570,34 +531,12 @@ const DJPage = ({
       console.log('📡 Received WebRTC answer:', data);
       
       // Check admin status from localStorage to avoid stale closure
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      let isAdminUser = false;
-      
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
-      
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      const isActuallyAdmin = isAdminUser || adminPermissions;
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
       console.log('📡 Current admin status:', { 
         isAdmin: isActuallyAdmin, 
         isDJ, 
-        isPlaying,
-        adminPermissions,
-        userRole
+        isPlaying
       });
       
       // Only admin should handle WebRTC answers from users
@@ -626,28 +565,7 @@ const DJPage = ({
       });
       
       // Check admin status from localStorage to avoid stale closure
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      let isAdminUser = false;
-      
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
-      
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      // Use adminPermissions or isAdminUser as fallback
-      const isActuallyAdmin = isAdminUser || adminPermissions;
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
       // Debug media stream details
       if (mediaStreamRef.current) {
@@ -668,9 +586,7 @@ const DJPage = ({
         isAdmin: isActuallyAdmin, 
         isDJ, 
         isPlaying, 
-        hasMediaStream: !!mediaStreamRef.current,
-        adminPermissions,
-        userRole
+        hasMediaStream: !!mediaStreamRef.current
       });
       
       // Check if admin is ready to connect - be more lenient for local development
@@ -715,10 +631,15 @@ const DJPage = ({
       userData: userData ? 'Present' : 'Not found'
     });
     
+    // Clear any stale admin permissions first
+    localStorage.removeItem('adminPermissions');
+    
     let isAdminUser = false;
     
+    // Only check actual user data, not stored adminPermissions
     if (userRole === 'admin' || userRole === 'superadmin') {
       isAdminUser = true;
+      console.log('✅ Admin role detected from userRole:', userRole);
     }
     
     if (userData) {
@@ -726,24 +647,26 @@ const DJPage = ({
         const user = JSON.parse(userData);
         if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
           isAdminUser = true;
+          console.log('✅ Admin role detected from user data:', {
+            role: user.role,
+            isAdmin: user.isAdmin
+          });
         }
       } catch (error) {
         console.error('Error parsing user data:', error);
       }
     }
     
-    const adminPermissions = localStorage.getItem('adminPermissions');
-    if (adminPermissions === 'true') {
-      isAdminUser = true;
+    // Only set adminPermissions if user is actually admin
+    if (isAdminUser) {
+      localStorage.setItem('adminPermissions', 'true');
+      console.log('✅ User is admin - full DJ controls enabled');
+    } else {
+      localStorage.removeItem('adminPermissions');
+      console.log('❌ User is not admin - limited access, cleared admin permissions');
     }
     
     setIsAdmin(isAdminUser);
-    
-    if (isAdminUser) {
-      console.log('✅ User is admin - full DJ controls enabled');
-    } else {
-      console.log('❌ User is not admin - limited access');
-    }
   };
 
   // Incognito/Private mode detection
@@ -896,9 +819,8 @@ const DJPage = ({
       
       // Ensure admin status is set when starting audio stream
       if (!isAdmin) {
-        setIsAdmin(true);
-        localStorage.setItem('adminPermissions', 'true');
-        console.log('🔧 Set admin permissions in localStorage (audio stream)');
+        checkAdminStatus();
+        console.log('🔧 Checked admin status (audio stream)');
       }
       
       // Double check browser support before attempting to use
@@ -1218,9 +1140,8 @@ const DJPage = ({
     
     // Ensure admin status is set when starting to play
     if (newPlayingState) {
-      setIsAdmin(true);
-      localStorage.setItem('adminPermissions', 'true');
-      console.log('🔧 Set admin permissions in localStorage (play)');
+      checkAdminStatus();
+      console.log('🔧 Checked admin status (play)');
     }
     
     socketRef.current.emit('dj control', {
@@ -1352,9 +1273,8 @@ const DJPage = ({
     
     // Ensure admin status is set when entering DJ mode
     if (newDJState) {
-      setIsAdmin(true);
-      localStorage.setItem('adminPermissions', 'true');
-      console.log('🔧 Set admin permissions in localStorage');
+      checkAdminStatus();
+      console.log('🔧 Checked admin status (DJ mode)');
       initAudio();
     } else {
       stopAudioStream();
@@ -1369,8 +1289,17 @@ const DJPage = ({
   const toggleAdminListener = () => {
     const newListenerState = !isAdminListener;
     
+    console.log('🎧 Toggling admin listener mode:', {
+      currentState: isAdminListener,
+      newState: newListenerState,
+      hasDjStream: !!djStream,
+      djStreamDetails: djStream,
+      socketConnected: socketRef.current?.connected
+    });
+    
     // Exit DJ mode if admin was in DJ mode
     if (newListenerState && isDJ) {
+      console.log('🎧 Admin exiting DJ mode to enter listener mode');
       setIsDJ(false);
       stopAudioStream();
       socketRef.current.emit('toggle dj mode', { 
@@ -1384,10 +1313,17 @@ const DJPage = ({
     
     // If entering listener mode and DJ is streaming, start listening
     if (newListenerState && djStream) {
+      console.log('🎧 Admin entering listener mode with active DJ stream, starting listening...');
       setTimeout(() => {
+        console.log('🎧 Starting listening for admin listener...');
         startListening();
       }, 500);
+    } else if (newListenerState) {
+      console.log('🎧 Admin entering listener mode but no DJ stream, waiting for stream...');
+      // Set listening status to idle to indicate we're ready
+      setListeningStatus('idle');
     } else if (!newListenerState) {
+      console.log('🎧 Admin exiting listener mode, stopping listening...');
       // Stop listening when exiting listener mode
       stopListening();
     }
@@ -2044,27 +1980,7 @@ const DJPage = ({
   const handleICECandidate = async (data) => {
     try {
       // Check admin status from localStorage to avoid stale closure
-      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
-      const userRole = localStorage.getItem('userRole');
-      let isAdminUser = false;
-      
-      if (userRole === 'admin' || userRole === 'superadmin') {
-        isAdminUser = true;
-      }
-      
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const user = JSON.parse(userData);
-          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
-            isAdminUser = true;
-          }
-        } catch (error) {
-          console.log('Error parsing user data:', error);
-        }
-      }
-      
-      const isActuallyAdmin = isAdminUser || adminPermissions;
+      const isActuallyAdmin = getCurrentUserAdminStatus();
       
       console.log('🧊 Handling ICE candidate:', {
         hasCandidate: !!data.candidate,
@@ -2150,9 +2066,8 @@ const DJPage = ({
       
       // Ensure admin status is set when starting DJ streaming
       if (!isAdmin) {
-        setIsAdmin(true);
-        localStorage.setItem('adminPermissions', 'true');
-        console.log('🔧 Set admin permissions in localStorage (streaming)');
+        checkAdminStatus();
+        console.log('🔧 Checked admin status (streaming)');
       }
       
       if (!mediaStreamRef.current) {
@@ -2308,10 +2223,12 @@ const DJPage = ({
                 </span>
               )}
             </div>
-            <div className="flex items-center space-x-2 text-gray-300">
-              <Users className="w-4 h-4" />
-              <span className="text-sm">{listeners} listeners</span>
-            </div>
+            {isAdmin && !isAdminListener && (
+              <div className="flex items-center space-x-2 text-gray-300">
+                <Users className="w-4 h-4" />
+                <span className="text-sm">{listeners} listeners</span>
+              </div>
+            )}
           </div>
 
           {/* Current Song */}
@@ -2687,78 +2604,84 @@ const DJPage = ({
                 </div>
               </div>
 
-              {/* Stream Status */}
-              <div className="p-4 bg-white/10 rounded-lg mb-4">
-                <h3 className="text-sm font-medium text-gray-300 mb-2">Stream Status</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Status:</span>
-                    <span className={`text-xs ${isPlaying ? 'text-green-400' : 'text-gray-500'}`}>
-                      {isPlaying ? '🔴 Live' : '⚫ Offline'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Listeners:</span>
-                    <span className="text-xs text-gray-300">{listeners}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">Connection:</span>
-                    <span className={`text-xs ${connectionStatus ? 'text-green-400' : 'text-red-400'}`}>
-                      {connectionStatus ? '🟢 Connected' : '🔴 Disconnected'}
-                    </span>
+              {/* Stream Status - Hidden for users */}
+              {isAdmin && !isAdminListener && (
+                <div className="p-4 bg-white/10 rounded-lg mb-4">
+                  <h3 className="text-sm font-medium text-gray-300 mb-2">Stream Status</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">Status:</span>
+                      <span className={`text-xs ${isPlaying ? 'text-green-400' : 'text-gray-500'}`}>
+                        {isPlaying ? '🔴 Live' : '⚫ Offline'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">Listeners:</span>
+                      <span className="text-xs text-gray-300">{listeners}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">Connection:</span>
+                      <span className={`text-xs ${connectionStatus ? 'text-green-400' : 'text-red-400'}`}>
+                        {connectionStatus ? '🟢 Connected' : '🔴 Disconnected'}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* User Mode */}
-              <div className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg mb-4">
-                <p className="text-xs text-blue-300 mb-2">
-                  💡 <strong>User Mode</strong>
-                </p>
-                <p className="text-xs text-blue-400">
-                  You are viewing as a listener. Only admins can control the stream.
-                </p>
-              </div>
-              
-              {/* Listening Status */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-300">Listening Status:</span>
-                  <span className={`text-sm font-medium ${
-                    listeningStatus === 'connected' ? 'text-green-400' :
-                    listeningStatus === 'connecting' ? 'text-yellow-400' :
-                    listeningStatus === 'error' ? 'text-red-400' :
-                    'text-gray-400'
-                  }`}>
-                    {listeningStatus === 'connected' ? '🎧 Connected' :
-                     listeningStatus === 'connecting' ? '🔄 Connecting...' :
-                     listeningStatus === 'error' ? '❌ Error' :
-                     '💤 Idle'}
-                  </span>
+              {/* User Mode - Hidden for users */}
+              {false && (
+                <div className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-lg mb-4">
+                  <p className="text-xs text-blue-300 mb-2">
+                    💡 <strong>User Mode</strong>
+                  </p>
+                  <p className="text-xs text-blue-400">
+                    You are viewing as a listener. Only admins can control the stream.
+                  </p>
                 </div>
-                
-                {djStream && (
-                  <div className="p-3 bg-green-600/20 border border-green-500/30 rounded-lg">
-                    <p className="text-sm text-green-300">
-                      🎧 <strong>DJ is Live!</strong>
-                    </p>
-                    <p className="text-xs text-green-400 mt-1">
-                      Listening to: {djStream.djName}
-                    </p>
+              )}
+              
+              {/* Listening Status - Hidden for users */}
+              {isAdmin && !isAdminListener && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-300">Listening Status:</span>
+                    <span className={`text-sm font-medium ${
+                      listeningStatus === 'connected' ? 'text-green-400' :
+                      listeningStatus === 'connecting' ? 'text-yellow-400' :
+                      listeningStatus === 'error' ? 'text-red-400' :
+                      'text-gray-400'
+                    }`}>
+                      {listeningStatus === 'connected' ? '🎧 Connected' :
+                       listeningStatus === 'connecting' ? '🔄 Connecting...' :
+                       listeningStatus === 'error' ? '❌ Error' :
+                       '💤 Idle'}
+                    </span>
                   </div>
-                )}
-                
-                {!djStream && listeningStatus === 'idle' && (
-                  <div className="p-3 bg-gray-600/20 border border-gray-500/30 rounded-lg">
-                    <p className="text-sm text-gray-300">
-                      💤 <strong>No DJ Streaming</strong>
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Waiting for DJ to start streaming...
-                    </p>
-                  </div>
-                )}
-              </div>
+                  
+                  {djStream && (
+                    <div className="p-3 bg-green-600/20 border border-green-500/30 rounded-lg">
+                      <p className="text-sm text-green-300">
+                        🎧 <strong>DJ is Live!</strong>
+                      </p>
+                      <p className="text-xs text-green-400 mt-1">
+                        Listening to: {djStream.djName}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {!djStream && listeningStatus === 'idle' && (
+                    <div className="p-3 bg-gray-600/20 border border-gray-500/30 rounded-lg">
+                      <p className="text-sm text-gray-300">
+                        💤 <strong>No DJ Streaming</strong>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Waiting for DJ to start streaming...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Exit Listen Mode Button for Admin */}
               {isAdminListener && (

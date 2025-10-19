@@ -46,7 +46,12 @@ const setupDJSocketHandlers = (io) => {
           text: messageData.text,
           username: displayUsername,
           userId: socket.id,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date().toLocaleTimeString('th-TH', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            hour12: false,
+            timeZone: 'Asia/Bangkok'
+          }),
           isDJ: user.isDJ || messageData.isAdmin || false
         };
         
