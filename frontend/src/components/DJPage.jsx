@@ -42,6 +42,10 @@ const DJPage = ({
   const [djStream, setDjStream] = useState(null);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioChunks, setAudioChunks] = useState([]);
+  const [isDJActive, setIsDJActive] = useState(false);
+  const [isAdminListener, setIsAdminListener] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
   
   // Refs
   const socketRef = useRef(null);
@@ -58,6 +62,49 @@ const DJPage = ({
     initializeSocket();
     checkBrowserSupport();
     checkAdminStatus();
+    
+    // Reset admin session state on page refresh
+    // This ensures admin starts fresh after refresh
+    const resetAdminSession = () => {
+      setIsDJ(false);
+      setIsPlaying(false);
+      setIsListening(false);
+      setListeningStatus('idle');
+      setDjStream(null);
+      setIsAdminListener(false);
+      
+      // Clean up any existing media streams
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      
+      console.log('🔄 Admin session reset after page refresh');
+    };
+    
+    // Only reset for admin users
+    const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
+    const userRole = localStorage.getItem('userRole');
+    const userData = localStorage.getItem('user');
+    
+    let isAdminUser = false;
+    if (userRole === 'admin' || userRole === 'superadmin') {
+      isAdminUser = true;
+    }
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+          isAdminUser = true;
+        }
+      } catch (error) {
+        console.log('Error parsing user data:', error);
+      }
+    }
+    
+    if (isAdminUser || adminPermissions) {
+      resetAdminSession();
+    }
     
     // Check for incognito mode
     const incognitoDetected = detectIncognitoMode();
@@ -90,14 +137,31 @@ const DJPage = ({
 
   // Send user-ready-for-stream when DJ stream is available and user is not admin
   useEffect(() => {
-    if (djStream && djStream.djId && !isAdmin && socketRef.current && socketRef.current.connected) {
+    if (djStream && djStream.djId && (!isAdmin || isAdminListener) && socketRef.current && socketRef.current.connected) {
       console.log('🎧 User detected DJ stream, sending user-ready-for-stream');
       socketRef.current.emit('user-ready-for-stream', {
         userId: socketRef.current.id,
         djId: djStream.djId
       });
     }
-  }, [djStream, isAdmin]);
+  }, [djStream, isAdmin, isAdminListener]);
+
+  // ESC key listener for custom alert
+  useEffect(() => {
+    const handleKeyPress = (event) => {
+      if (event.key === 'Escape' && showAlert) {
+        closeAlert();
+      }
+    };
+
+    if (showAlert) {
+      document.addEventListener('keydown', handleKeyPress);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [showAlert]);
 
   // Socket connection
   const initializeSocket = () => {
@@ -116,6 +180,39 @@ const DJPage = ({
       console.log('Connected to server:', socket.id);
       setConnectionStatus(true);
       onConnect && onConnect(socket.id);
+      
+      // For admin: Send stop streaming signal on connect to clean up previous session
+      const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
+      const userRole = localStorage.getItem('userRole');
+      const userData = localStorage.getItem('user');
+      
+      let isAdminUser = false;
+      if (userRole === 'admin' || userRole === 'superadmin') {
+        isAdminUser = true;
+      }
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+            isAdminUser = true;
+          }
+        } catch (error) {
+          console.log('Error parsing user data:', error);
+        }
+      }
+      
+      if (isAdminUser || adminPermissions) {
+        console.log('🔄 Admin connected - sending stop streaming signal to clean up previous session');
+        // Small delay to ensure socket is fully ready
+        setTimeout(() => {
+          socket.emit('dj-streaming-stopped', {
+            djId: socket.id
+          });
+          socket.emit('dj control', {
+            type: 'pause'
+          });
+        }, 1000);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -125,30 +222,100 @@ const DJPage = ({
     });
 
     socket.on('current state', (state) => {
+      console.log('🎧 Received current state:', state);
+      
+      // Sync playing status from server state - only for users, not admin after refresh
+      if (state.currentSong && state.currentSong.isPlaying !== undefined) {
+        // Check if this is admin - if so, don't sync playing status
+        // Admin should start fresh after refresh
+        const adminPermissions = localStorage.getItem('adminPermissions') === 'true';
+        const userRole = localStorage.getItem('userRole');
+        const userData = localStorage.getItem('user');
+        
+        let isAdminUser = false;
+        if (userRole === 'admin' || userRole === 'superadmin') {
+          isAdminUser = true;
+        }
+        if (userData) {
+          try {
+            const user = JSON.parse(userData);
+            if (user.role === 'admin' || user.role === 'superadmin' || user.isAdmin) {
+              isAdminUser = true;
+            }
+          } catch (error) {
+            console.log('Error parsing user data:', error);
+          }
+        }
+        
+        if (!isAdminUser && !adminPermissions) {
+          // Only sync for users, not admin
+          console.log('🎧 User: Syncing playing status from server:', state.currentSong.isPlaying);
+          setIsPlaying(state.currentSong.isPlaying);
+        } else {
+          console.log('🎧 Admin: Not syncing playing status after refresh - starting fresh');
+        }
+      }
+      
       if (state.currentSong) {
-        // Check if we have a saved room name
-        const savedRoomName = localStorage.getItem('djRoomName');
-        if (savedRoomName && savedRoomName !== state.currentSong.title) {
-          // Use saved room name instead of server's default
-          setCurrentSong(savedRoomName);
-          setRoomName(savedRoomName);
-          console.log('Using saved room name instead of server default:', savedRoomName);
-          
-          // Send to backend if user is admin and DJ
-          if (isAdmin && isDJ) {
-            socket.emit('dj control', {
-              type: 'change song',
-              title: savedRoomName,
-              artist: 'DJ Mix'
-            });
+        // For admin: Check if we have a saved room name and use it if different from server
+        // For user: Always use server state to sync with admin changes
+        if (isAdmin) {
+          const savedRoomName = localStorage.getItem('djRoomName');
+          if (savedRoomName && savedRoomName !== state.currentSong.title) {
+            // Use saved room name instead of server's default for admin
+            setCurrentSong(savedRoomName);
+            setRoomName(savedRoomName);
+            console.log('Admin: Using saved room name instead of server default:', savedRoomName);
+            
+            // Send to backend if user is admin and DJ
+            if (isDJ) {
+              socket.emit('dj control', {
+                type: 'change song',
+                title: savedRoomName,
+                artist: 'DJ Mix'
+              });
+            }
+          } else {
+            setCurrentSong(state.currentSong.title);
+            setRoomName(state.currentSong.title);
           }
         } else {
+          // For users: Always sync with server state (admin's current setting)
           setCurrentSong(state.currentSong.title);
           setRoomName(state.currentSong.title);
+          console.log('User: Syncing with admin room name:', state.currentSong.title);
         }
       }
       if (state.connectedUsers) {
         setListeners(state.connectedUsers.length);
+      }
+      
+      // Sync DJ Mode status
+      if (state.isDJActive !== undefined) {
+        setIsDJActive(state.isDJActive);
+        console.log('🎧 DJ Mode active status synced:', state.isDJActive);
+      }
+
+      // Sync chat messages from server
+      if (state.chatMessages && Array.isArray(state.chatMessages)) {
+        setMessages(state.chatMessages);
+        console.log('💬 Chat messages synced from server:', state.chatMessages.length, 'messages');
+      }
+      
+      // Handle DJ streaming state sync - auto-start listening if DJ is streaming
+      if (state.isDJStreaming && state.currentDJ && (!isAdmin || isAdminListener)) {
+        console.log('🎧 DJ is currently streaming, setting up stream connection');
+        setDjStream({
+          djId: state.currentDJ,
+          djName: 'DJ'
+        });
+        setListeningStatus('streaming');
+        
+        // Auto-start listening for new users (including admin listeners)
+        console.log('🎧 Auto-starting listening for new user - DJ is streaming');
+        setTimeout(() => {
+          startListening();
+        }, 1000); // Small delay to ensure state is set
       }
     });
 
@@ -157,7 +324,22 @@ const DJPage = ({
     });
 
     socket.on('chat message', (message) => {
-      setMessages(prev => [...prev, message]);
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => 
+          msg.id === message.id || 
+          (msg.text === message.text && 
+           msg.username === message.username && 
+           msg.userId === message.userId)
+        );
+        
+        if (messageExists) {
+          console.log('💬 Duplicate message prevented:', message);
+          return prev;
+        }
+        
+        return [...prev, message];
+      });
     });
 
     socket.on('song control', (control) => {
@@ -179,6 +361,23 @@ const DJPage = ({
 
     socket.on('user update', (data) => {
       setListeners(data.users.length);
+    });
+
+    // DJ Mode Status Events
+    socket.on('dj-mode-status', (data) => {
+      console.log('🎧 DJ Mode Status Update:', data);
+      setIsDJActive(data.isActive);
+      
+      // If another admin is entering DJ mode and current user is not the one entering
+      if (data.isActive && data.adminId !== socket.id && isAdmin && !isDJ) {
+        console.log('🎧 Another admin entered DJ mode');
+      }
+    });
+
+    socket.on('dj-mode-taken', () => {
+      console.log('🎧 DJ Mode is already taken by another admin');
+      setIsDJ(false);
+      showCustomAlert('มี DJ กำลังรัน Session อยู่');
     });
 
     // DJ Audio Streaming Events
@@ -387,10 +586,20 @@ const DJPage = ({
         userRole
       });
       
-      if (isActuallyAdmin && mediaStreamRef.current) {
+      // Check if admin is ready to connect - be more lenient for local development
+      const shouldConnect = isActuallyAdmin && mediaStreamRef.current;
+      
+      if (shouldConnect) {
         const audioTracks = mediaStreamRef.current.getAudioTracks();
         if (audioTracks.length > 0) {
           console.log('📡 Admin initiating connection with user:', data.userId);
+          console.log('📡 Admin status:', {
+            isAdmin: isActuallyAdmin,
+            isDJ, 
+            isPlaying,
+            hasMediaStream: !!mediaStreamRef.current,
+            audioTracksCount: audioTracks.length
+          });
           await initiateConnectionWithUser(data.userId);
         } else {
           console.log('❌ Cannot initiate connection - no audio tracks available');
@@ -1005,7 +1214,52 @@ const DJPage = ({
     }
   };
 
+  // Custom alert function
+  const showCustomAlert = (message) => {
+    setAlertMessage(message);
+    setShowAlert(true);
+  };
+
+  const closeAlert = () => {
+    setShowAlert(false);
+    setAlertMessage('');
+  };
+
+  // Get user info for chat
+  const getUserInfo = () => {
+    const userData = localStorage.getItem('user');
+    const userRole = localStorage.getItem('userRole');
+    
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        const isAdminUser = userRole === 'admin' || userRole === 'superadmin' || user.isAdmin || user.role === 'admin' || user.role === 'superadmin';
+        
+        return {
+          displayName: user.displayName || user.username || 'ผู้ใช้',
+          username: user.username || 'ผู้ใช้',
+          isAdmin: isAdminUser
+        };
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+    
+    // Fallback for non-logged in users
+    return {
+      displayName: 'ผู้ใช้',
+      username: 'ผู้ใช้',
+      isAdmin: false
+    };
+  };
+
   const toggleDJMode = () => {
+    // If trying to enter DJ mode, check if another admin is already active
+    if (!isDJ && isDJActive) {
+      showCustomAlert('มี DJ กำลังรัน Session อยู่');
+      return;
+    }
+    
     const newDJState = !isDJ;
     setIsDJ(newDJState);
     
@@ -1019,7 +1273,37 @@ const DJPage = ({
       stopAudioStream();
     }
     
-    socketRef.current.emit('toggle dj mode');
+    socketRef.current.emit('toggle dj mode', { 
+      isDJ: newDJState,
+      adminId: socketRef.current.id 
+    });
+  };
+
+  const toggleAdminListener = () => {
+    const newListenerState = !isAdminListener;
+    
+    // Exit DJ mode if admin was in DJ mode
+    if (newListenerState && isDJ) {
+      setIsDJ(false);
+      stopAudioStream();
+      socketRef.current.emit('toggle dj mode', { 
+        isDJ: false,
+        adminId: socketRef.current.id 
+      });
+    }
+    
+    setIsAdminListener(newListenerState);
+    console.log('🎧 Admin listener mode:', newListenerState ? 'enabled' : 'disabled');
+    
+    // If entering listener mode and DJ is streaming, start listening
+    if (newListenerState && djStream) {
+      setTimeout(() => {
+        startListening();
+      }, 500);
+    } else if (!newListenerState) {
+      // Stop listening when exiting listener mode
+      stopListening();
+    }
   };
 
   const selectAudioSource = (sourceType) => {
@@ -1036,8 +1320,14 @@ const DJPage = ({
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (newMessage.trim()) {
+      const userInfo = getUserInfo();
+      const displayName = userInfo.isAdmin ? 'ผู้ดูแลระบบ' : userInfo.displayName;
+      
       socketRef.current.emit('chat message', {
-        text: newMessage
+        text: newMessage,
+        username: displayName,
+        isAdmin: userInfo.isAdmin,
+        originalUsername: userInfo.username
       });
       setNewMessage('');
     }
@@ -1082,11 +1372,11 @@ const DJPage = ({
 
   // Auto-start listening for users when DJ is streaming
   useEffect(() => {
-    if (!isAdmin && djStream && listeningStatus === 'idle') {
+    if ((!isAdmin || isAdminListener) && djStream && listeningStatus === 'idle') {
       console.log('🎧 Auto-starting listening for user...');
       startListening();
     }
-  }, [djStream, isAdmin, listeningStatus]);
+  }, [djStream, isAdmin, isAdminListener, listeningStatus]);
 
   // WebRTC Audio Streaming Functions
   const startListening = async () => {
@@ -1147,14 +1437,32 @@ const DJPage = ({
       console.log('✅ Listening setup completed');
       console.log('📡 Waiting for WebRTC offer from DJ...');
       
-      // If we have a DJ stream, request connection immediately
-      if (djStream && djStream.djId) {
-        console.log('📡 Requesting connection from DJ:', djStream.djId);
-        socketRef.current.emit('user-ready-for-stream', {
-          userId: socketRef.current.id,
-          djId: djStream.djId
+      // Request connection from DJ
+      const requestConnection = () => {
+        if (djStream && djStream.djId) {
+          console.log('📡 Requesting connection from DJ:', djStream.djId);
+          socketRef.current.emit('user-ready-for-stream', {
+            userId: socketRef.current.id,
+            djId: djStream.djId
+          });
+        } else {
+          console.log('📡 No DJ stream available yet');
+        }
+      };
+      
+      // Request immediately
+      requestConnection();
+      
+      // Retry once after 3 seconds for local development
+      setTimeout(() => {
+        setListeningStatus(currentStatus => {
+          if (currentStatus === 'connecting') {
+            console.log('📡 Retrying connection request...');
+            requestConnection();
+          }
+          return currentStatus;
         });
-      }
+      }, 3000);
       
     } catch (error) {
       console.error('❌ Failed to start listening:', error);
@@ -1188,6 +1496,20 @@ const DJPage = ({
     }
   };
 
+  // Force restart connection for users - always stop and start fresh
+  const forceRestartListening = async () => {
+    console.log('🔄 Force restarting connection for user...');
+    
+    // Always stop first to ensure clean state
+    stopListening();
+    
+    // Wait a bit for cleanup
+    setTimeout(async () => {
+      console.log('🔄 Starting fresh connection...');
+      await startListening();
+    }, 500);
+  };
+
   const handleWebRTCOffer = async (data) => {
     try {
       console.log('📡 Handling WebRTC offer from DJ...');
@@ -1210,7 +1532,11 @@ const DJPage = ({
       }
       
       peerConnectionRef.current = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
       });
 
       // Initialize queued ICE candidates array
@@ -1280,8 +1606,9 @@ const DJPage = ({
           
           console.log('🎵 Audio element configured with stream');
           
-          // Set listening status to connected
+          // Set listening status to connected and update listening state
           setListeningStatus('connected');
+          setIsListening(true);
           console.log('✅ User connected to DJ stream - audio track received');
           
           // Try to play immediately
@@ -1355,10 +1682,7 @@ const DJPage = ({
 
       await peerConnectionRef.current.setRemoteDescription(data.offer);
 
-      const answer = await peerConnectionRef.current.createAnswer({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: false
-      });
+      const answer = await peerConnectionRef.current.createAnswer();
       await peerConnectionRef.current.setLocalDescription(answer);
 
       // Process queued ICE candidates
@@ -1434,7 +1758,11 @@ const DJPage = ({
       
       // Create new peer connection for this user
       const peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
       });
       
       // Initialize queued ICE candidates array
@@ -1797,6 +2125,26 @@ const DJPage = ({
       });
 
       console.log('✅ DJ streaming started successfully and event emitted');
+      
+      // Reconnect existing connected users if media stream has changed
+      if (peerConnectionsRef.current && peerConnectionsRef.current.size > 0) {
+        console.log('🔄 Reconnecting existing users with new stream...');
+        peerConnectionsRef.current.forEach(async (connection, userId) => {
+          try {
+            // Close existing connection
+            connection.close();
+            peerConnectionsRef.current.delete(userId);
+            
+            // Wait a bit then reconnect
+            setTimeout(async () => {
+              console.log('🔄 Reconnecting user:', userId);
+              await initiateConnectionWithUser(userId);
+            }, 500);
+          } catch (error) {
+            console.error('❌ Error reconnecting user:', userId, error);
+          }
+        });
+      }
     } catch (error) {
       console.error('❌ Error starting DJ streaming:', error);
     }
@@ -1922,10 +2270,41 @@ const DJPage = ({
           </div>
         </div>
 
+        {/* Custom Alert Modal */}
+        {showAlert && (
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={closeAlert}
+          >
+            <div 
+              className="bg-gray-800 rounded-2xl border border-white/20 p-6 shadow-2xl max-w-md mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center mb-4">
+                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center mr-3">
+                  <span className="text-white text-sm">⚠️</span>
+                </div>
+                <h3 className="text-lg font-bold text-white">แจ้งเตือน</h3>
+              </div>
+              <p className="text-white mb-6">
+                {alertMessage}
+              </p>
+              <div className="flex justify-end">
+                <button
+                  onClick={closeAlert}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  ตกลง
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main Content - Two Columns for both Admin and User */}
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
           {/* Left Column - DJ Controls (Admin Only) */}
-          {isAdmin && (
+          {isAdmin && !isAdminListener && (
             <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
               <h2 className="text-lg font-bold text-purple-300 mb-4 flex items-center">
                 <Music className="w-5 h-5 mr-2" />
@@ -1933,7 +2312,7 @@ const DJPage = ({
               </h2>
 
               {/* Admin DJ Mode Toggle */}
-              <div className="mb-4">
+              <div className="mb-4 space-y-3">
                 <button
                   onClick={toggleDJMode}
                   className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
@@ -1943,6 +2322,17 @@ const DJPage = ({
                   }`}
                 >
                   {isDJ ? '🎧 Exit DJ Mode' : '🎧 Enter DJ Mode'}
+                </button>
+                
+                <button
+                  onClick={toggleAdminListener}
+                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors ${
+                    isAdminListener 
+                      ? 'bg-green-600 hover:bg-green-700 text-white' 
+                      : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
+                  }`}
+                >
+                  {isAdminListener ? '👂 Exit Listen Mode' : '👂 Enter to Listen'}
                 </button>
               </div>
                 
@@ -2109,7 +2499,7 @@ const DJPage = ({
           )}
 
           {/* User Listening Status */}
-          {!isAdmin && (
+          {(!isAdmin || isAdminListener) && (
             <div className="bg-black/30 backdrop-blur-lg rounded-2xl border border-white/20 p-6 shadow-2xl">
               <h2 className="text-lg font-bold text-green-300 mb-4 flex items-center">
                 <Music className="w-5 h-5 mr-2" />
@@ -2160,20 +2550,13 @@ const DJPage = ({
                 
                 {/* Compact Audio Controls Row */}
                 <div className="flex items-center space-x-3">
-                  {/* Play/Stop Button */}
+                  {/* Play/Stop Button - Hidden for users */}
                   <button
-                    onClick={listeningStatus === 'connected' ? stopListening : startListening}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                      listeningStatus === 'connected' 
-                        ? 'bg-red-600 hover:bg-red-700 text-white' 
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    }`}
+                    onClick={forceRestartListening}
+                    className={`hidden w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-green-600 hover:bg-green-700 text-white`}
+                    title="Restart connection to DJ stream"
                   >
-                    {listeningStatus === 'connected' ? (
-                      <Pause className="w-4 h-4" />
-                    ) : (
-                      <Play className="w-4 h-4" />
-                    )}
+                    <Play className="w-4 h-4" />
                   </button>
                   
                   {/* Mute Button */}
@@ -2281,6 +2664,18 @@ const DJPage = ({
                   </div>
                 )}
               </div>
+
+              {/* Exit Listen Mode Button for Admin */}
+              {isAdminListener && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <button
+                    onClick={toggleAdminListener}
+                    className="w-full py-3 px-4 rounded-lg font-semibold transition-colors bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    👂 Exit Listen Mode
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2300,26 +2695,37 @@ const DJPage = ({
                     <p className="text-xs text-gray-500">Start the conversation!</p>
                   </div>
                 ) : (
-                  messages.map((message, index) => (
-                    <div
-                      key={index}
-                      className={`text-sm p-3 rounded-lg ${
-                        message.isDJ
-                          ? 'bg-purple-600/30 border-l-2 border-purple-400'
-                          : 'bg-white/10'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className={`font-medium ${
-                          message.isDJ ? 'text-purple-300' : 'text-gray-300'
-                        }`}>
-                          {message.username}
-                        </span>
-                        <span className="text-gray-500 text-xs">{message.timestamp}</span>
+                  messages.map((message, index) => {
+                    // Check if this is admin message
+                    const isAdminMessage = message.username === 'ผู้ดูแลระบบ' || message.isAdmin;
+                    
+                    return (
+                      <div
+                        key={index}
+                        className={`text-sm p-3 rounded-lg ${
+                          message.isDJ
+                            ? 'bg-purple-600/30 border-l-2 border-purple-400'
+                            : isAdminMessage
+                            ? 'bg-orange-600/30 border-l-2 border-orange-400'
+                            : 'bg-white/10'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <span className={`font-medium ${
+                            message.isDJ 
+                              ? 'text-purple-300' 
+                              : isAdminMessage
+                              ? 'text-orange-300'
+                              : 'text-gray-300'
+                          }`}>
+                            {message.username}
+                          </span>
+                          <span className="text-gray-500 text-xs">{message.timestamp}</span>
+                        </div>
+                        <p className="text-white">{message.text}</p>
                       </div>
-                      <p className="text-white">{message.text}</p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
                 <div ref={messagesEndRef} />
               </div>

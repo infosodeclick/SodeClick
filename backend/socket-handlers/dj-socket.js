@@ -1,6 +1,7 @@
 // Socket.IO logic for DirectorJoox DJ Feature
 let connectedUsers = new Map();
 let currentDJ = null;
+let chatMessages = []; // Store chat messages
 let currentSong = {
   title: 'Summer Vibes - DJ Mix',
   artist: 'DJ Mix',
@@ -25,7 +26,9 @@ const setupDJSocketHandlers = (io) => {
       currentSong,
       connectedUsers: Array.from(connectedUsers.values()),
       currentDJ,
-      isDJStreaming: currentDJ !== null && currentSong.isPlaying
+      isDJStreaming: currentDJ !== null && currentSong.isPlaying,
+      isDJActive: currentDJ !== null,
+      chatMessages: chatMessages.slice(-50) // Send last 50 messages
     });
 
     // Broadcast updated user count
@@ -35,47 +38,87 @@ const setupDJSocketHandlers = (io) => {
     socket.on('chat message', (messageData) => {
       const user = connectedUsers.get(socket.id);
       if (user) {
+        // Use username from frontend if provided, otherwise fallback to user.username
+        const displayUsername = messageData.username || user.username;
+        
         const message = {
           id: Date.now(),
           text: messageData.text,
-          username: user.username,
+          username: displayUsername,
           userId: socket.id,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isDJ: user.isDJ
+          isDJ: user.isDJ || messageData.isAdmin || false
         };
         
-        console.log(`💬 DJ Chat message from ${user.username}: ${messageData.text}`);
+        // Add to chat messages history
+        chatMessages.push(message);
+        
+        // Keep only last 100 messages to prevent memory issues
+        if (chatMessages.length > 100) {
+          chatMessages = chatMessages.slice(-100);
+        }
+        
+        console.log(`💬 DJ Chat message from ${displayUsername}: ${messageData.text}`);
         io.emit('chat message', message);
       }
     });
 
     // Handle DJ mode toggle
-    socket.on('toggle dj mode', () => {
+    socket.on('toggle dj mode', (data) => {
       const user = connectedUsers.get(socket.id);
-      if (user) {
-        user.isDJ = !user.isDJ;
-        
-        if (user.isDJ) {
-          // If someone becomes DJ, remove DJ status from others
-          if (currentDJ && currentDJ !== socket.id) {
-            const previousDJ = connectedUsers.get(currentDJ);
-            if (previousDJ) {
-              previousDJ.isDJ = false;
-            }
-          }
-          currentDJ = socket.id;
-        } else {
-          currentDJ = null;
+      if (!user) return;
+
+      const isRequestingDJ = data?.isDJ ?? (!user.isDJ);
+      
+      if (isRequestingDJ) {
+        // Check if another admin is already in DJ mode
+        if (currentDJ && currentDJ !== socket.id) {
+          console.log(`🎧 DJ mode already taken by ${currentDJ}, rejecting ${socket.id}`);
+          socket.emit('dj-mode-taken');
+          return;
         }
         
-        console.log(`🎧 DJ mode ${user.isDJ ? 'enabled' : 'disabled'} for ${user.username}`);
+        user.isDJ = true;
+        currentDJ = socket.id;
+        console.log(`🎧 DJ mode enabled for ${user.username} (${socket.id})`);
         
-        // Broadcast updated user list and DJ status
-        io.emit('user update', {
-          users: Array.from(connectedUsers.values()),
-          currentDJ
+        // Broadcast DJ mode status to all clients
+        io.emit('dj-mode-status', {
+          isActive: true,
+          adminId: socket.id,
+          djName: user.username
+        });
+      } else {
+        // Exiting DJ mode
+        user.isDJ = false;
+        if (currentDJ === socket.id) {
+          currentDJ = null;
+        }
+        console.log(`🎧 DJ mode disabled for ${user.username} (${socket.id})`);
+        
+        // Broadcast DJ mode status to all clients
+        io.emit('dj-mode-status', {
+          isActive: currentDJ !== null,
+          adminId: currentDJ,
+          djName: currentDJ ? connectedUsers.get(currentDJ)?.username : null
         });
       }
+      
+      // Broadcast updated user list and DJ status
+      io.emit('user update', {
+        users: Array.from(connectedUsers.values()),
+        currentDJ
+      });
+
+      // Send updated current state with DJ status
+      io.emit('current state', {
+        currentSong,
+        connectedUsers: Array.from(connectedUsers.values()),
+        currentDJ,
+        isDJStreaming: currentDJ !== null && currentSong.isPlaying,
+        isDJActive: currentDJ !== null,
+        chatMessages: chatMessages.slice(-50) // Send last 50 messages
+      });
     });
 
     // Handle DJ controls
