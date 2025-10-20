@@ -9,7 +9,7 @@
     "dev": "npm run copy-sw && node -e \"require('fs').copyFileSync('env.development', '.env')\" && node node_modules/vite/bin/vite.js",
     "dev:clean": "npm run copy-sw && shx rm -f .env && shx cp env.development .env && vite",
     "copy-sw": "node scripts/copy-service-worker.js",
-    "build": "shx cp env.production .env && tsc -b && vite build",
+    "build": "node -e \"try{require('fs').copyFileSync('env.production', '.env')}catch(e){console.log('env.production not found, using existing .env if available')}\" && tsc -b && vite build",
     "build:dev": "shx cp env.development .env && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
