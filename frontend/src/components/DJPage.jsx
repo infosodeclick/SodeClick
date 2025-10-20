@@ -48,6 +48,8 @@ const DJPage = ({
   const [isAdminListener, setIsAdminListener] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+  const [attemptingDJAccess, setAttemptingDJAccess] = useState(false);
+  const [lastAuthResult, setLastAuthResult] = useState(null);
   
   // Refs
   const socketRef = useRef(null);
@@ -58,6 +60,7 @@ const DJPage = ({
   const audioLevelIntervalRef = useRef(null);
   const listenerAudioRef = useRef(null);
   const peerConnectionRef = useRef(null);
+  const attemptingDJAccessRef = useRef(false);
 
   // Utility function to check if current user can access DJ mode (not cached)
   const getCurrentUserDJAccessStatus = () => {
@@ -331,14 +334,8 @@ const DJPage = ({
       setConnectionStatus(true);
       onConnect && onConnect(socket.id);
       
-      // Authenticate DJ socket connection
-      const token = localStorage.getItem('token');
-      if (token) {
-        console.log('🎧 Sending DJ authentication...');
-        socket.emit('dj-auth', { token });
-      } else {
-        console.log('⚠️ No token found for DJ authentication');
-      }
+      // Don't authenticate immediately - only when needed for DJ access
+      // Authentication will be sent when user tries to access DJ mode
       
       // For admin: Send stop streaming signal on connect to clean up previous session
       const isActuallyAdmin = getCurrentUserAdminStatus();
@@ -385,18 +382,58 @@ const DJPage = ({
     // DJ Authentication handlers
     socket.on('dj-auth-success', (data) => {
       console.log('✅ DJ Authentication successful:', data);
-      const canAccessDJ = getCurrentUserDJAccessStatus();
-      if (!canAccessDJ) {
-        console.log('⚠️ User does not have DJ access permissions');
-        setAlertMessage('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
-        setShowAlert(true);
+      console.log('🎧 attemptingDJAccess flag:', attemptingDJAccessRef.current);
+      
+      // Store the authentication result
+      setLastAuthResult(data);
+      
+      if (attemptingDJAccessRef.current) {
+        console.log('🎧 Processing DJ access request...');
+        // Use backend response for DJ access check
+        const canAccessDJ = data.canAccessDJ !== undefined ? data.canAccessDJ : getCurrentUserDJAccessStatus();
+        console.log('🎧 canAccessDJ from backend:', canAccessDJ);
+        
+        if (!canAccessDJ) {
+          console.log('⚠️ User does not have DJ access permissions');
+          setAlertMessage('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
+          setShowAlert(true);
+          setAttemptingDJAccess(false); // Reset state flag
+          attemptingDJAccessRef.current = false; // Reset ref flag
+          return;
+        }
+        
+        // If authentication successful and user has DJ access, proceed with DJ mode toggle
+        console.log('🎧 Authentication successful, proceeding with DJ mode toggle');
+        setAttemptingDJAccess(false); // Reset state flag
+        attemptingDJAccessRef.current = false; // Reset ref flag
+        
+        // Proceed with DJ mode toggle
+        const newDJState = true; // Entering DJ mode
+        console.log('🎧 Setting DJ state to:', newDJState);
+        setIsDJ(newDJState);
+        checkAdminStatus();
+        console.log('🔧 Checked admin status (DJ mode)');
+        initAudio();
+        
+        console.log('🎧 Emitting toggle dj mode to backend...');
+        socketRef.current.emit('toggle dj mode', { 
+          isDJ: newDJState,
+          adminId: socketRef.current.id 
+        });
+      } else {
+        console.log('🎧 DJ auth success received but not attempting DJ access');
       }
     });
 
     socket.on('dj-auth-error', (data) => {
-      console.error('❌ DJ Authentication failed:', data.message);
-      setAlertMessage(`DJ Authentication Error: ${data.message}`);
-      setShowAlert(true);
+      console.log('❌ DJ Authentication failed:', data.message);
+      // Only show alert if user is trying to access DJ mode
+      if (attemptingDJAccessRef.current) {
+        setAlertMessage(`DJ Authentication Error: ${data.message}`);
+        setShowAlert(true);
+        setAttemptingDJAccess(false); // Reset state flag
+        attemptingDJAccessRef.current = false; // Reset ref flag
+      }
     });
 
     socket.on('current state', (state) => {
@@ -633,22 +670,22 @@ const DJPage = ({
     socket.on('webrtc-answer', async (data) => {
       console.log('📡 Received WebRTC answer:', data);
       
-      // Check admin status from localStorage to avoid stale closure
-      const isActuallyAdmin = getCurrentUserAdminStatus();
+      // Check if user has DJ access (admin, superadmin, or DJ role)
+      const canAccessDJ = getCurrentUserDJAccessStatus();
       
-      console.log('📡 Current admin status:', { 
-        isAdmin: isActuallyAdmin, 
+      console.log('📡 Current DJ/Admin status:', { 
+        canAccessDJ: canAccessDJ, 
         isDJ, 
         isPlaying
       });
       
-      // Only admin should handle WebRTC answers from users
-      if (isActuallyAdmin && mediaStreamRef.current) {
-        console.log('📡 Admin processing WebRTC answer from user:', data.senderId);
+      // Only DJ/Admin should handle WebRTC answers from users
+      if (canAccessDJ && mediaStreamRef.current) {
+        console.log('📡 DJ/Admin processing WebRTC answer from user:', data.senderId);
         await handleWebRTCAnswer(data);
       } else {
-        console.log('📡 Admin ignoring WebRTC answer - not ready:', {
-          isAdmin: isActuallyAdmin,
+        console.log('📡 DJ/Admin ignoring WebRTC answer - not ready:', {
+          canAccessDJ: canAccessDJ,
           hasMediaStream: !!mediaStreamRef.current
         });
       }
@@ -667,13 +704,13 @@ const DJPage = ({
         connected: socket.connected
       });
       
-      // Check admin status from localStorage to avoid stale closure
-      const isActuallyAdmin = getCurrentUserAdminStatus();
+      // Check if user has DJ access (admin, superadmin, or DJ role)
+      const canAccessDJ = getCurrentUserDJAccessStatus();
       
       // Debug media stream details
       if (mediaStreamRef.current) {
         const audioTracks = mediaStreamRef.current.getAudioTracks();
-        console.log('🎧 Admin media stream details:', {
+        console.log('🎧 DJ/Admin media stream details:', {
           hasMediaStream: !!mediaStreamRef.current,
           audioTracksCount: audioTracks.length,
           audioTracksInfo: audioTracks.map(track => ({
@@ -685,22 +722,22 @@ const DJPage = ({
         });
       }
       
-      console.log('🎧 Admin status check:', { 
-        isAdmin: isActuallyAdmin, 
+      console.log('🎧 DJ/Admin status check:', { 
+        canAccessDJ: canAccessDJ,
         isDJ, 
         isPlaying, 
         hasMediaStream: !!mediaStreamRef.current
       });
       
-      // Check if admin is ready to connect - be more lenient for local development
-      const shouldConnect = isActuallyAdmin && mediaStreamRef.current;
+      // Check if DJ/Admin is ready to connect - include DJ role
+      const shouldConnect = canAccessDJ && mediaStreamRef.current;
       
       if (shouldConnect) {
         const audioTracks = mediaStreamRef.current.getAudioTracks();
         if (audioTracks.length > 0) {
-          console.log('📡 Admin initiating connection with user:', data.userId);
-          console.log('📡 Admin status:', {
-            isAdmin: isActuallyAdmin,
+          console.log('📡 DJ/Admin initiating connection with user:', data.userId);
+          console.log('📡 DJ/Admin status:', {
+            canAccessDJ: canAccessDJ,
             isDJ, 
             isPlaying,
             hasMediaStream: !!mediaStreamRef.current,
@@ -711,8 +748,8 @@ const DJPage = ({
           console.log('❌ Cannot initiate connection - no audio tracks available');
         }
       } else {
-        console.log('⚠️ Admin not ready to initiate connection:', {
-          isAdmin: isActuallyAdmin,
+        console.log('⚠️ DJ/Admin not ready to initiate connection:', {
+          canAccessDJ: canAccessDJ,
           isDJ, 
           isPlaying,
           hasMediaStream: !!mediaStreamRef.current
@@ -1368,17 +1405,32 @@ const DJPage = ({
   };
 
   const toggleDJMode = () => {
-    // Check if user has DJ access permissions before allowing toggle
-    const canAccessDJ = getCurrentUserDJAccessStatus();
-    if (!canAccessDJ) {
-      showCustomAlert('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
-      return;
-    }
-
-    // If trying to enter DJ mode, check if another admin is already active
+    // If trying to enter DJ mode, check if another admin is already active first
     if (!isDJ && isDJActive) {
       showCustomAlert('มี DJ กำลังรัน Session อยู่');
       return;
+    }
+
+    // If trying to enter DJ mode, authenticate first
+    if (!isDJ) {
+      const token = localStorage.getItem('token');
+      if (token && socketRef.current.connected) {
+        console.log('🎧 Authenticating for DJ access...');
+        setAttemptingDJAccess(true);
+        attemptingDJAccessRef.current = true;
+        socketRef.current.emit('dj-auth', { token });
+        
+        // Wait for authentication before proceeding
+        // The actual toggle will be handled after auth success
+        return;
+      } else {
+        // If no token, check local permissions as fallback
+        const canAccessDJ = getCurrentUserDJAccessStatus();
+        if (!canAccessDJ) {
+          showCustomAlert('คุณไม่มีสิทธิ์เข้าถึง DJ Mode');
+          return;
+        }
+      }
     }
     
     const newDJState = !isDJ;
@@ -2092,14 +2144,14 @@ const DJPage = ({
 
   const handleICECandidate = async (data) => {
     try {
-      // Check admin status from localStorage to avoid stale closure
-      const isActuallyAdmin = getCurrentUserAdminStatus();
+      // Check if user has DJ access (admin, superadmin, or DJ role)
+      const canAccessDJ = getCurrentUserDJAccessStatus();
       
       console.log('🧊 Handling ICE candidate:', {
         hasCandidate: !!data.candidate,
         candidateType: data.candidate?.type,
         senderId: data.senderId,
-        isAdmin: isActuallyAdmin,
+        canAccessDJ: canAccessDJ,
         hasPeerConnections: !!peerConnectionsRef.current,
         hasSingleConnection: !!peerConnectionRef.current
       });
@@ -2109,10 +2161,10 @@ const DJPage = ({
         return;
       }
       
-      // Handle ICE candidate for admin (receiving from user)
-      if (isActuallyAdmin && data.senderId) {
+      // Handle ICE candidate for DJ/Admin (receiving from user)
+      if (canAccessDJ && data.senderId) {
         const peerConnection = peerConnectionsRef.current.get(data.senderId);
-        console.log('🧊 Admin checking peer connection for user:', data.senderId, !!peerConnection);
+        console.log('🧊 DJ/Admin checking peer connection for user:', data.senderId, !!peerConnection);
         
         if (peerConnection) {
           try {
@@ -2134,8 +2186,8 @@ const DJPage = ({
           console.log('🧊 Available connections:', Array.from(peerConnectionsRef.current.keys()));
         }
       } 
-      // Handle ICE candidate for user (receiving from admin)
-      else if (!isActuallyAdmin && peerConnectionRef.current) {
+      // Handle ICE candidate for user (receiving from DJ/Admin)
+      else if (!canAccessDJ && peerConnectionRef.current) {
         console.log('🧊 User handling ICE candidate from admin');
         try {
           if (peerConnectionRef.current.remoteDescription) {
@@ -2154,7 +2206,7 @@ const DJPage = ({
       } else {
         console.log('⚠️ No appropriate peer connection available for ICE candidate');
         console.log('🧊 Debug info:', {
-          isAdmin: isActuallyAdmin,
+          canAccessDJ: canAccessDJ,
           senderId: data.senderId,
           hasPeerConnectionsMap: !!peerConnectionsRef.current,
           hasSingleConnection: !!peerConnectionRef.current,

@@ -51,13 +51,6 @@ const setupDJSocketHandlers = (io) => {
           return;
         }
         
-        // Check if user can access DJ mode
-        if (!authenticatedUser.canAccessDJMode()) {
-          console.log(`🎧 DJ access denied for user: ${authenticatedUser.username}, role: ${authenticatedUser.role}`);
-          socket.emit('dj-auth-error', { message: 'DJ access required' });
-          return;
-        }
-        
         console.log(`🎧 DJ Auth successful for user: ${authenticatedUser.username}, role: ${authenticatedUser.role}`);
         
         // Update connected user with authenticated info
@@ -75,7 +68,8 @@ const setupDJSocketHandlers = (io) => {
             id: authenticatedUser._id,
             username: authenticatedUser.username,
             role: authenticatedUser.role
-          }
+          },
+          canAccessDJ: authenticatedUser.canAccessDJMode()
         });
         
       } catch (error) {
