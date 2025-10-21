@@ -10,10 +10,10 @@ const DJPage = ({
 }) => {
   // State
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(false); // Start unmuted
   const [adminAudioMuted, setAdminAudioMuted] = useState(false);
   const [userVolume, setUserVolume] = useState(0.8);
-  const [userMuted, setUserMuted] = useState(false);
+  const [userMuted, setUserMuted] = useState(false); // Start unmuted
   const [isIncognitoMode, setIsIncognitoMode] = useState(false);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -1352,6 +1352,30 @@ const DJPage = ({
     if (listenerAudioRef.current) {
       listenerAudioRef.current.muted = newUserMutedState;
       console.log('🔊 User audio muted:', newUserMutedState);
+      
+      // If unmuting, try to play
+      if (!newUserMutedState) {
+        listenerAudioRef.current.play().catch(error => {
+          console.log('📱 Audio play failed after unmute:', error);
+        });
+      }
+    }
+  };
+
+  // Handle user interaction for mobile audio
+  const handleMobileAudioInteraction = async () => {
+    if (listenerAudioRef.current && listenerAudioRef.current.srcObject) {
+      try {
+        // Ensure audio is unmuted and has volume
+        listenerAudioRef.current.muted = false;
+        listenerAudioRef.current.volume = 0.8;
+        setUserMuted(false);
+        
+        await listenerAudioRef.current.play();
+        console.log('✅ Mobile audio started after user interaction');
+      } catch (error) {
+        console.log('📱 Mobile audio play failed:', error);
+      }
     }
   };
 
@@ -1594,7 +1618,7 @@ const DJPage = ({
       // Configure audio element
           listenerAudioRef.current.muted = false;
           listenerAudioRef.current.volume = 0.8;
-      listenerAudioRef.current.autoplay = true;
+      listenerAudioRef.current.autoplay = true; // Enable autoplay
       listenerAudioRef.current.crossOrigin = 'anonymous';
       listenerAudioRef.current.preload = 'auto';
       listenerAudioRef.current.controls = false;
@@ -1795,7 +1819,7 @@ const DJPage = ({
           listenerAudioRef.current.srcObject = stream;
           listenerAudioRef.current.muted = false;
           listenerAudioRef.current.volume = 0.8;
-          listenerAudioRef.current.autoplay = true;
+          listenerAudioRef.current.autoplay = true; // Enable autoplay
           listenerAudioRef.current.crossOrigin = 'anonymous';
           listenerAudioRef.current.preload = 'none';
           listenerAudioRef.current.controls = false;
@@ -1826,8 +1850,20 @@ const DJPage = ({
                   readyState: track.readyState
                 })));
                 
-                await listenerAudioRef.current.play();
-                console.log('✅ User audio playback started successfully');
+                // Check if mobile device
+                const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                // Always try to play audio regardless of device
+                try {
+                  await listenerAudioRef.current.play();
+                  console.log('✅ User audio playback started successfully');
+                } catch (playError) {
+                  console.log('📱 Audio play failed, may need user interaction:', playError);
+                  // On mobile, this is expected behavior
+                  if (isMobile) {
+                    console.log('📱 Mobile device - audio ready but needs user interaction');
+                  }
+                }
                 
                 // Verify it's actually playing
                 setTimeout(() => {

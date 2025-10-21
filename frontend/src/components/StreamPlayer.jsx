@@ -157,13 +157,31 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
   
   // Custom controls state
   const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(false); // Start unmuted
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  
+  // Mobile audio state
+  const [isMobile, setIsMobile] = useState(false);
+  const [needsUserInteraction, setNeedsUserInteraction] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
   
   // Get user info to check if admin
   const { user } = useAuth();
   const isAdmin = user && (user.isAdmin === true || user.isSuperAdmin === true || user.role === 'admin' || user.role === 'superadmin');
+
+  // Check if mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(mobile);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Custom controls functions
   const handlePlayPause = () => {
@@ -189,13 +207,42 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
   };
 
   const handleMuteToggle = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    setHasUserInteracted(true);
+    
     if (playerRef.current) {
-      if (isMuted) {
-        playerRef.current.volume(volume);
-        setIsMuted(false);
-      } else {
+      if (newMutedState) {
         playerRef.current.volume(0);
-        setIsMuted(true);
+      } else {
+        playerRef.current.volume(volume);
+        
+        // If unmuting on mobile, try to play
+        if (isMobile) {
+          playerRef.current.play().catch(error => {
+            console.log('📺 Mobile play failed after unmute:', error);
+          });
+        }
+      }
+    }
+  };
+
+  // Handle user interaction for mobile audio
+  const handleUserInteraction = async () => {
+    setHasUserInteracted(true);
+    setNeedsUserInteraction(false);
+    
+    if (playerRef.current && isMobile) {
+      try {
+        // Set volume and unmute first
+        playerRef.current.volume(1);
+        playerRef.current.muted(false);
+        setIsMuted(false);
+        
+        await playerRef.current.play();
+        console.log('✅ Mobile audio started after user interaction');
+      } catch (error) {
+        console.log('📺 Mobile audio play failed:', error);
       }
     }
   };
@@ -324,8 +371,8 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
           fill: false,
           width: '100%',
           height: '100%',
-          autoplay: 'muted',
-          muted: true,
+          autoplay: isMobile ? false : true, // Enable autoplay on desktop
+          muted: false, // Start unmuted
           playsinline: true,
           preload: 'auto',
           liveui: false,
@@ -391,12 +438,20 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
         console.log('📺 Player ready, attempting immediate play...');
         setTimeout(() => {
           if (playerRef.current) {
+            // Set volume and unmute first
+            playerRef.current.volume(1);
+            playerRef.current.muted(false);
+            setIsMuted(false);
+            
             playerRef.current.play().then(() => {
               console.log('✅ Immediate play successful');
               setIsPlaying(true);
             }).catch(error => {
               console.log('📺 Immediate play failed:', error);
-              // Wait for user interaction
+              // On mobile, show user interaction prompt
+              if (isMobile) {
+                setNeedsUserInteraction(true);
+              }
             });
           }
         }, 500); // Small delay to ensure everything is ready
@@ -439,12 +494,20 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
       // Try to play the video automatically
       if (playerRef.current) {
         console.log('📺 Attempting autoplay...');
+        // Set volume and unmute first
+        playerRef.current.volume(1);
+        playerRef.current.muted(false);
+        setIsMuted(false);
+        
         playerRef.current.play().then(() => {
           console.log('✅ Autoplay successful');
           setIsPlaying(true);
         }).catch(error => {
           console.log('📺 Autoplay failed, user interaction required:', error);
-          // Don't set error here, just wait for user interaction
+          // On mobile, show user interaction prompt
+          if (isMobile) {
+            setNeedsUserInteraction(true);
+          }
         });
       }
     };
@@ -845,6 +908,28 @@ const StreamPlayer = ({ streamKey, isLive, onError }) => {
           </div>
         </div>
       </div>
+
+      {/* Mobile Audio Interaction Overlay */}
+      {needsUserInteraction && isMobile && (
+        <div className="absolute inset-0 bg-black bg-opacity-90 flex items-center justify-center" style={{ zIndex: 60 }}>
+          <div className="text-center text-white p-6 max-w-sm mx-auto">
+            <div className="text-6xl mb-4">🔊</div>
+            <h3 className="text-xl font-bold mb-2">เปิดเสียง</h3>
+            <p className="text-gray-300 mb-6">
+              กรุณากดปุ่มด้านล่างเพื่อเปิดเสียงสตรีม
+            </p>
+            <button
+              onClick={handleUserInteraction}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center space-x-2 mx-auto"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+              </svg>
+              <span>เปิดเสียง</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Loading Overlay */}
       {isLoading && (
