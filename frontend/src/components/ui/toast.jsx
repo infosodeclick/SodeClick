@@ -58,17 +58,14 @@ export const ToastProvider = ({ children }) => {
     return addToast('info', message, duration);
   }, [addToast]);
 
-  const ToastContainer = () => (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
-      {toasts.map((toast) => (
-        <Toast key={toast.id} toast={toast} onRemove={removeToast} />
-      ))}
-    </div>
-  );
-
   return (
-    <ToastContext.Provider value={{ success, error, warning, info, ToastContainer }}>
+    <ToastContext.Provider value={{ success, error, warning, info }}>
       {children}
+      <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+        {toasts.map((toast) => (
+          <Toast key={toast.id} toast={toast} onRemove={removeToast} />
+        ))}
+      </div>
     </ToastContext.Provider>
   );
 };
@@ -77,21 +74,21 @@ const Toast = ({ toast, onRemove }) => {
   const { type, message, id, isRemoving } = toast;
 
   const getToastStyles = () => {
-    const baseStyles = `flex items-center p-4 rounded-lg shadow-lg border-l-4 transform transition-all duration-300 ease-in-out cursor-pointer hover:shadow-xl ${
+    const baseStyles = `flex items-center p-4 rounded-lg shadow-lg border-l-4 transform transition-all duration-300 ease-in-out cursor-pointer ${
       isRemoving ? 'animate-slide-out' : 'animate-slide-in'
     }`;
     
     switch (type) {
       case 'success':
-        return `${baseStyles} bg-gradient-to-r from-green-50 to-green-100 border-green-500 text-green-800 hover:from-green-100 hover:to-green-200`;
+        return `${baseStyles} bg-gradient-to-r from-green-50 to-green-100 border-green-500 text-green-800`;
       case 'error':
-        return `${baseStyles} bg-gradient-to-r from-red-50 to-red-100 border-red-500 text-red-800 hover:from-red-100 hover:to-red-200`;
+        return `${baseStyles} bg-gradient-to-r from-red-50 to-red-100 border-red-500 text-red-800`;
       case 'warning':
-        return `${baseStyles} bg-gradient-to-r from-yellow-50 to-yellow-100 border-yellow-500 text-yellow-800 hover:from-yellow-100 hover:to-yellow-200`;
+        return `${baseStyles} bg-gradient-to-r from-yellow-50 to-yellow-100 border-yellow-500 text-yellow-800`;
       case 'info':
-        return `${baseStyles} bg-gradient-to-r from-blue-50 to-blue-100 border-blue-500 text-blue-800 hover:from-blue-100 hover:to-blue-200`;
+        return `${baseStyles} bg-gradient-to-r from-blue-50 to-blue-100 border-blue-500 text-blue-800`;
       default:
-        return `${baseStyles} bg-gradient-to-r from-gray-50 to-gray-100 border-gray-500 text-gray-800 hover:from-gray-100 hover:to-gray-200`;
+        return `${baseStyles} bg-gradient-to-r from-gray-50 to-gray-100 border-gray-500 text-gray-800`;
     }
   };
 

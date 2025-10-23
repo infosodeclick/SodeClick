@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { useToast } from './ui/toast';
 import UserManagement from './UserManagement';
 import PremiumManagement from './PremiumManagement';
 import BannedUsers from './BannedUsers';
@@ -9,12 +10,14 @@ import SystemMonitor from './SystemMonitor';
 import AdminChatManagement from './AdminChatManagement';
 import AdminCreateChatRoom from './AdminCreateChatRoom';
 import SuperAdminPanel from './SuperAdminPanel';
+import PermissionManagement from './PermissionManagement';
+import RoleDetails from './RoleDetails';
 import LiveStreamTest from './LiveStreamTest';
-import { 
-  Users, 
-  MessageCircle, 
-  Crown, 
-  Activity, 
+import {
+  Users,
+  MessageCircle,
+  Crown,
+  Activity,
   Settings,
   UserCheck,
   AlertCircle,
@@ -28,10 +31,15 @@ import {
   RefreshCw,
   Wrench,
   Power,
+  Key,
+  BookOpen,
+  Clock,
+  ChevronRight,
   FlaskConical
 } from 'lucide-react';
 
 const AdminDashboard = () => {
+  const { success, error, warning, info } = useToast();
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -44,6 +52,7 @@ const AdminDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]); // เพิ่ม state สำหรับกิจกรรมล่าสุด
   const [lastActivityCount, setLastActivityCount] = useState(0); // เก็บจำนวนกิจกรรมครั้งล่าสุด
   const [maintenanceMode, setMaintenanceMode] = useState(false); // เพิ่ม state สำหรับ Maintenance Mode
+  const [isClearingGhosts, setIsClearingGhosts] = useState(false); // เพิ่ม state สำหรับเคลียร์ ghost users
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -209,6 +218,63 @@ const AdminDashboard = () => {
     }
   };
 
+  // เคลียร์ ghost users (ผู้ใช้ออนไลน์ที่ไม่ได้ active จริงๆ)
+  const clearGhostUsers = async () => {
+    try {
+      setIsClearingGhosts(true);
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        error('ไม่มี token สำหรับ authentication - กรุณาเข้าสู่ระบบใหม่');
+        return;
+      }
+
+      console.log('🧹 Clearing ghost users with token:', token.substring(0, 20) + '...');
+
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/clear-ghost-users`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('🧹 Response status:', res.status);
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('🧹 Ghost users cleanup result:', data);
+
+        if (data.clearedCount > 0) {
+          success(`เคลียร์ ghost users สำเร็จ - ${data.clearedCount} คน (ออนไลน์จริงๆ: ${data.realOnlineUsers} คน)`);
+        } else {
+          success(`ไม่มี ghost users ที่ต้องเคลียร์ (ออนไลน์จริงๆ: ${data.realOnlineUsers} คน)`);
+        }
+
+        // รีโหลดข้อมูลสถิติหลังจากเคลียร์
+        fetchDashboardData();
+      } else {
+        const errorData = await res.json().catch(() => ({ message: 'Unknown error' }));
+        console.error('ไม่สามารถเคลียร์ ghost users ได้:', errorData);
+
+        if (res.status === 401) {
+          error('ไม่มีสิทธิ์เข้าถึง - โปรดเข้าสู่ระบบใหม่ในฐานะผู้ดูแลระบบ');
+        } else if (res.status === 403) {
+          error('ไม่มีสิทธิ์เข้าถึง API นี้ - ต้องเป็นผู้ดูแลระบบเท่านั้น');
+        } else if (res.status === 404) {
+          error('ไม่พบ API endpoint - กรุณาติดต่อผู้พัฒนาระบบ');
+        } else {
+          error(`ไม่สามารถเคลียร์ ghost users ได้: ${errorData.message || 'Unknown error'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error clearing ghost users:', error);
+      error('เกิดข้อผิดพลาดในการเคลียร์ ghost users');
+    } finally {
+      setIsClearingGhosts(false);
+    }
+  };
+
   // ฟังก์ชันแปลงเวลาเป็นรูปแบบที่อ่านง่าย
   const formatTimeAgo = (timestamp) => {
     const now = new Date();
@@ -286,6 +352,10 @@ const AdminDashboard = () => {
         return <AdminCreateChatRoom />;
       case 'analytics':
         return <Analytics />;
+      case 'permissions':
+        return <PermissionManagement />;
+      case 'role-details':
+        return <RoleDetails />;
       case 'superadmin':
         return <SuperAdminPanel />;
       case 'livetest':
@@ -314,6 +384,10 @@ const AdminDashboard = () => {
         return 'สร้างห้องแชทใหม่';
       case 'analytics':
         return 'สถิติการใช้งาน';
+      case 'permissions':
+        return 'จัดการสิทธิ์ผู้ดูแล';
+      case 'role-details':
+        return 'คู่มือบทบาทและสิทธิ์';
       case 'superadmin':
         return 'SuperAdmin Panel';
       case 'livetest':
@@ -618,104 +692,134 @@ const AdminDashboard = () => {
     <>
              {/* Stats Cards */}
        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-         <Card className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-           <CardHeader className="flex flex-row items-center justify-between pb-2">
-             <CardTitle className="text-sm font-medium text-slate-700">ผู้ใช้ทั้งหมด</CardTitle>
-             <Users className="h-4 w-4 text-blue-500" />
+         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+           <CardHeader className="flex flex-row items-center justify-between pb-3">
+             <CardTitle className="text-sm font-semibold text-blue-800">ผู้ใช้ทั้งหมด</CardTitle>
+             <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md">
+               <Users className="h-5 w-5 text-white" />
+             </div>
            </CardHeader>
            <CardContent>
-             <div className="text-2xl font-bold text-slate-800">{stats.totalUsers.toLocaleString()}</div>
-             <p className="text-xs text-slate-500 mt-1">
-               <TrendingUp className="inline h-3 w-3 mr-1" />
+             <div className="text-3xl font-bold text-blue-900 mb-2">{stats.totalUsers.toLocaleString()}</div>
+             <div className="flex items-center text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full w-fit">
+               <TrendingUp className="h-3 w-3 mr-1" />
                +12% จากเดือนที่แล้ว
-             </p>
+             </div>
            </CardContent>
          </Card>
 
-         <Card className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-           <CardHeader className="flex flex-row items-center justify-between pb-2">
-             <CardTitle className="text-sm font-medium text-slate-700">ข้อความทั้งหมด</CardTitle>
-             <MessageCircle className="h-4 w-4 text-green-500" />
+         <Card className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+           <CardHeader className="flex flex-row items-center justify-between pb-3">
+             <CardTitle className="text-sm font-semibold text-green-800">ข้อความทั้งหมด</CardTitle>
+             <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center shadow-md">
+               <MessageCircle className="h-5 w-5 text-white" />
+             </div>
            </CardHeader>
            <CardContent>
-             <div className="text-2xl font-bold text-slate-800">{stats.totalMessages.toLocaleString()}</div>
-             <p className="text-xs text-slate-500 mt-1">
-               <TrendingUp className="inline h-3 w-3 mr-1" />
+             <div className="text-3xl font-bold text-green-900 mb-2">{stats.totalMessages.toLocaleString()}</div>
+             <div className="flex items-center text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full w-fit">
+               <TrendingUp className="h-3 w-3 mr-1" />
                +8% จากเดือนที่แล้ว
-             </p>
+             </div>
            </CardContent>
          </Card>
 
-         <Card className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-           <CardHeader className="flex flex-row items-center justify-between pb-2">
-             <CardTitle className="text-sm font-medium text-slate-700">ผู้ใช้ออนไลน์</CardTitle>
-             <Activity className="h-4 w-4 text-amber-500" />
+         <Card className="bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+           <CardHeader className="flex flex-row items-center justify-between pb-3">
+             <CardTitle className="text-sm font-semibold text-amber-800">ผู้ใช้ออนไลน์</CardTitle>
+             <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center shadow-md">
+               <Activity className="h-5 w-5 text-white" />
+             </div>
            </CardHeader>
            <CardContent>
-             <div className="text-2xl font-bold text-slate-800">{stats.onlineUsers}</div>
-             <p className="text-xs text-slate-500 mt-1">
-               ณ ขณะนี้
-             </p>
+             <div className="text-3xl font-bold text-amber-900 mb-2">{stats.onlineUsers || 0}</div>
+             <div className="flex items-center text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full w-fit">
+               ออนไลน์ขณะนี้
+             </div>
            </CardContent>
          </Card>
 
-         <Card className="bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-           <CardHeader className="flex flex-row items-center justify-between pb-2">
-             <CardTitle className="text-sm font-medium text-slate-700">สมาชิก Premium</CardTitle>
-             <Crown className="h-4 w-4 text-purple-500" />
+         <Card className="bg-gradient-to-br from-purple-50 to-pink-100 border border-purple-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+           <CardHeader className="flex flex-row items-center justify-between pb-3">
+             <CardTitle className="text-sm font-semibold text-purple-800">สมาชิก Premium</CardTitle>
+             <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center shadow-md">
+               <Crown className="h-5 w-5 text-white" />
+             </div>
            </CardHeader>
            <CardContent>
-             <div className="text-2xl font-bold text-slate-800">{stats.premiumUsers}</div>
-             <p className="text-xs text-slate-500 mt-1">
-               <TrendingUp className="inline h-3 w-3 mr-1" />
+             <div className="text-3xl font-bold text-purple-900 mb-2">{stats.premiumUsers}</div>
+             <div className="flex items-center text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full w-fit">
+               <TrendingUp className="h-3 w-3 mr-1" />
                +25% จากเดือนที่แล้ว
-             </p>
+             </div>
            </CardContent>
          </Card>
        </div>
 
              {/* Quick Actions */}
-       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8">
          {/* User Management */}
-         <Card className="bg-white border border-slate-200 shadow-sm">
-           <CardHeader>
-             <CardTitle className="text-slate-800 flex items-center gap-2">
-               <Users size={20} />
+         <Card className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+           <CardHeader className="pb-4">
+             <CardTitle className="text-gray-800 flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
+               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                 <Users className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+               </div>
                จัดการผู้ใช้
              </CardTitle>
            </CardHeader>
-           <CardContent className="space-y-4">
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+           <CardContent className="space-y-3">
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
                onClick={() => setCurrentView('users')}
              >
-               <UserCheck size={16} className="mr-2" />
+               <UserCheck size={16} className="mr-3 text-blue-600" />
                ดูรายชื่อผู้ใช้ทั้งหมด
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-purple-50 hover:border-purple-300 transition-all duration-200"
                onClick={() => setCurrentView('premium')}
              >
-               <Crown size={16} className="mr-2" />
+               <Crown size={16} className="mr-3 text-purple-600" />
                จัดการสมาชิก Premium
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
                onClick={() => setCurrentView('banned')}
              >
-               <Shield size={16} className="mr-2" />
+               <Shield size={16} className="mr-3 text-red-600" />
                ผู้ใช้ที่ถูกแบน
              </Button>
+
+             <Button
+               variant="outline"
+               disabled={isClearingGhosts}
+               className="w-full justify-start border-orange-200 hover:bg-orange-50 hover:border-orange-300 transition-all duration-200"
+               onClick={clearGhostUsers}
+             >
+               {isClearingGhosts ? (
+                 <>
+                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600 mr-3"></div>
+                   กำลังเคลียร์...
+                 </>
+               ) : (
+                 <>
+                   <Zap size={16} className="mr-3 text-orange-600" />
+                   เคลียร์ Ghost Users
+                 </>
+               )}
+             </Button>
+
              {user?.role === 'superadmin' && (
-               <Button 
-                 variant="outline" 
-                 className="w-full justify-start border-slate-200 hover:bg-slate-50 bg-yellow-50 border-yellow-200 hover:bg-yellow-100"
+               <Button
+                 variant="outline"
+                 className="w-full justify-start border-yellow-200 bg-yellow-50 hover:bg-yellow-100 text-yellow-800 transition-all duration-200"
                  onClick={() => setCurrentView('superadmin')}
                >
-                 <Crown size={16} className="mr-2 text-yellow-600" />
+                 <Crown size={16} className="mr-3" />
                  SuperAdmin Panel
                </Button>
              )}
@@ -723,176 +827,252 @@ const AdminDashboard = () => {
          </Card>
 
          {/* System Management */}
-         <Card className="bg-white border border-slate-200 shadow-sm">
-           <CardHeader>
-             <CardTitle className="text-slate-800 flex items-center gap-2">
-               <Database size={20} />
+         <Card className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+           <CardHeader className="pb-4">
+             <CardTitle className="text-gray-800 flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
+               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                 <Database className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+               </div>
                จัดการระบบ
              </CardTitle>
            </CardHeader>
-           <CardContent className="space-y-4">
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+           <CardContent className="space-y-3">
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
                onClick={() => setCurrentView('health')}
              >
-               <Zap size={16} className="mr-2" />
+               <Zap size={16} className="mr-3 text-blue-600" />
                API Status Monitor
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-green-50 hover:border-green-300 transition-all duration-200"
                onClick={() => setCurrentView('monitor')}
              >
-               <Activity size={16} className="mr-2" />
+               <Activity size={16} className="mr-3 text-green-600" />
                System Monitor
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-orange-50 hover:border-orange-300 transition-all duration-200"
                onClick={() => setCurrentView('chat')}
              >
-               <MessageCircle size={16} className="mr-2" />
+               <MessageCircle size={16} className="mr-3 text-orange-600" />
                จัดการแชทและข้อความ
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-purple-50 hover:border-purple-300 transition-all duration-200"
                onClick={() => setCurrentView('create-chat')}
              >
-               <MessageCircle size={16} className="mr-2" />
+               <MessageCircle size={16} className="mr-3 text-purple-600" />
                สร้างห้องแชทใหม่
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-indigo-50 hover:border-indigo-300 transition-all duration-200"
                onClick={() => setCurrentView('analytics')}
              >
-               <Activity size={16} className="mr-2" />
+               <Activity size={16} className="mr-3 text-indigo-600" />
                สถิติการใช้งาน
              </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start border-slate-200 hover:bg-slate-50"
-               onClick={() => setCurrentView('livetest')}
-             >
-               <FlaskConical size={16} className="mr-2" />
-               ทดสอบ Live Streaming
-             </Button>
-             <Button 
-               variant="outline" 
-               className={`w-full justify-start border-slate-200 hover:bg-slate-50 ${
-                 maintenanceMode ? 'border-red-300 bg-red-50 text-red-700' : 'border-slate-200'
+             <Button
+               variant="outline"
+               className={`w-full justify-start transition-all duration-200 ${
+                 maintenanceMode
+                   ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                   : 'border-gray-200 hover:bg-gray-50'
                }`}
                onClick={toggleMaintenanceMode}
              >
-               <Wrench size={16} className="mr-2" />
+               <Wrench size={16} className="mr-3" />
                {maintenanceMode ? 'ปิด Maintenance Mode' : 'เปิด Maintenance Mode'}
+             </Button>
+           </CardContent>
+         </Card>
+
+         {/* Permission Management */}
+         <Card className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+           <CardHeader className="pb-4">
+             <CardTitle className="text-gray-800 flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
+               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                 <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+               </div>
+               จัดการสิทธิ์และบทบาท
+             </CardTitle>
+           </CardHeader>
+           <CardContent className="space-y-3">
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-purple-50 hover:border-purple-300 transition-all duration-200"
+               onClick={() => setCurrentView('permissions')}
+             >
+               <Key size={16} className="mr-3 text-purple-600" />
+               จัดการสิทธิ์ผู้ดูแล
+             </Button>
+             <Button
+               variant="outline"
+               className="w-full justify-start border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
+               onClick={() => setCurrentView('role-details')}
+             >
+               <BookOpen size={16} className="mr-3 text-blue-600" />
+               คู่มือบทบาทและสิทธิ์
              </Button>
            </CardContent>
          </Card>
        </div>
 
              {/* Recent Activity */}
-       <Card className="bg-white border border-slate-200 shadow-sm">
-         <CardHeader>
-                       <CardTitle className="text-slate-800 flex items-center gap-2">
-              <Activity size={20} />
-              กิจกรรมล่าสุด
-              <span className="text-sm text-slate-500 ml-2">({recentActivities.length} รายการ)</span>
-            </CardTitle>
+       <Card className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300">
+         <CardHeader className="pb-4">
+           <CardTitle className="text-gray-800 flex items-center gap-2 sm:gap-3 text-base sm:text-lg">
+             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+               <Activity className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+             </div>
+             <span className="flex-1 truncate">กิจกรรมล่าสุด</span>
+             <span className="text-xs sm:text-sm font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded-full flex-shrink-0">
+               {recentActivities.length} รายการ
+             </span>
+           </CardTitle>
          </CardHeader>
          <CardContent>
-           <div className="space-y-3 max-h-[300px] overflow-y-auto">
+           <div className="space-y-4 max-h-[400px] overflow-y-auto">
              {recentActivities.length > 0 ? (
                recentActivities.map((activity, index) => (
-                 <div 
-                   key={activity.id} 
+                 <div
+                   key={activity.id}
                    data-activity-id={activity.id}
-                   className={`flex items-center gap-3 p-3 bg-slate-50 rounded-lg transition-all duration-200 hover:bg-slate-100 ${
-                     index >= 5 ? 'opacity-80' : ''
+                   className={`flex items-center gap-4 p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 transition-all duration-300 hover:shadow-md hover:border-gray-200 ${
+                     index >= 5 ? 'opacity-90' : ''
                    }`}
                  >
-                   <div className={`w-2 h-2 ${getActivityColor(activity.status)} rounded-full flex-shrink-0`}></div>
+                   <div className={`w-3 h-3 ${getActivityColor(activity.status)} rounded-full flex-shrink-0 shadow-sm`}></div>
                    <div className="flex-1 min-w-0">
-                     <p className="text-slate-800 text-sm leading-relaxed">{activity.message}</p>
-                     <p className="text-xs text-slate-500 mt-1">{formatTimeAgo(activity.timestamp)}</p>
+                     <p className="text-gray-800 text-sm leading-relaxed font-medium">{activity.message}</p>
+                     <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                       <Clock className="w-3 h-3" />
+                       {formatTimeAgo(activity.timestamp)}
+                     </p>
                    </div>
-                   <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                     activity.status === 'success' ? 'bg-green-100 text-green-700' :
-                     activity.status === 'premium' ? 'bg-amber-100 text-amber-700' :
-                     activity.status === 'warning' ? 'bg-red-100 text-red-700' :
-                     'bg-blue-100 text-blue-700'
+                   <div className={`px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${
+                     activity.status === 'success' ? 'bg-green-100 text-green-700 border border-green-200' :
+                     activity.status === 'premium' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                     activity.status === 'warning' ? 'bg-red-100 text-red-700 border border-red-200' :
+                     'bg-blue-100 text-blue-700 border border-blue-200'
                    }`}>
                      {activity.type.replace('_', ' ')}
                    </div>
                  </div>
                ))
              ) : (
-               <div className="text-center py-8 text-slate-500">
-                 <Activity size={48} className="mx-auto mb-2 opacity-50" />
-                 <p>ไม่มีกิจกรรมล่าสุด</p>
+               <div className="text-center py-12">
+                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <Activity className="w-8 h-8 text-gray-400" />
+                 </div>
+                 <p className="text-gray-500 font-medium">ไม่มีกิจกรรมล่าสุด</p>
+                 <p className="text-gray-400 text-sm mt-1">กิจกรรมจะแสดงที่นี่เมื่อมีผู้ใช้ดำเนินการ</p>
                </div>
              )}
            </div>
            {recentActivities.length > 5 && (
-             <div className="mt-3 text-center">
-               <p className="text-xs text-slate-500">เลื่อนลงเพื่อดูกิจกรรมเพิ่มเติม</p>
+             <div className="mt-4 text-center">
+               <div className="inline-flex items-center gap-2 text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-full">
+                 <Activity className="w-3 h-3" />
+                 เลื่อนลงเพื่อดูกิจกรรมเพิ่มเติม
+               </div>
              </div>
            )}
          </CardContent>
        </Card>
 
        {/* Welcome Message */}
-       <Card className="bg-white border border-slate-200 shadow-sm">
-         <CardContent className="p-8 text-center">
-           <Shield size={64} className="mx-auto mb-4 text-pink-500" />
-           <h2 className="text-2xl font-bold text-slate-800 mb-2">ยินดีต้อนรับสู่ Admin Dashboard</h2>
-           <p className="text-slate-600">คุณสามารถจัดการระบบและดูสถิติการใช้งานได้ที่นี่</p>
+       <Card className="bg-gradient-to-br from-white to-blue-50 border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300">
+         <CardContent className="p-6 sm:p-8 lg:p-12 text-center">
+           <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg">
+             <Shield className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+           </div>
+           <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-800 to-purple-800 bg-clip-text text-transparent mb-3 sm:mb-4">
+             ยินดีต้อนรับสู่ Admin Dashboard
+           </h2>
+           <p className="text-sm sm:text-base lg:text-lg text-gray-600 max-w-md mx-auto leading-relaxed">
+             คุณสามารถจัดการระบบ ดูสถิติการใช้งาน และควบคุมการทำงานทั้งหมดได้ที่นี่
+           </p>
          </CardContent>
        </Card>
     </>
   );
 
      return (
-     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
+     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100">
        {/* Admin Header */}
-       <div className="bg-white border-b border-slate-200 p-6 shadow-sm">
-         <div className="max-w-7xl mx-auto flex justify-between items-center">
-           <div>
-             <h1 className="text-3xl font-serif font-bold text-slate-800 flex items-center gap-3">
-               <Shield size={32} />
-               {getCurrentViewTitle()}
-             </h1>
-             <p className="text-slate-600 mt-1">ยินดีต้อนรับ, {user?.username}</p>
+       <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 p-4 sm:p-6 shadow-lg">
+         <div className="max-w-7xl mx-auto">
+           {/* Mobile-first responsive header */}
+           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+             <div className="flex items-center gap-3 sm:gap-4">
+               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                 <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+               </div>
+               <div className="min-w-0 flex-1">
+                 <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent truncate">
+                   {getCurrentViewTitle()}
+                 </h1>
+                 <p className="text-sm sm:text-base text-gray-600 mt-1 flex items-center gap-2">
+                   <span className="hidden sm:inline">ยินดีต้อนรับ</span>
+                   <span className="font-semibold text-blue-600 truncate">{user?.username}</span>
+                 </p>
+               </div>
+             </div>
+
+             {/* Navigation buttons - responsive */}
+             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+               {(currentView === 'health' || currentView === 'monitor' || currentView === 'chat' || currentView === 'create-chat' || currentView === 'analytics' || currentView === 'permissions' || currentView === 'role-details' || currentView === 'livetest') && (
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   className="border-gray-200 hover:bg-gray-50 hover:border-gray-300 flex items-center justify-center gap-2 px-3 sm:px-6 py-2 sm:py-3 font-medium shadow-sm transition-all duration-200 hover:shadow-md text-sm sm:text-base"
+                   onClick={() => setCurrentView('dashboard')}
+                 >
+                   <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                   <span className="hidden sm:inline">กลับไปหน้า Dashboard</span>
+                   <span className="sm:hidden">กลับ</span>
+                 </Button>
+               )}
+               <Button
+                 variant="outline"
+                 size="sm"
+                 className="border-gray-200 hover:bg-gray-50 hover:border-gray-300 flex items-center justify-center gap-2 px-3 sm:px-6 py-2 sm:py-3 font-medium shadow-sm transition-all duration-200 hover:shadow-md text-sm sm:text-base"
+                 onClick={() => window.location.href = '/'}
+               >
+                 <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                 <span className="hidden sm:inline">กลับหน้าหลัก</span>
+                 <span className="sm:hidden">หน้าแรก</span>
+               </Button>
+             </div>
            </div>
-                       <div className="flex gap-3">
-              {(currentView === 'health' || currentView === 'monitor' || currentView === 'chat' || currentView === 'create-chat' || currentView === 'analytics' || currentView === 'livetest') && (
-                <Button 
-                  variant="outline" 
-                  size="lg"
-                  className="border-slate-200 hover:bg-slate-50 hover:border-slate-300 flex items-center gap-2 px-6 py-3 font-medium shadow-sm"
-                  onClick={() => setCurrentView('dashboard')}
-                >
-                  <ArrowLeft size={18} />
-                  กลับไปหน้า Dashboard
-                </Button>
-              )}
-             <Button 
-               variant="outline" 
-               size="lg"
-               className="border-slate-200 hover:bg-slate-50 hover:border-slate-300 flex items-center gap-2 px-6 py-3 font-medium shadow-sm"
-               onClick={() => window.location.href = '/'}
-             >
-               <Home size={18} />
-               กลับหน้าหลัก
-             </Button>
-           </div>
+
+           {/* Breadcrumb navigation for sub-pages */}
+           {(currentView === 'health' || currentView === 'monitor' || currentView === 'chat' || currentView === 'create-chat' || currentView === 'analytics' || currentView === 'permissions' || currentView === 'role-details' || currentView === 'livetest') && (
+             <div className="mt-3 sm:mt-4">
+               <nav className="flex items-center space-x-2 text-sm text-gray-500">
+                 <button
+                   onClick={() => setCurrentView('dashboard')}
+                   className="hover:text-blue-600 transition-colors duration-200 flex items-center gap-1"
+                 >
+                   <Home className="w-3 h-3" />
+                   <span>Dashboard</span>
+                 </button>
+                 <ChevronRight className="w-3 h-3" />
+                 <span className="text-gray-700 font-medium">{getCurrentViewTitle()}</span>
+               </nav>
+             </div>
+           )}
          </div>
        </div>
 
        {/* Dashboard Content */}
-       <div className="max-w-7xl mx-auto p-6 space-y-8">
+       <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 sm:space-y-8">
          {renderCurrentView()}
        </div>
      </div>
