@@ -265,7 +265,7 @@ const profiles: FeaturedProfile[] = [
 
 function App() {
   const { user, login, logout } = useAuth()
-  const { success, error, warning, ToastContainer } = useToast()
+  const { success, error, warning } = useToast()
   const { updateNotification } = useNotificationUpdates()
 
   const [activeTab, setActiveTab] = useState<'discover' | 'matches' | 'messages' | 'stream' | 'ranking' | 'membership' | 'profile' | 'payment'>('discover')
@@ -8037,7 +8037,6 @@ function App() {
       </Dialog>
 
       {/* Toast Container */}
-      <ToastContainer />
       
     </div>
   )

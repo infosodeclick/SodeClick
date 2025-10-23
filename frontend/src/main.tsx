@@ -7,46 +7,14 @@ import AdminDashboard from './components/AdminDashboard'
 import HealthCheck from './components/HealthCheck'
 import JoinChatRoom from './components/JoinChatRoom'
 import PrivacyPolicy from './components/PrivacyPolicy'
-import { ToastProvider, useToast } from './components/ui/toast'
+import { ToastProvider } from './components/ui/toast'
 import { AuthProvider } from './contexts/AuthContext'
 
-// ลงทะเบียน Service Worker สำหรับ Auto Refresh (เฉพาะใน production)
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    // ใช้ Service Worker เฉพาะใน production
-    const swFile = '/sw-auto-refresh.js';
-
-    navigator.serviceWorker.register(swFile)
-      .then((registration) => {
-        console.log('✅ Service Worker registered for Auto Refresh:', registration);
-        console.log('📁 Service Worker file:', swFile);
-
-        // ตรวจสอบการอัปเดต Service Worker
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 New Service Worker available, reloading...');
-                // สามารถแจ้งผู้ใช้ให้รีโหลดหน้าเว็บได้ที่นี่
-              }
-            });
-          }
-        });
-      })
-      .catch((error) => {
-        console.error('❌ Service Worker registration failed:', error);
-        console.log('🔧 Falling back to polling-based auto refresh');
-      });
-  });
-} else {
-  console.log('🔧 Service Worker disabled in development mode');
-}
+// Service Worker temporarily disabled to avoid MIME type issues
+console.log('ℹ️ Service Worker temporarily disabled to avoid MIME type issues');
 
 // Wrapper component to include ToastContainer
 const AppWrapper = () => {
-  const { ToastContainer } = useToast();
-  
   return (
     <>
       <Routes>
@@ -56,7 +24,6 @@ const AppWrapper = () => {
         <Route path="/join/:inviteCode" element={<JoinChatRoom />} />
         <Route path="/privacy-policy.html" element={<PrivacyPolicy />} />
       </Routes>
-      <ToastContainer />
     </>
   );
 };
