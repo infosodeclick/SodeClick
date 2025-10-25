@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog'
 import MembershipCard from './MembershipCard'
 import { membershipAPI } from '../services/membershipAPI'
-import { RefreshCw, Crown, Sparkles } from 'lucide-react'
+import { RefreshCw, Crown, Sparkles, AlertTriangle } from 'lucide-react'
 import { useToast } from './ui/toast'
 
 const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
@@ -10,6 +11,8 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
   const [loading, setLoading] = useState(true)
   const [upgrading, setUpgrading] = useState(null)
   const [error, setError] = useState(null)
+  const [showDowngradeConfirm, setShowDowngradeConfirm] = useState(false)
+  const [selectedPlan, setSelectedPlan] = useState(null)
   const { warning } = useToast()
 
   // ดึงแพ็กเกจสมาชิก
@@ -27,6 +30,43 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
     }
   }
 
+  // ฟังก์ชันตรวจสอบระดับสมาชิก
+  const getTierLevel = (tier) => {
+    const tierLevels = {
+      'member': 0,
+      'silver': 1,
+      'gold': 2,
+      'vip': 3,
+      'vip1': 4,
+      'vip2': 5,
+      'diamond': 6,
+      'platinum': 7
+    }
+    return tierLevels[tier] || 0
+  }
+
+  // ฟังก์ชันตรวจสอบว่ากำลังจะ downgrade หรือไม่
+  const isDowngrade = (selectedTier) => {
+    const currentLevel = getTierLevel(currentTier)
+    const selectedLevel = getTierLevel(selectedTier)
+    return selectedLevel < currentLevel
+  }
+
+  // ฟังก์ชันแปลงชื่อระดับสมาชิกเป็นภาษาไทย
+  const getTierDisplayName = (tier) => {
+    const tierNames = {
+      'member': 'สมาชิกฟรี',
+      'silver': 'Silver',
+      'gold': 'Gold',
+      'vip': 'VIP',
+      'vip1': 'VIP 1',
+      'vip2': 'VIP 2',
+      'diamond': 'Diamond',
+      'platinum': 'Platinum'
+    }
+    return tierNames[tier] || tier
+  }
+
   // อัพเกรดสมาชิก - ไปหน้าชำระเงิน
   const handleUpgrade = async (plan) => {
     if (!currentUserId) {
@@ -34,8 +74,19 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
       return
     }
 
+    // ตรวจสอบว่ากำลังจะ downgrade หรือไม่
+    if (isDowngrade(plan.tier)) {
+      setSelectedPlan(plan)
+      setShowDowngradeConfirm(true)
+      return
+    }
 
+    // ถ้าไม่ใช่ downgrade ให้ดำเนินการปกติ
+    proceedWithUpgrade(plan)
+  }
 
+  // ฟังก์ชันดำเนินการอัพเกรดจริง
+  const proceedWithUpgrade = async (plan) => {
     // Trigger callback to parent component to navigate to payment page
     if (typeof window !== 'undefined' && window.navigateToPayment) {
       window.navigateToPayment(plan)
@@ -245,6 +296,71 @@ const MembershipPlans = ({ currentUserId, currentTier = 'member' }) => {
           </div>
         </div>
       </div>
+
+      {/* Downgrade Confirmation Dialog */}
+      <Dialog open={showDowngradeConfirm} onOpenChange={setShowDowngradeConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-lg font-bold text-orange-600">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              ยืนยันการปรับระดับสมาชิก
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              คุณกำลังจะปรับระดับสมาชิกจากระดับที่สูงกว่าไปเป็นระดับที่ต่ำกว่า
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">ระดับปัจจุบัน:</span>
+                <span className="text-sm font-bold text-orange-600">
+                  {getTierDisplayName(currentTier)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">ระดับที่เลือก:</span>
+                <span className="text-sm font-bold text-blue-600">
+                  {selectedPlan ? getTierDisplayName(selectedPlan.tier) : ''}
+                </span>
+              </div>
+            </div>
+            
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">
+                ⚠️ การปรับระดับลงจะทำให้คุณสูญเสียสิทธิประโยชน์บางอย่างที่ได้รับจากระดับปัจจุบัน
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <p className="text-sm font-medium text-gray-800 mb-4">
+                คุณต้องการปรับระดับสมาชิกจริงหรือไม่?
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowDowngradeConfirm(false)}
+              className="flex-1"
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={() => {
+                setShowDowngradeConfirm(false)
+                if (selectedPlan) {
+                  proceedWithUpgrade(selectedPlan)
+                }
+              }}
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              ยืนยัน
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

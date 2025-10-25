@@ -626,8 +626,8 @@ const PaymentGateway = ({ plan, onBack, onSuccess, onCancel }) => {
               {bypassMode ? 'โหมดทดสอบ - ไม่ต้องชำระเงินจริง' : 'ชำระเงินอย่างปลอดภัยและรวดเร็ว'}
               </p>
 
-            {/* แสดงข้อมูลผู้ใช้ปัจจุบันสำหรับการทดสอบ */}
-            {user && (
+            {/* แสดงข้อมูลผู้ใช้ปัจจุบันสำหรับการทดสอบ - ซ่อนแล้ว */}
+            {false && user && (
               <div className="mt-4 p-3 bg-slate-50 rounded-lg text-sm">
                 <div className="grid grid-cols-2 gap-4 text-center">
                   <div>
