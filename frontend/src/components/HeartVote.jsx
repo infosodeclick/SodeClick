@@ -101,6 +101,8 @@ const HeartVote = ({
     } else if (propTotalVotes !== null) {
       // หากมีข้อมูลจาก props ให้ตั้ง loading เป็น false
       setLoading(false);
+      // แต่ยังต้องดึง hasVoted status
+      fetchVoteStatus();
     }
   }, [candidateId, voterId, voteType, propTotalVotes]);
 
@@ -121,6 +123,13 @@ const HeartVote = ({
             (data.voter?.id === voterId) : 
             (prevStatus?.hasVoted && data.voter?.id !== voterId)
         }));
+        
+        // อัปเดต totalVotes จาก props หากมี
+        if (propTotalVotes !== null && data.voteStats && data.voteStats[voteType]) {
+          // ไม่ต้องอัปเดต propTotalVotes เพราะมันมาจาก parent
+          // แต่เราสามารถ log เพื่อ debug ได้
+          console.log('📊 Vote stats updated:', data.voteStats[voteType]);
+        }
       }
     };
 
@@ -165,6 +174,15 @@ const HeartVote = ({
   const voteStats = voteStatus?.voteStats?.[voteType] || { totalVotes: 0, uniqueVoters: 0 };
   const hasVoted = propHasVoted !== null ? propHasVoted : (voteStatus?.hasVoted || false);
   const totalVotes = propTotalVotes !== null ? propTotalVotes : voteStats.totalVotes;
+  
+  // Debug logging สำหรับ hasVoted
+  console.log('🔍 hasVoted Debug:', {
+    propHasVoted,
+    voteStatusHasVoted: voteStatus?.hasVoted,
+    finalHasVoted: hasVoted,
+    voterId,
+    candidateId
+  });
 
   // Debug logging
   console.log('🔍 HeartVote Debug:', {

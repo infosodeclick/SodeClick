@@ -6400,14 +6400,28 @@ function App() {
                                 user.membership.tier === 'silver' ? 'bg-gradient-to-r from-gray-400 to-slate-400' :
                                 'bg-gradient-to-r from-gray-300 to-gray-400'
                               } text-white shadow-lg`}>
-                                {user.membership.tier === 'platinum' ? 'PLATINUM' :
-                                 user.membership.tier === 'diamond' ? 'DIAMOND' :
-                                 user.membership.tier === 'vip2' ? 'VIP2' :
-                                 user.membership.tier === 'vip1' ? 'VIP1' :
-                                 user.membership.tier === 'vip' ? 'VIP' :
-                                 user.membership.tier === 'gold' ? 'GOLD' :
-                                 user.membership.tier === 'silver' ? 'SILVER' :
-                                 'MEMBER'}
+                                {/* แสดงคำเต็มเมื่อหน้าต่างกว้าง */}
+                                <span className="hidden lg:block">
+                                  {user.membership.tier === 'platinum' ? 'PLATINUM' :
+                                   user.membership.tier === 'diamond' ? 'DIAMOND' :
+                                   user.membership.tier === 'vip2' ? 'VIP2' :
+                                   user.membership.tier === 'vip1' ? 'VIP1' :
+                                   user.membership.tier === 'vip' ? 'VIP' :
+                                   user.membership.tier === 'gold' ? 'GOLD' :
+                                   user.membership.tier === 'silver' ? 'SILVER' :
+                                   'MEMBER'}
+                                </span>
+                                {/* แสดงไอคอนเมื่อหน้าต่างแคบ (โหมดคอมพิวเตอร์) */}
+                                <span className="lg:hidden">
+                                  {user.membership.tier === 'platinum' ? '💎' :
+                                   user.membership.tier === 'diamond' ? '💠' :
+                                   user.membership.tier === 'vip2' ? '👑' :
+                                   user.membership.tier === 'vip1' ? '👑' :
+                                   user.membership.tier === 'vip' ? '👑' :
+                                   user.membership.tier === 'gold' ? '🥇' :
+                                   user.membership.tier === 'silver' ? '🥈' :
+                                   '👤'}
+                                </span>
                               </Badge>
                             </div>
                           )}
@@ -7739,15 +7753,29 @@ function App() {
                                   unifiedProfile.membership.tier === 'silver' ? 'from-gray-400 to-slate-400' :
                                   'from-gray-300 to-gray-400'
                                 } text-white text-xs`}>
-                                  <Crown className="h-3 w-3 mr-1" />
-                                  {unifiedProfile.membership.tier === 'platinum' ? 'PLATINUM' :
-                                   unifiedProfile.membership.tier === 'diamond' ? 'DIAMOND' :
-                                   unifiedProfile.membership.tier === 'vip2' ? 'VIP2' :
-                                   unifiedProfile.membership.tier === 'vip1' ? 'VIP1' :
-                                   unifiedProfile.membership.tier === 'vip' ? 'VIP' :
-                                   unifiedProfile.membership.tier === 'gold' ? 'GOLD' :
-                                   unifiedProfile.membership.tier === 'silver' ? 'SILVER' :
-                                   'MEMBER'}
+                                  {/* แสดงคำเต็มเมื่อหน้าต่างกว้าง */}
+                                  <span className="hidden lg:flex items-center">
+                                    <Crown className="h-3 w-3 mr-1" />
+                                    {unifiedProfile.membership.tier === 'platinum' ? 'PLATINUM' :
+                                     unifiedProfile.membership.tier === 'diamond' ? 'DIAMOND' :
+                                     unifiedProfile.membership.tier === 'vip2' ? 'VIP2' :
+                                     unifiedProfile.membership.tier === 'vip1' ? 'VIP1' :
+                                     unifiedProfile.membership.tier === 'vip' ? 'VIP' :
+                                     unifiedProfile.membership.tier === 'gold' ? 'GOLD' :
+                                     unifiedProfile.membership.tier === 'silver' ? 'SILVER' :
+                                     'MEMBER'}
+                                  </span>
+                                  {/* แสดงไอคอนเมื่อหน้าต่างแคบ (โหมดคอมพิวเตอร์) */}
+                                  <span className="lg:hidden">
+                                    {unifiedProfile.membership.tier === 'platinum' ? '💎' :
+                                     unifiedProfile.membership.tier === 'diamond' ? '💠' :
+                                     unifiedProfile.membership.tier === 'vip2' ? '👑' :
+                                     unifiedProfile.membership.tier === 'vip1' ? '👑' :
+                                     unifiedProfile.membership.tier === 'vip' ? '👑' :
+                                     unifiedProfile.membership.tier === 'gold' ? '🥇' :
+                                     unifiedProfile.membership.tier === 'silver' ? '🥈' :
+                                     '👤'}
+                                  </span>
                                 </Badge>
                               )}
                             </div>
