@@ -414,7 +414,7 @@ router.post('/buy-points', async (req, res) => {
 router.get('/status/:candidateId', async (req, res) => {
   try {
     const { candidateId } = req.params;
-    const { voterId, voteType = 'popularity_male' } = req.query;
+    const { voterId, voteType = 'popularity_combined' } = req.query;
 
     if (!candidateId) {
       return res.status(400).json({
@@ -432,41 +432,66 @@ router.get('/status/:candidateId', async (req, res) => {
       });
     }
 
-    // นับคะแนนโหวตทั้งหมดของผู้ใช้
+    // นับคะแนนโหวตทั้งหมดของผู้ใช้ - แก้ไขให้สอดคล้องกับ Ranking API
+    const matchStage = {
+      candidate: new mongoose.Types.ObjectId(candidateId),
+      status: 'active'
+    };
+
+    // จัดการ voteType สำหรับ popularity_combined (เหมือนกับ Ranking API)
+    if (voteType === 'popularity_combined') {
+      matchStage.voteType = { $in: ['popularity_male', 'popularity_female', 'popularity_combined'] };
+    } else {
+      matchStage.voteType = voteType;
+    }
+
+    // คำนวณคะแนนแบบเดียวกับ Vote Ranking API
     const voteStats = await VoteTransaction.aggregate([
       {
-        $match: {
-          candidate: new mongoose.Types.ObjectId(candidateId),
-          status: 'active'
-        }
+        $match: matchStage
       },
       {
         $group: {
-          _id: '$voteType',
+          _id: '$candidate',
           totalVotes: { $sum: '$votePoints' },
-          uniqueVoters: { $addToSet: '$voter' }
+          uniqueVoters: { $addToSet: '$voter' },
+          voteTypes: { $addToSet: '$voteType' }
         }
       }
     ]);
 
-    // แปลงข้อมูลให้อ่านง่าย
+    // แปลงข้อมูลให้อ่านง่าย - ใช้คะแนนรวมทั้งหมดเหมือน Vote Ranking API
     const voteData = {};
-    voteStats.forEach(stat => {
-      voteData[stat._id] = {
+    if (voteStats.length > 0) {
+      const stat = voteStats[0];
+      voteData[voteType] = {
         totalVotes: stat.totalVotes,
         uniqueVoters: stat.uniqueVoters.length
       };
-    });
+    } else {
+      voteData[voteType] = {
+        totalVotes: 0,
+        uniqueVoters: 0
+      };
+    }
 
-    // ตรวจสอบว่า voterId โหวตแล้วหรือยัง (ถ้ามี voterId)
+    // ตรวจสอบว่า voterId โหวตแล้วหรือยัง (ถ้ามี voterId) - แก้ไขให้สอดคล้องกับ voteType
     let hasVoted = false;
     if (voterId) {
-      const userVote = await VoteTransaction.findOne({
+      let voteQuery = {
         voter: voterId,
         candidate: candidateId,
-        voteType,
         status: 'active'
-      });
+      };
+
+      // จัดการ voteType สำหรับ popularity_combined
+      if (voteType === 'popularity_combined') {
+        voteQuery.voteType = { $in: ['popularity_male', 'popularity_female', 'popularity_combined'] };
+      } else {
+        voteQuery.voteType = voteType;
+      }
+
+      const userVote = await VoteTransaction.findOne(voteQuery);
       hasVoted = !!userVote;
     }
 

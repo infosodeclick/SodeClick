@@ -1,0 +1,26 @@
+{
+  "name": "sodeclick-vote-system-tests",
+  "version": "1.0.0",
+  "description": "Test suite for SodeClick vote system",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test-vote-consistency.js && node test-premium-vote-display.js",
+    "test:consistency": "node test-vote-consistency.js",
+    "test:premium": "node test-premium-vote-display.js",
+    "test:all": "npm run test:consistency && npm run test:premium"
+  },
+  "keywords": [
+    "sodeclick",
+    "vote-system",
+    "testing",
+    "api-testing"
+  ],
+  "author": "SodeClick Development Team",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

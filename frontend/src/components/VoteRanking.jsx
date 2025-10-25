@@ -3,6 +3,7 @@ import { Trophy, Star, Users, Crown, Medal, Award, TrendingUp, Filter, Search, L
 import voteRankingAPI from '../services/voteRankingAPI';
 import { useToast } from './ui/toast';
 import { getMainProfileImage } from '../utils/profileImageUtils';
+import { voteHelpers } from '../services/voteAPI';
 
 const VoteRanking = ({ onUserProfileClick = null }) => {
   const [rankings, setRankings] = useState([]);
@@ -202,14 +203,7 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
     );
   };
 
-  const formatVoteCount = (count) => {
-    if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M`;
-    } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
-    }
-    return count.toString();
-  };
+  // ใช้ voteHelpers.formatVoteCount แทนการสร้าง function เอง
 
   const getProfileImage = (user) => {
     if (!user || !user.profileImages || user.profileImages.length === 0) {
@@ -387,7 +381,7 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
                   <div className="flex items-center space-x-3 text-xs text-gray-600">
                     <div className="flex items-center">
                       <Star className="w-3 h-3 mr-1 text-yellow-500" />
-                      <span className="font-medium">{formatVoteCount(user.totalVotes)} คะแนน</span>
+                      <span className="font-medium">{voteHelpers.formatVoteCount(user.totalVotes)} คะแนน</span>
                     </div>
                     <div className="flex items-center">
                       <Users className="w-3 h-3 mr-1 text-blue-500" />
@@ -407,7 +401,7 @@ const VoteRanking = ({ onUserProfileClick = null }) => {
                   <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-2 rounded-lg shadow-md">
                     <div className="text-center">
                       <div className="text-sm font-bold">
-                        {formatVoteCount(user.totalVotes)}
+                        {voteHelpers.formatVoteCount(user.totalVotes)}
                       </div>
                       <div className="text-xs opacity-90">
                         คะแนน

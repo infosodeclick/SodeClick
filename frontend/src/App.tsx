@@ -103,6 +103,8 @@ type PublicUser = {
   interests?: any[]
   membership?: { tier?: string }
   gender?: string
+  totalVotes?: number
+  uniqueVoterCount?: number
 }
 
 type FeaturedProfile = {
@@ -2084,7 +2086,7 @@ function App() {
     }
   }, [showProfileDropdown, showNotificationDropdown, preventModalClose])
 
-  // Load Premium Members for Discover tab (from backend only)
+  // Load Premium Members for Discover tab (from backend only) - แก้ไขให้ใช้ข้อมูลโหวตจากแหล่งเดียวกันกับ Top Vote
   useEffect(() => {
     let isCancelled = false
     const loadPremium = async () => {
@@ -2095,17 +2097,55 @@ function App() {
         console.log('🔑 Frontend - Sending token:', token ? 'Present' : 'Not present');
         console.log('👤 Frontend - Current user:', user);
         
-        const res = await fetch(`${base}/api/profile/premium?limit=50`, {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        // ดึงข้อมูล premium users พร้อมข้อมูลโหวตจากแหล่งเดียวกันกับ Top Vote
+        const [premiumRes, voteRes] = await Promise.all([
+          fetch(`${base}/api/profile/premium?limit=50`, {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            }
+          }),
+          fetch(`${base}/api/vote/ranking?voteType=popularity_combined&limit=100&sortBy=totalVotes`, {
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          })
+        ])
+        
+        if (!premiumRes.ok) return
+        const premiumData = await premiumRes.json()
+        const users: PublicUser[] = premiumData?.data?.users || []
+        
+        // ดึงข้อมูลโหวต
+        let voteData = {}
+        if (voteRes.ok) {
+          const voteResult = await voteRes.json()
+          if (voteResult.success && voteResult.data?.rankings) {
+            // สร้าง map ของข้อมูลโหวต
+            voteResult.data.rankings.forEach((ranking: any) => {
+              voteData[ranking._id] = {
+                totalVotes: ranking.totalVotes,
+                uniqueVoterCount: ranking.uniqueVoterCount
+              }
+            })
+            
           }
+        }
+        
+        // รวมข้อมูล premium users กับข้อมูลโหวต - ใช้วิธีง่ายๆ
+        const usersWithVotes = users.map(user => {
+          // ค้นหาข้อมูลโหวตโดยใช้ ID เป็นหลัก
+          const voteInfo = user._id ? (voteData[user._id] || { totalVotes: 0, uniqueVoterCount: 0 }) : { totalVotes: 0, uniqueVoterCount: 0 };
+          
+          return {
+            ...user,
+            totalVotes: voteInfo.totalVotes,
+            uniqueVoterCount: voteInfo.uniqueVoterCount
+          };
         })
-        if (!res.ok) return
-        const data = await res.json()
-        const users: PublicUser[] = data?.data?.users || []
+        
         // Ensure final ordering and cap
-        const sorted = users
+        const sorted = usersWithVotes
           .filter(u => {
             // กรองผู้ใช้ปัจจุบันออก
             const currentUserId = user?._id || user?.id;
@@ -2118,6 +2158,7 @@ function App() {
             return ai - bi
           })
           .slice(0, 50)
+          
         if (!isCancelled) setPremiumUsers(sorted)
       } catch (_) {
         // ignore errors for this section
@@ -5967,7 +6008,44 @@ function App() {
                                   })
                                 }}
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  console.error('❌ Premium user image failed to load:', {
+                                    imageUrl: mainImage,
+                                    userId: u._id || (u as any)?.id,
+                                    username: u?.nickname || u?.firstName
+                                  });
+                                  
+                                  // ลองใช้รูปภาพอื่นในโปรไฟล์
+                                  const target = e.target as HTMLImageElement;
+                                  const profileImages = u?.profileImages || [];
+                                  const currentIndex = profileImages.findIndex(img => 
+                                    img === mainImage
+                                  );
+                                  
+                                  if (currentIndex !== -1 && currentIndex < profileImages.length - 1) {
+                                    // ลองรูปภาพถัดไป
+                                    const nextImage = profileImages[currentIndex + 1];
+                                    if (nextImage && nextImage !== mainImage) {
+                                      console.log('🔄 Trying next premium user image:', nextImage);
+                                      target.src = nextImage;
+                                      return;
+                                    }
+                                  }
+                                  
+                                  // หากไม่มีรูปภาพอื่น ให้ซ่อนรูปภาพและแสดง placeholder
+                                  target.style.display = 'none';
+                                  
+                                  // แสดง placeholder หรือ gradient background
+                                  const placeholder = document.createElement('div');
+                                  placeholder.className = 'w-full h-full bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white';
+                                  placeholder.innerHTML = `
+                                    <div class="text-center">
+                                      <div class="text-4xl font-bold mb-2">
+                                        ${(u?.firstName?.charAt(0) || u?.nickname?.charAt(0) || 'U')}
+                                      </div>
+                                      <div class="text-sm opacity-75">รูปภาพไม่พร้อมใช้งาน</div>
+                                    </div>
+                                  `;
+                                  target.parentNode?.appendChild(placeholder);
                                 }}
                               />
                               {/* Overlay สำหรับรูปเบลอ */}
@@ -6000,6 +6078,10 @@ function App() {
                               candidateDisplayName={displayName}
                               isOwnProfile={false}
                               className=""
+                              // ส่งข้อมูลโหวตจากแหล่งเดียวกันกับ Top Vote
+                              totalVotes={u.totalVotes || 0}
+                              uniqueVoterCount={u.uniqueVoterCount || 0}
+                              // ไม่ส่ง hasVoted เพื่อให้ HeartVote ตรวจสอบเอง
                             />
                           </div>
                           
@@ -7090,7 +7172,39 @@ function App() {
                             originalImage: currentImage,
                             profileId: selectedProfile.id
                           });
-                          (e.target as HTMLImageElement).style.display = 'none';
+                          
+                          // ลองใช้รูปภาพอื่นในโปรไฟล์
+                          const target = e.target as HTMLImageElement;
+                          const profileImages = selectedProfile?.images || [];
+                          const currentIndex = profileImages.findIndex(img => 
+                            img === currentImage || img === imageUrl
+                          );
+                          
+                          if (currentIndex !== -1 && currentIndex < profileImages.length - 1) {
+                            // ลองรูปภาพถัดไป
+                            const nextImage = profileImages[currentIndex + 1];
+                            if (nextImage && nextImage !== currentImage) {
+                              console.log('🔄 Trying next profile image:', nextImage);
+                              target.src = nextImage;
+                              return;
+                            }
+                          }
+                          
+                          // หากไม่มีรูปภาพอื่น ให้ซ่อนรูปภาพและแสดง placeholder
+                          target.style.display = 'none';
+                          
+                          // แสดง placeholder หรือ gradient background
+                          const placeholder = document.createElement('div');
+                          placeholder.className = 'w-full h-full bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white';
+                          placeholder.innerHTML = `
+                            <div class="text-center">
+                              <div class="text-4xl font-bold mb-2">
+                                ${(selectedProfile?.firstName?.charAt(0) || selectedProfile?.username?.charAt(0) || 'U')}
+                              </div>
+                              <div class="text-sm opacity-75">รูปภาพไม่พร้อมใช้งาน</div>
+                            </div>
+                          `;
+                          target.parentNode?.appendChild(placeholder);
                         }}
                         onLoad={() => {
                           console.log('✅ Profile modal image loaded successfully:', {
@@ -7559,8 +7673,27 @@ function App() {
                                         originalImage: unifiedProfile.profileImages[0],
                                         profileId: unifiedProfile.id
                                       });
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                      ((e.target as HTMLImageElement).nextSibling as HTMLElement).style.display = 'flex';
+                                      
+                                      // ลองใช้รูปภาพอื่นในโปรไฟล์
+                                      const target = e.target as HTMLImageElement;
+                                      const profileImages = unifiedProfile?.profileImages || [];
+                                      const currentIndex = profileImages.findIndex(img => 
+                                        img === profileImageUrl || img === unifiedProfile.profileImages[0]
+                                      );
+                                      
+                                      if (currentIndex !== -1 && currentIndex < profileImages.length - 1) {
+                                        // ลองรูปภาพถัดไป
+                                        const nextImage = profileImages[currentIndex + 1];
+                                        if (nextImage && nextImage !== profileImageUrl) {
+                                          console.log('🔄 Trying next profile modal image:', nextImage);
+                                          target.src = nextImage;
+                                          return;
+                                        }
+                                      }
+                                      
+                                      // หากไม่มีรูปภาพอื่น ให้ซ่อนรูปภาพและแสดง fallback
+                                      target.style.display = 'none';
+                                      ((target.nextSibling as HTMLElement)).style.display = 'flex';
                                     }}
                                     onLoad={() => {
                                       console.log('✅ Profile modal image loaded successfully:', {
@@ -7677,7 +7810,39 @@ function App() {
                                         originalImage: image,
                                         profileId: unifiedProfile.id
                                       });
-                                      (e.target as HTMLImageElement).style.display = 'none';
+                                      
+                                      // ลองใช้รูปภาพอื่นในโปรไฟล์
+                                      const target = e.target as HTMLImageElement;
+                                      const profileImages = unifiedProfile?.profileImages || [];
+                                      const currentIndex = profileImages.findIndex(img => 
+                                        img === imageUrl || img === image
+                                      );
+                                      
+                                      if (currentIndex !== -1 && currentIndex < profileImages.length - 1) {
+                                        // ลองรูปภาพถัดไป
+                                        const nextImage = profileImages[currentIndex + 1];
+                                        if (nextImage && nextImage !== imageUrl) {
+                                          console.log('🔄 Trying next gallery image:', nextImage);
+                                          target.src = nextImage;
+                                          return;
+                                        }
+                                      }
+                                      
+                                      // หากไม่มีรูปภาพอื่น ให้ซ่อนรูปภาพและแสดง placeholder
+                                      target.style.display = 'none';
+                                      
+                                      // แสดง placeholder หรือ gradient background
+                                      const placeholder = document.createElement('div');
+                                      placeholder.className = 'w-full h-full bg-gradient-to-br from-pink-400 to-violet-400 flex items-center justify-center text-white';
+                                      placeholder.innerHTML = `
+                                        <div class="text-center">
+                                          <div class="text-2xl font-bold mb-1">
+                                            ${(unifiedProfile?.firstName?.charAt(0) || unifiedProfile?.username?.charAt(0) || 'U')}
+                                          </div>
+                                          <div class="text-xs opacity-75">รูปภาพไม่พร้อมใช้งาน</div>
+                                        </div>
+                                      `;
+                                      target.parentNode?.appendChild(placeholder);
                                     }}
                                     onLoad={() => {
                                       console.log('✅ Profile modal gallery image loaded successfully:', {

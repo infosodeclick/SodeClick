@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { Button } from './ui/button';
 import { getMainProfileImage, getMainProfileImageGuest } from '../utils/profileImageUtils';
-import voteAPI from '../services/voteAPI';
+import voteAPI, { voteHelpers } from '../services/voteAPI';
 
 // Get profile image URL
 const getImageUrl = (userData) => {
@@ -326,7 +326,7 @@ const TopVotedCarousel = () => {
                   <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-full flex items-center space-x-2 shadow-lg">
                     <Heart className="h-4 w-4 text-pink-500" fill="currentColor" />
                     <span className="text-sm font-bold text-gray-800">
-                      {userData?.totalVotes || 0} votes
+                      {voteHelpers.formatVoteCount(userData?.totalVotes || 0)} votes
                     </span>
                   </div>
                   

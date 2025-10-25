@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Heart, Users, Crown, Medal, Award, Star } from 'lucide-react';
 import { getMainProfileImageGuest } from '../utils/profileImageUtils';
 import { useToast } from './ui/toast';
+import { voteHelpers } from '../services/voteAPI';
 
 const Top5Ranking = ({ 
   voteType = 'popularity_combined',
@@ -360,7 +361,7 @@ const Top5Ranking = ({
                   <div className={`${styling.badge} text-white px-4 py-3 rounded-xl shadow-xl transform transition-all duration-500 hover:scale-110 hover:rotate-2`}>
                     <div className="text-center">
                       <div className="text-lg font-bold">
-                        {totalVotes.toLocaleString()}
+                        {voteHelpers.formatVoteCount(totalVotes)}
                       </div>
                       <div className="text-xs opacity-90">
                         คะแนน

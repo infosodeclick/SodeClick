@@ -3,6 +3,7 @@ import { Button } from './ui/button'
 import { membershipAPI, membershipHelpers } from '../services/membershipAPI'
 import { useToast } from './ui/toast'
 import SpinWheelModal, { PrizeResultModal } from './SpinWheelModal'
+import voteAPI, { voteHelpers } from '../services/voteAPI'
 import { 
   Crown, 
   Coins, 
@@ -29,6 +30,7 @@ const MembershipDashboard = ({ userId }) => {
   const [showSpinWheel, setShowSpinWheel] = useState(false)
   const [showPrizeResult, setShowPrizeResult] = useState(false)
   const [wonPrize, setWonPrize] = useState(null)
+  const [voteData, setVoteData] = useState({ totalVotes: 0, uniqueVoterCount: 0 }) // เพิ่ม state สำหรับข้อมูลโหวต
   const { success, error: showError } = useToast()
 
   // ฟังก์ชันสำหรับดึงข้อมูลผู้ใช้ล่าสุดจาก localStorage
@@ -41,6 +43,27 @@ const MembershipDashboard = ({ userId }) => {
       return null
     }
   }, [])
+
+  // ฟังก์ชันสำหรับดึงข้อมูลโหวตจาก VoteTransaction collection
+  const fetchVoteData = useCallback(async () => {
+    if (!userId) return
+
+    try {
+      console.log('🔄 Fetching vote data for user:', userId)
+      const response = await voteAPI.getVoteStatus(userId, null, 'popularity_combined')
+      
+      if (response.success && response.data?.voteStats) {
+        const voteStats = response.data.voteStats
+        const totalVotes = voteStats.popularity_combined?.totalVotes || 0
+        const uniqueVoterCount = voteStats.popularity_combined?.uniqueVoters || 0
+        
+        console.log('✅ Vote data fetched:', { totalVotes, uniqueVoterCount })
+        setVoteData({ totalVotes, uniqueVoterCount })
+      }
+    } catch (error) {
+      console.error('❌ Error fetching vote data:', error)
+    }
+  }, [userId])
 
   // อัปเดตข้อมูลเหรียญและโหวตแบบเรียลไทม์
   useEffect(() => {
@@ -72,6 +95,60 @@ const MembershipDashboard = ({ userId }) => {
     const interval = setInterval(updateUserData, 1000)
     return () => clearInterval(interval)
   }, [membershipData, getCurrentUserData])
+
+  // อัปเดตข้อมูลโหวตแบบ real-time เมื่อมีการโหวตหรือหมุนวงล้อ
+  useEffect(() => {
+    const handleVoteUpdate = (data) => {
+      console.log('📡 MembershipDashboard - Received vote-updated event:', data)
+      
+      // ตรวจสอบว่าเป็นคะแนนโหวตของผู้ใช้คนนี้หรือไม่
+      if (data.candidateId === userId) {
+        console.log('🔄 Updating vote data for current user:', userId)
+        fetchVoteData() // ดึงข้อมูลโหวตใหม่
+      }
+    }
+
+    // ใช้ global socketManager แทนการสร้าง connection ใหม่
+    const setupSocketListener = () => {
+      if (window.socketManager && window.socketManager.socket && window.socketManager.socket.connected) {
+        console.log('🔌 MembershipDashboard - Setting up socket listener on existing socket:', window.socketManager.socket.id)
+        window.socketManager.socket.on('vote-updated', handleVoteUpdate)
+        return true
+      } else {
+        console.log('⚠️ MembershipDashboard - Socket not ready, will retry...')
+        return false
+      }
+    }
+
+    // ลองตั้งค่า listener ทันที
+    let listenerSetup = setupSocketListener()
+    
+    // ถ้า socket ยังไม่พร้อม ให้รอและลองใหม่
+    if (!listenerSetup) {
+      const retryInterval = setInterval(() => {
+        if (setupSocketListener()) {
+          clearInterval(retryInterval)
+        }
+      }, 1000)
+
+      // หยุดการลองใหม่หลังจาก 10 วินาที
+      setTimeout(() => {
+        clearInterval(retryInterval)
+      }, 10000)
+    }
+
+    // Cleanup
+    return () => {
+      if (window.socketManager && window.socketManager.socket) {
+        window.socketManager.socket.off('vote-updated', handleVoteUpdate)
+      }
+    }
+  }, [userId, fetchVoteData])
+
+  // ดึงข้อมูลโหวตเมื่อ component mount
+  useEffect(() => {
+    fetchVoteData()
+  }, [fetchVoteData])
 
   // ดึงข้อมูลสมาชิก
   const fetchMembershipData = useCallback(async () => {
@@ -357,7 +434,7 @@ const MembershipDashboard = ({ userId }) => {
                 <span className="text-slate-700 font-medium text-xs">คะแนนโหวต</span>
               </div>
               <span className="text-sm sm:text-base font-bold text-purple-600">
-                {votePoints.toLocaleString()}
+                {voteHelpers.formatVoteCount(voteData.totalVotes)}
               </span>
             </div>
           </div>

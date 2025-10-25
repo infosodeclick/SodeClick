@@ -2,13 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Star } from 'lucide-react';
 import voteAPI, { voteHelpers } from '../services/voteAPI';
 import { useToast } from './ui/toast';
+import './HeartVote.css';
 
 const HeartVote = ({ 
   candidateId, 
   candidateGender = 'male',
   candidateDisplayName = 'ผู้ใช้',
   isOwnProfile = false,
-  className = '' 
+  className = '',
+  // เพิ่ม props สำหรับข้อมูลโหวตที่ส่งมาจาก parent
+  totalVotes: propTotalVotes = null,
+  uniqueVoterCount: propUniqueVoterCount = null,
+  hasVoted: propHasVoted = null
 }) => {
   const [voteStatus, setVoteStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -30,10 +35,21 @@ const HeartVote = ({
   const fetchVoteStatus = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Fetching vote status for:', { candidateId, voterId, voteType });
+      
       const response = await voteAPI.getVoteStatus(candidateId, voterId, voteType);
+      console.log('✅ Vote status response:', response);
+      
       setVoteStatus(response.data);
     } catch (error) {
-      console.error('Error fetching vote status:', error);
+      console.error('❌ Error fetching vote status:', error);
+      // Set fallback data
+      setVoteStatus({
+        voteStats: {
+          [voteType]: { totalVotes: 0, uniqueVoters: 0 }
+        },
+        hasVoted: false
+      });
     } finally {
       setLoading(false);
     }
@@ -78,12 +94,15 @@ const HeartVote = ({
     }
   };
 
-  // ดึงข้อมูลเมื่อ component mount
+  // ดึงข้อมูลเมื่อ component mount - ข้ามการเรียก API หากมีข้อมูลจาก props
   useEffect(() => {
-    if (candidateId) {
+    if (candidateId && propTotalVotes === null) {
       fetchVoteStatus();
+    } else if (propTotalVotes !== null) {
+      // หากมีข้อมูลจาก props ให้ตั้ง loading เป็น false
+      setLoading(false);
     }
-  }, [candidateId, voterId, voteType]);
+  }, [candidateId, voterId, voteType, propTotalVotes]);
 
   // Real-time vote updates
   useEffect(() => {
@@ -142,40 +161,46 @@ const HeartVote = ({
     };
   }, [candidateId, voterId]);
 
-  // ดึงข้อมูลคะแนนโหวต
+  // ดึงข้อมูลคะแนนโหวต - ใช้ข้อมูลจาก props ก่อน หากไม่มีจึงเรียก API
   const voteStats = voteStatus?.voteStats?.[voteType] || { totalVotes: 0, uniqueVoters: 0 };
-  const hasVoted = voteStatus?.hasVoted || false;
-  const totalVotes = voteStats.totalVotes;
+  const hasVoted = propHasVoted !== null ? propHasVoted : (voteStatus?.hasVoted || false);
+  const totalVotes = propTotalVotes !== null ? propTotalVotes : voteStats.totalVotes;
+
+  // Debug logging
+  console.log('🔍 HeartVote Debug:', {
+    candidateId,
+    voteType,
+    loading,
+    voteStatus,
+    voteStats,
+    totalVotes,
+    hasVoted,
+    propTotalVotes,
+    propHasVoted,
+    usingProps: propTotalVotes !== null
+  });
 
 
   // Check if this is a compact display (for card overlay)
   const isCompact = className.includes('bg-black/50') || className.includes('backdrop-blur');
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="heart-vote-loading">
+        <div className="heart-vote-loading-spinner"></div>
+        <span>Loading...</span>
+      </div>
+    );
+  }
+
   if (isCompact) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        color: 'white',
-        fontSize: '14px',
-        fontWeight: 'bold'
-      }}>
+      <div className="heart-vote-compact">
         <button
           onClick={handleStarClick}
           disabled={voting || isOwnProfile || !isLoggedIn}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            margin: 0,
-            cursor: isOwnProfile || !isLoggedIn ? 'not-allowed' : 'pointer',
-            opacity: isOwnProfile || !isLoggedIn ? 0.5 : 1,
-            outline: 'none'
-          }}
+          className="heart-vote-star"
           title={
             isOwnProfile 
               ? 'ไม่สามารถโหวตให้ตัวเองได้' 
@@ -196,27 +221,19 @@ const HeartVote = ({
           />
         </button>
 
-        <span style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-          {voteHelpers.formatVoteCount(totalVotes)}
+        <span className="heart-vote-count">
+          {totalVotes > 0 ? voteHelpers.formatVoteCount(totalVotes) : '0'}
         </span>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div className="heart-vote-normal">
       <button
         onClick={handleStarClick}
         disabled={voting || isOwnProfile || !isLoggedIn}
-        style={{
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          margin: 0,
-          cursor: isOwnProfile || !isLoggedIn ? 'not-allowed' : 'pointer',
-          opacity: isOwnProfile || !isLoggedIn ? 0.5 : 1,
-          outline: 'none'
-        }}
+        className="heart-vote-star"
         title={
           isOwnProfile 
             ? 'ไม่สามารถโหวตให้ตัวเองได้' 
@@ -237,8 +254,8 @@ const HeartVote = ({
         />
       </button>
 
-      <span style={{ fontSize: '18px', fontWeight: '700', color: '#1f2937', textShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
-        {voteHelpers.formatVoteCount(totalVotes)}
+      <span className="heart-vote-count-normal">
+        {totalVotes > 0 ? voteHelpers.formatVoteCount(totalVotes) : '0'}
       </span>
     </div>
   );

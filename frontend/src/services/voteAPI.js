@@ -210,7 +210,7 @@ export const voteHelpers = {
 
   // กำหนดประเภทการโหวต (ไม่จำกัดเพศ - โหวตได้ทุกคน)
   getVoteTypeByGender(gender) {
-    // ใช้ popularity_combined สำหรับทุกคน
+    // ใช้ popularity_combined สำหรับทุกคน - แก้ไขให้สอดคล้องกันทุกที่
     return 'popularity_combined';
   },
 
